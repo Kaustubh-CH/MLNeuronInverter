@@ -325,6 +325,29 @@ class Trainer():
 #...!...!..................
   def validate_one_epoch(self):
     self.model.eval()
+    loss = 0.0
+
+    with torch.no_grad():
+      for data in self.valid_loader:
+        # Move our images and labels to GPU
+        images, labels = map(lambda x: x.to(self.device), data)
+        outputs = self.model(images)
+        loss += self.criterion(outputs, labels)
+        
+    logs = {'loss': loss/len(self.valid_loader),}
+
+    if self.params['world_size']>1:
+      for key in sorted(logs.keys()):
+        logs[key] = torch.as_tensor(logs[key]).to(self.device)
+        self.dist.all_reduce(logs[key].detach())
+        logs[key] = float(logs[key]/self.dist.get_world_size())
+
+    return  logs
+
+  
+#...!...!..................
+  def Xvalidate_one_epoch(self):
+    self.model.eval()
     optTorch=self.params['opt_pytorch']
     loss = 0.0
 

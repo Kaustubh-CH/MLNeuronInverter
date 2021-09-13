@@ -1,0 +1,59 @@
+
+#...!...!..................
+  def validate_one_epoch(self):
+    self.model.eval()
+    loss = 0.0
+
+    with torch.no_grad():
+      for data in self.valid_loader:
+        # Move our images and labels to GPU
+        images, labels = map(lambda x: x.to(self.device), data)
+        outputs = self.model(images)
+        loss += self.criterion(outputs, labels)
+
+    logs = {'loss': loss/len(self.valid_loader),}
+
+    if self.params['world_size']>1:
+      for key in sorted(logs.keys()):
+        logs[key] = torch.as_tensor(logs[key]).to(self.device)
+        self.dist.all_reduce(logs[key].detach())
+        logs[key] = float(logs[key]/self.dist.get_world_size())
+
+    return  logs
+
+
+#...!...!..................
+def model_infer(model,test_loader,sumMD):
+    device=torch.cuda.current_device()
+
+    model.eval()
+    criterion =torch.nn.MSELoss().to(device) # Mean Squared Loss
+    test_loss = 0
+
+    # prepare output container, Thorsten's idea
+    num_samp=len(test_loader.dataset)
+    outputSize=sumMD['train_params']['model']['outputSize']
+    print('predict for num_samp=',num_samp,', outputSize=',outputSize)
+    # clever list-->numpy conversion, Thorsten's idea
+    Uall=np.zeros([num_samp,outputSize],dtype=np.float32)
+    Zall=np.zeros([num_samp,outputSize],dtype=np.float32)
+    nEve=0
+    nStep=0
+    with torch.no_grad():
+        for data, target in test_loader:
+            data_dev, target_dev = data.to(device), target.to(device)
+            output_dev = model(data_dev)
+            lossOp=criterion(output_dev, target_dev)
+            #print('qq',lossOp,len(test_loader.dataset),len(test_loader)); ok55
+            test_loss += lossOp.item()
+            output=output_dev.cpu()
+            nEve2=nEve+target.shape[0]
+            #print('nn',nEve,nEve2)
+            Uall[nEve:nEve2,:]=target[:]
+            Zall[nEve:nEve2,:]=output[:]
+            nEve=nEve2
+            nStep+=1
+    test_loss /= nStep
+    print('infere done, nEve=%d nStep=%d loss=%.4f'%(nEve,nStep,test_loss),flush=True)
+    return test_loss,Uall,Zall
+

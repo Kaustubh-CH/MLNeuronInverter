@@ -42,9 +42,14 @@ class MyModel(nn.Module):
 
         # here are all the preexisting normalization layers: https://pytorch.org/docs/stable/nn.html#normalization-layers
 
+        if hpar['instance_norm']:
+            self.cnn_block.append( nn.InstanceNorm1d(out_chan))
+        if hpar['layer_norm']:
+            self.cnn_block.append( nn.LayerNorm(y1.shape[1:]))
+
         self.flat_bn=None
-        if hpar['batch_norm']:           
-            self.flat_bn=torch.nn.BatchNorm1d(self.flat_dim)
+        if hpar['batch_norm']:
+                self.flat_bn=torch.nn.BatchNorm1d(self.flat_dim)
     
         # .... add FC  layers
         hpar2=hpar['fc_block']

@@ -5,15 +5,17 @@ Not running on CPUs !
 1 or many GPU configuraton is completed in this file
 
 export MASTER_ADDR=`hostname`
-wrkDir0=$SCRATCH/tmp_neuInv/sept11
-???
-srun -n4 python -u train_dist.py --design hpar_gcref --numInpChan 1 --outPath $wrkDir0
 
-Runs   1 GPU:  srun -n1 train_dist.py 
-or  srun -n2 -l train_dist.py --outPath out2g 
+ML training on soma only
+srun -n2 python -u train_dist.py --design expE --numInpChan 1  --outPath  out2
+2 GPU, LR=1e-3, 6.4 sec/epoch, 70 epochs is enough, val=0.0837
+
+ML training on 4 probes , 2 GPUs CoriGpu
+7.9 sec/epoch, val=0.0507
+
 
 Run on 4 GPUs on 1 node
- salloc -N1 -C gpu  -c 10 --gpus-per-task=1 -t4:00:00  --ntasks-per-node=4 
+ salloc -N1 -C gpu  -c 10 --gpus-per-task=1 -t4:00:00 --image=nersc/pytorch:ngc-21.02-v0 --ntasks-per-node=4 
 
 Full node
  salloc -N1 --ntasks-per-node=8  -C gpu  -c 10   --gpus-per-task=1   --exclusive  -t4:00:00    --image=nersc/pytorch:ngc-21.02-v0

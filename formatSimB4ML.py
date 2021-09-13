@@ -69,10 +69,7 @@ if __name__=="__main__":
     #1sweepTrait=trait2D[args.amplIdx][:nSweep]
     stims=stim2D[:,args.amplIdx] # for future plotting 
     
-    # normalize
-    avrAP=np.mean(waves)
-    stdAP=np.std(waves)
-    waves=(waves-avrAP)/stdAP
+    # do NOT normalize - Dataloader uses per-wavform normalization
     
     #add fake Y
     unitStar=np.zeros((nSweep,15))
@@ -92,7 +89,7 @@ if __name__=="__main__":
     outF='%s-a%.2f.h5'%(args.dataName,ampl)
     if  args.holdCurrIdx!=None:
         outF=outF.replace('.h5','-c%.2f.h5'%(currs[0]))
-    bigD={'exper_frames':waves,'exper_unitStar_par':unitStar}
+    bigD={'exper_frames':waves,'exper_unitStar_par':unitStar,'time':timeV,'stims':stims}
     #1bigD['sweep_trait']=sweepTrait
     bigD['stims']=stims
     write3_data_hdf5(bigD,args.outPath+outF,metaD=outMD)

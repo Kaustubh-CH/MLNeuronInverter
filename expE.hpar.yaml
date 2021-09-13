@@ -9,11 +9,11 @@ data_path:
   summit_ontra3: /gpfs/alpine/nro106/proj-shared/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1
   summit: /gpfs/alpine/nro106/proj-shared/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # ontra3
 
-max_epochs: 81  
+max_epochs: 121  
 batch_size: 512
 const_local_batch: True   # True is faster  but LR changes w/ num GPUs
 # validation is computed if  epoch%period<len
-validation_period: [10, 10] # [ period, len] (epochs)
+validation_period: [1, 1] # [ period, len] (epochs)
 
 num_data_workers: 4  
 log_freq_per_epoch: 3
@@ -35,21 +35,23 @@ opt_pytorch:
 
 train_conf:
     warmup_epochs: 10
-    optimizer: [adam, 1e-3] # initLR
+    optimizer: [adam, 5e-4] # initLR
     LRsched: { plateau_patience: 8, reduceFactor: 0.11  }
     recover_upar_from_ustar: True # True: will un-do ontra scaling to upar*
-    per_wavform_norm: True
+    per_wavform_norm:  True
     
 model:
-    myId:  ontra3+experiment
-    comment: model optimized for experiment
+    myId:  bbp153+exper
+    comment: very optimized ML model
 
     conv_block: # CNN params
         filter: [30, 90, 180]
         kernel: [ 4,  4,  4]
         pool:   [ 4,  4,  4]
 
-    batch_norm: True
+    instance_norm: True
+    layer_norm: False
+    batch_norm: False
 
     fc_block: # FC params w/o last layer
         dims: [ 512, 512, 512, 256, 128 ]

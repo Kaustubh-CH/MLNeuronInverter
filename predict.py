@@ -33,6 +33,8 @@ def get_parser():
     parser.add_argument('--venue', dest='formatVenue', choices=['prod','poster'], default='prod',help=" output quality/arangement")
 
     parser.add_argument("-m","--modelPath",  default='/global/cscratch1/sd/balewski/tmp_digitalMind/neuInv/manual/', help="trained model ")
+    parser.add_argument("--dom",default='test', help="domain is the dataset for which predictions are made, typically: test")
+
     parser.add_argument("-o", "--outPath", default='same',help="output path for plots and tables")
  
     parser.add_argument( "-X","--noXterm", dest='noXterm', action='store_true', default=False, help="disable X-term for batch mode")
@@ -127,7 +129,8 @@ if __name__ == '__main__':
 
   if args.numSamples!=None:
       parMD['max_samples_per_epoch' ] = args.numSamples
-  domain='test'
+  domain=args.dom
+
   parMD['world_size']=1
 
   data_loader = get_data_loader(parMD,  inpMD,domain, verb=1)
@@ -172,5 +175,5 @@ if __name__ == '__main__':
     plot.frames_vsTime(xx,yy,9)
    
   
-  plot.display_all('predict')  
+  plot.display_all('predict_'+domain)  
 

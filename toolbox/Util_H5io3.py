@@ -26,6 +26,7 @@ def write3_data_hdf5(dataD,outF,metaD=None,verb=1):
             start = time.time()
     for item in dataD:
         rec=dataD[item]
+        if verb>1: print('x=',item,type(rec))
         if type(rec)==str: # special case
             dset = h5f.create_dataset(item, (1,), dtype=dtvs)
             dset[0]=rec
@@ -33,7 +34,6 @@ def write3_data_hdf5(dataD,outF,metaD=None,verb=1):
             continue
         if type(rec)!=np.ndarray: # packs a single value in ot np-array
             rec=np.array([rec])
-        if verb>1: print('x=',item,type(rec))
         h5f.create_dataset(item, data=rec)
         if verb>0:print('h5-write :',item, rec.shape,rec.dtype)
     h5f.close()

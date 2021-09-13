@@ -1,14 +1,19 @@
 #!/bin/bash 
 
 if [ ${SLURM_PROCID} -eq 0 ] ; then
-    echo D: job=${SLURM_JOBID} `hostname` isShifter=`env|grep  SHIFTER_RUNTIME`
-    echo D: nodes: $SLURM_NODELIST
+    [[ -z "${SHIFTER_RUNTIME}" ]]  &&  echo NOT-in-shifter  || echo in-shifter
+    echo D: CMD=$CMD
+    echo D: job=${SLURM_JOBID} `hostname`
+    echo D: nodes:$SLURM_NODELIST
     cat /etc/*release |grep PRETTY_NAME
     free -g
     echo D: num-cpus:`nproc --all`
     nvidia-smi --list-gpus
     python -V
+    nvcc --version  # CUDA version
+    echo cudann version: `cat /usr/include/cudnn_version.h |grep "e CUDNN_MAJOR" -A 2`
     python -c 'import torch; print("D: pytorch:",torch.__version__)'
+    date
     echo D: survey-end
     #nvidia-smi -l 5 >&L.smi_${SLURM_JOBID} &
 fi

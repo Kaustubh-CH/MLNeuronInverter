@@ -69,8 +69,8 @@ def get_data_loader(params, inpMD,domain, verb=1):
 #-------------------
 class Dataset_h5_neuronInverter(Dataset):
 #...!...!..................    
-    def __init__(self, conf0,verb=1):
-        self.conf=copy.deepcopy(conf0)  # the input conf0 is reused later in the upper level code
+    def __init__(self, conf,verb=1):
+        self.conf=conf
         self.verb=verb
 
         self.openH5()
@@ -156,26 +156,28 @@ class Dataset_h5_neuronInverter(Dataset):
           self.data_parU=self.data_parU*utrans_scale + utrans_bias
           self.data_parU=self.data_parU.astype('float32')
           
-        if self.verb: print('DLI:per_wavform_norm=',cf['train_conf']['per_wavform_norm'])
+        if self.verb: print('DLI:per_waveform_norm=',cf['train_conf']['per_wavform_norm'],'dom=',cf['domain'])
         if cf['train_conf']['per_wavform_norm']:
             X=self.data_frames
             xm=np.mean(X,axis=0)
             xs=np.std(X,axis=0)
             #print('DLI:PWN',myShard,xm.shape,X.shape)
-            X=(X-xm)/xs
+            self.data_frames=(X-xm)/xs
+          
 
         #.... end of embeddings ........
         # .......................................................
 
-        if 0: # check normalizations
+        if 0 : # check normalizations
             X=self.data_frames
             xm=np.mean(X)
             xs=np.std(X)
-            print('DLI:Xm',xm,xs,myShard,cf['domain'],X.shape)
+            print('DLI:Xm',xm,xs,myShard,'dom=',cf['domain'],'X:',X.shape)
             Y=self.data_parU
             ym=np.mean(Y,axis=0)
             ys=np.std(Y,axis=0)
             print('DLI:U',myShard,cf['domain'],Y.shape,ym.shape,'\nUm',ym,'\nUs',ys)
+            print(self.conf)
             ok99
         
         self.numLocFrames=self.data_frames.shape[0]

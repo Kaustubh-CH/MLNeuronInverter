@@ -14,7 +14,7 @@ __email__ = "janstar1122@gmail.com"
 
 import numpy as np
 import torch
-
+from pprint import pprint
 import  time
 import sys,os
 import logging
@@ -23,7 +23,7 @@ from toolbox.Util_IOfunc import read_yaml, write_yaml
 from toolbox.Plotter import Plotter_NeuronInverter
 from toolbox.Dataloader_H5 import get_data_loader
 from toolbox.Util_H5io3 import read3_data_hdf5,write3_data_hdf5
-from predict import load_model, model_infer
+from predict import load_model
 
 import argparse
 #...!...!..................
@@ -40,9 +40,6 @@ def get_parser():
 
     parser.add_argument("--dataName", type=str, default='210611_3_NI-a0.17', help="experimental data ")
     args = parser.parse_args()
-    args.dataBase='/global/homes/b/balewski/pitchforkOracle/2021exper-june/'
-    args.dataPath=args.dataBase+args.dataPath
-    args.outPath=args.dataBase+args.outPath
     args.prjName='neurInfer'
     args.formatVenue='prod'
 
@@ -50,7 +47,27 @@ def get_parser():
     if not os.path.isdir(args.outPath):  os.makedirs(args.outPath)
     return args
 
-  
+
+#...!...!..................
+def model_infer_exper(model,loader):
+    device=torch.cuda.current_device()   
+    model.eval()
+    criterion =torch.nn.MSELoss().to(device) # Mean Squared Loss
+    print('loader size=',len(loader))
+    assert len(loader)==1
+    with torch.no_grad():
+        waves, target  = next(iter(loader))
+        waves_dev, target_dev = waves.to(device), target.to(device)
+        output_dev = model(waves_dev)
+        lossOp=criterion(output_dev, target_dev)
+        #print('qq',lossOp,len(loader.dataset),len(loader))
+        loss = lossOp.item()
+        output=output_dev.cpu()
+        
+    print('infere done, nSample=%d  loss=%.4f'%(target.shape[0],loss),flush=True)
+    return np.array(waves), np.array(target) , np.array(output), float(loss)
+
+
 #=================================
 #=================================
 #  M A I N 
@@ -77,33 +94,33 @@ if __name__ == '__main__':
   parMD['shuffle']=False # to assure sync with other data records
   inpMD['h5nameTemplate']='*.h5'  
   parMD['train_conf']['recover_upar_from_ustar']=False    
-  data_loader = get_data_loader(parMD,  inpMD,domain, verb=1)
+  loader = get_data_loader(parMD,  inpMD,domain, verb=1)
 
-  if 1:  # hack: read all data again to access wallTime
+  if 1:  # hack: read all data again to access meta-data
       print('M: re-read data for auxiliary info:')
       
       inpF=parMD['full_h5name']
       bigD,expMD=read3_data_hdf5(inpF)
       print('M:expMD:',expMD)
       
-  startT=time.time()
-  _,U,Z=model_infer(model,data_loader,trainMD)
-  predTime=time.time()-startT
-  print('M: infer :   events=%d , elaT=%.2f min\n'% (Z.shape[0],predTime/60.))
-
+  waves, U,Z, loss =model_infer_exper(model,loader)
+  
   sumRec={}
   sumRec['domain']=domain
 
-  sumRec['predTime']=predTime
-  sumRec['numSamples']=U.shape[0]
+  sumRec['numSamples']=float(U.shape[0])
   sumRec['short_name']=args.dataName+'_'+str(trainMD['job_id'])
-  sumRec['train_info']= trainMD
+  #sumRec['train_info']= trainMD
   sumRec['exper_info']= expMD
 
   bigD['pred_upar']=Z
+  bigD['true_upar']=U
+  bigD['waves']=waves
+  
   outF=sumRec['short_name']+'.mlPred.h5'
-  write3_data_hdf5(bigD,args.outPath+outF,metaD=sumRec)
+  write3_data_hdf5(bigD,args.outPath+outF,metaD=sumRec,verb=1)
 
+  #print('DL-conf:'); pprint(loader.dataset.conf)
   print('predZ:',Z,flush=True)
   #
   #  - - - -  only plotting code is below - - - - -
