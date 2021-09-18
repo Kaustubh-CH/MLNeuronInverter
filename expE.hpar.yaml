@@ -9,7 +9,7 @@ data_path:
   summit_ontra3: /gpfs/alpine/nro106/proj-shared/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1
   summit: /gpfs/alpine/nro106/proj-shared/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # ontra3
 
-max_epochs: 121  
+max_epochs: 221  
 batch_size: 512
 const_local_batch: True   # True is faster  but LR changes w/ num GPUs
 # validation is computed if  epoch%period<len
@@ -41,7 +41,7 @@ train_conf:
     per_wavform_norm:  True
     
 model:
-    myId:  bbp153+exper
+    myId:  bbp153+expE
     comment: very optimized ML model
 
     conv_block: # CNN params

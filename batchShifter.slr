@@ -15,7 +15,9 @@
 #cellName=practice10c  # has 4.8M training samples
 #cellName=witness2c # has 1M training samples
 cellName=bbp153  # has 0.5M training samples
-design=expE2
+design=expA
+numProbe=4
+epochs=121
 
 nprocspn=${SLURM_NTASKS_PER_NODE}
 #nprocspn=1  # special case for partial use of full node
@@ -23,7 +25,8 @@ nprocspn=${SLURM_NTASKS_PER_NODE}
 N=${SLURM_NNODES}
 G=$[ $N * $nprocspn ]
 export MASTER_ADDR=`hostname`
-echo S: job=${SLURM_JOBID} MASTER_ADDR=$MASTER_ADDR G=$G  N=$N 
+export MASTER_PORT=8881
+echo S: job=${SLURM_JOBID} MASTER_ADDR=$MASTER_ADDR  MASTER_PORT=$MASTER_PORT  G=$G  N=$N 
 nodeList=$(scontrol show hostname $SLURM_NODELIST)
 echo S:node-list $nodeList
 
@@ -33,7 +36,7 @@ echo S:node-list $nodeList
 [[ -z "${NEUINV_JOBID}" ]] && jobId=$SLURM_JOBID || jobId="${design}_${NEUINV_JOBID}"
 env |grep NEUINV
 
-wrkSufix=scanNormX/$jobId
+wrkSufix=normScan3b/$jobId
 
 if [[  $NERSC_HOST == cori ]]   ; then
     echo "on Cori-GPU"
@@ -47,16 +50,15 @@ elif [[  $NERSC_HOST == perlmutter ]]   ; then
     time srun -n$N -l --ntasks-per-node=1 toolbox/dummy.exe
 fi
 
-
 #wrkDir0=$SCRATCH/tmp_digitalMind/neuInv/september/
-wrkDir0=/global/cfs/cdirs/mpccc/balewski/tmp_neurInv/normScan/
+wrkDir0=/global/cfs/cdirs/mpccc/balewski/tmp_neurInv/
 
 wrkDir=$wrkDir0/$wrkSufix
 
 echo "S:cellName=$cellName  initLRstr=$initLRstr jobId=$jobId  wrkSufix=$wrkSufix wrkDir=$wrkDir" 
 date
 
-export CMD=" python -u   train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --numInpChan 1 "
+export CMD=" python -u   train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --numInpChan $numProbe --epochs $epochs "
 
 echo CMD=$CMD
 
@@ -69,8 +71,9 @@ cd  $wrkDir
 echo lsfPWD=`pwd`
 
 echo "starting  jobId=$jobId neurInv 2021-08 " `date` " outPath= $outPath"
-
+toolbox/pm_log_energy_all.sh $jobId start
 time srun -n $G  shifter  bash  toolbox/driveOneTrain.sh  >& log.train
+toolbox/pm_log_energy_all.sh $jobId stop
 sleep 3
 
 echo S:done train

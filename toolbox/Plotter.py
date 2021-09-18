@@ -152,7 +152,8 @@ class Plotter_NeuronInverter(Plotter_Backbone):
             if j==1: ax1.text(xx,yy,'nSampl=%d'%(u.shape[0]),transform=ax1.transAxes)
             if j==2: ax1.text(xx,yy,tit2,transform=ax1.transAxes)
             if j==3: ax1.text(xx,yy,'short:'+self.sumRec['short_name'][:20],transform=ax1.transAxes)
-
+            if j==4: ax1.text(xx,yy,'dom:'+self.sumRec['domain'][:20],transform=ax1.transAxes)
+            
             if j==6: ax1.text(0.2,yy,tit3,transform=ax1.transAxes)
             
         # more info in not used pannel

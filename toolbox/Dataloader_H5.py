@@ -158,25 +158,31 @@ class Dataset_h5_neuronInverter(Dataset):
           
         if self.verb: print('DLI:per_waveform_norm=',cf['train_conf']['per_wavform_norm'],'dom=',cf['domain'])
         if cf['train_conf']['per_wavform_norm']:
-            X=self.data_frames
-            xm=np.mean(X,axis=0)
+            # for breadcasting to work the 1st dim must be skipped
+            X=np.swapaxes(self.data_frames,0,1)# returns view, no data duplication            
+            xm=np.mean(X,axis=0) # average over 1600 time bins
             xs=np.std(X,axis=0)
-            #print('DLI:PWN',myShard,xm.shape,X.shape)
-            self.data_frames=(X-xm)/xs
-          
 
+            if self.verb: print('DLI:PWN xm:',xm.shape,'Xswap:',X.shape)
+            X=(X-xm)/xs
+            self.data_frames=np.swapaxes(X,0,1)# returns view
+            
         #.... end of embeddings ........
         # .......................................................
 
         if 0 : # check normalizations
+            
             X=self.data_frames
-            xm=np.mean(X)
-            xs=np.std(X)
-            print('DLI:Xm',xm,xs,myShard,'dom=',cf['domain'],'X:',X.shape)
+            xm=np.mean(X,axis=1)  # average over 1600 time bins
+            xs=np.std(X,axis=1)
+            print('DLI:X',X[0,::80,0],X.shape,xm.shape)
+
+            print('DLI:Xm',xm[:10],'\nXs:',xs[:10],myShard,'dom=',cf['domain'],'X:',X.shape)
+            if dom=='exper': ok98
             Y=self.data_parU
             ym=np.mean(Y,axis=0)
             ys=np.std(Y,axis=0)
-            print('DLI:U',myShard,cf['domain'],Y.shape,ym.shape,'\nUm',ym,'\nUs',ys)
+            print('DLI:U',myShard,cf['domain'],Y.shape,ym.shape,'\nUm',ym[:10],'\nUs',ys[:10])
             print(self.conf)
             ok99
         

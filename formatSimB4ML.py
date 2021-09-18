@@ -21,6 +21,7 @@ def get_parser():
     parser.add_argument("--amplIdx",  default=19,type=int, help="amplitude index")
     parser.add_argument("--holdCurrIdx",  default=None,type=int, help="(optional) holdingcurrent index")
     parser.add_argument("--formatName",  default='simB.8kHz', help="data name extesion maps to sampling rate ")
+    parser.add_argument("--comment3",  default=None, help="additional info stored in meta-data")
 
     parser.add_argument("-o","--outPath", default='sim4ml/',help="output path for plots and tables")
     
@@ -40,9 +41,8 @@ if __name__=="__main__":
 
     inpF='%s.%s.h5'%(args.dataName,args.formatName)
     bigD,inpMD=read3_data_hdf5(args.dataPath+inpF, verb=1)
-    
     pprint(inpMD)
-
+    
     timeV=bigD['time']
     ampls=inpMD['stimAmpl']
     currs=inpMD['holdCurr']
@@ -69,8 +69,14 @@ if __name__=="__main__":
     #1sweepTrait=trait2D[args.amplIdx][:nSweep]
     stims=stim2D[:,args.amplIdx] # for future plotting 
     
-    # do NOT normalize - Dataloader uses per-wavform normalization
-    
+    # do NOT normalize waveforms - Dataloader uses per-wavform normalization
+
+    if 0:  # degrade resolution to match how Vyassa waveorms were processed
+        X=waves*150
+        X=X.astype(np.int16)
+        X=X/150.
+        waves=X.astype(np.float32)
+        
     #add fake Y
     unitStar=np.zeros((nSweep,15))
     print('use ampl=',ampl,nSweep,waves.shape,unitStar.shape)
@@ -84,7 +90,9 @@ if __name__=="__main__":
     outMD['numSweep']=int(nSweep)
     outMD['comment1']='added fake unitStar_par for consistency with simulations'
     outMD['comment2']='simulated data produced by Roy in June 2021'
-
+    if args.comment3!=None:
+        outMD['comment3']=args.comment3
+    
     # ... wrap it up
     outF='%s-a%.2f.h5'%(args.dataName,ampl)
     if  args.holdCurrIdx!=None:

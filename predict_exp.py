@@ -4,8 +4,7 @@ read trained net : model+weights
 read test data from HD5
 infere for  test data 
 
-Inference works always on 1 GPU
-srun -n1 ./predict.py
+Inference works on 1 GPU or on CPUs
 
 """
 
@@ -24,13 +23,15 @@ from toolbox.Plotter import Plotter_NeuronInverter
 from toolbox.Dataloader_H5 import get_data_loader
 from toolbox.Util_H5io3 import read3_data_hdf5,write3_data_hdf5
 from predict import load_model
+from misc.plotFramesVyassa8k import expand_param_names
+
 
 import argparse
 #...!...!..................
 def get_parser():
     parser = argparse.ArgumentParser()
     #parser.add_argument("--facility", default='corigpu', type=str)
-    parser.add_argument("-m","--modelPath",  default='/global/cscratch1/sd/balewski/tmp_digitalMind/neuInv/manual/', help="trained model ")
+    parser.add_argument("-m","--modelPath",  default='/global/homes/b/balewski/prjn/2021-roys-ml/bbp153-soma-expF2/out/', help="trained model ")
     parser.add_argument("-d","--dataPath",  default='exp4ml/', help="exp dat for ML pred")
     parser.add_argument("-o", "--outPath", default='mlPred/',help="output path for plots and tables")
  
@@ -67,7 +68,26 @@ def model_infer_exper(model,loader):
     print('infere done, nSample=%d  loss=%.4f'%(target.shape[0],loss),flush=True)
     return np.array(waves), np.array(target) , np.array(output), float(loss)
 
-
+#...!...!..................
+def get_base_conductances(mltrMD,mlinpMD):
+    simMDF=mltrMD['full_h5name'].replace('.data.h5','.meta.yaml')
+    simMD=read_yaml(simMDF)
+    rngs=simMD['rawInfo']['physRange']
+    parName=mlinpMD['parName']
+    #pprint(rngs)
+    #print(len(rngs),len(parName))
+    baseL=[]
+    for name in parName:
+        for a,b,c in rngs:
+            if a==name:
+                base=np.sqrt(b*c)
+                baseL.append(base)
+                #print(a,base)
+                break
+    #print('U2P:base:',baseL)
+    assert len(parName)==len(baseL)
+    return np.array(baseL)
+    
 #=================================
 #=================================
 #  M A I N 
@@ -80,31 +100,35 @@ if __name__ == '__main__':
   sumF=args.modelPath+'/sum_train.yaml'
   trainMD = read_yaml( sumF)
   parMD=trainMD['train_params']
-  inpMD=trainMD['input_meta']
+  mlinpMD=trainMD['input_meta']
+  #print('mlinpMD');pprint(mlinpMD); ok0
+  #print('parMD');pprint(parMD); ok1
+  base_cond=get_base_conductances(parMD,mlinpMD)
   
   assert torch.cuda.is_available() 
   model=load_model(trainMD,args.modelPath)
   #1print(model)
-
+  
   # ... prime data-loader
   parMD['cell_name']=args.dataName  
   parMD['world_size']=1
   domain='exper'
   parMD['data_path']=args.dataPath
   parMD['shuffle']=False # to assure sync with other data records
-  inpMD['h5nameTemplate']='*.h5'  
+  mlinpMD['h5nameTemplate']='*.h5'  
   parMD['train_conf']['recover_upar_from_ustar']=False    
-  loader = get_data_loader(parMD,  inpMD,domain, verb=1)
+  loader = get_data_loader(parMD,  mlinpMD,domain, verb=args.verb)
 
   if 1:  # hack: read all data again to access meta-data
-      print('M: re-read data for auxiliary info:')
-      
+      print('M: re-read data for auxiliary info:')      
       inpF=parMD['full_h5name']
       bigD,expMD=read3_data_hdf5(inpF)
       print('M:expMD:',expMD)
       
   waves, U,Z, loss =model_infer_exper(model,loader)
-  
+  print('M:u2p', Z.shape,base_cond.shape)
+  C=np.exp(Z * np.log(10.))*base_cond
+    
   sumRec={}
   sumRec['domain']=domain
 
@@ -112,22 +136,35 @@ if __name__ == '__main__':
   sumRec['short_name']=args.dataName+'_'+str(trainMD['job_id'])
   #sumRec['train_info']= trainMD
   sumRec['exper_info']= expMD
-
+  sumRec['parName']=mlinpMD['parName']
+  orgName=expand_param_names(sumRec['parName'])
+  #for a,b in zip(orgName,sumRec['parName']):  print(a,'   ',b)
+  sumRec['parNameOrg']=orgName
+  sumRec['base_cond']=base_cond.tolist()
+  
+  bigD['pred_cond']=C.astype(np.float32)
   bigD['pred_upar']=Z
   bigD['true_upar']=U
-  bigD['waves']=waves
-  
+  bigD['waves_ml']=waves
+  bigD.pop('exper_unitStar_par') # not needed
+
+  print('meta-data keys:',sorted(sumRec))
   outF=sumRec['short_name']+'.mlPred.h5'
   write3_data_hdf5(bigD,args.outPath+outF,metaD=sumRec,verb=1)
 
   #print('DL-conf:'); pprint(loader.dataset.conf)
-  print('predZ:',Z,flush=True)
+  print('Loss:',loss)
+  print('predZ:',Z[0],flush=True)
+  print('predC:',C[0],flush=True)
+
+  print('M:to survey   ./plotPredSurvey.py  --dataPath %s --dataName %s --outPath %s '%(args.outPath,sumRec['short_name'],args.outPath))
+  
   #
   #  - - - -  only plotting code is below - - - - -
   
-  plot=Plotter_NeuronInverter(args,inpMD ,sumRec )
+  plot=Plotter_NeuronInverter(args,mlinpMD ,sumRec )
   
-  plot.params1D(Z,'pred Z',figId=8,doRange=False)
+  plot.params1D(Z,'pred Z',figId=8,doRange=True)
 
   if 'exp4ml' in args.dataPath:
       plot.params_vs_expTime(Z,bigD, figId=9)

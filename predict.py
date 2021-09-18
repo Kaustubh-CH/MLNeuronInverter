@@ -138,7 +138,7 @@ if __name__ == '__main__':
   startT=time.time()
   loss,U,Z=model_infer(model,data_loader,sumMD)
   predTime=time.time()-startT
-  print('M: infer : Average loss: %.4f  events=%d , elaT=%.2f min\n'% (loss,  Z.shape[0],predTime/60.))
+  print('M: infer : Average loss: %.4f  dom=%s samples=%d , elaT=%.2f min\n'% (loss, domain, Z.shape[0],predTime/60.))
 
   sumRec={}
   sumRec['domain']=domain

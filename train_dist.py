@@ -62,7 +62,7 @@ if __name__ == '__main__':
   if args.verb>2: # extreme debugging
       for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
 
-  os.environ['MASTER_PORT'] = "8879"
+  #os.environ['MASTER_PORT'] = "8879"
   
   params ={}
   #print('M:faci',args.facility)
