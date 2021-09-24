@@ -3,9 +3,8 @@
 plot scores and waveforms w/ spikes
 
 '''
-#import sys,os
+
 from pprint import pprint
-#sys.path.append(os.path.abspath("../"))
 from toolbox.Util_H5io3 import  write3_data_hdf5, read3_data_hdf5
 from toolbox.Plotter_Backbone import Plotter_Backbone
 
@@ -41,13 +40,11 @@ class Plotter(Plotter_Backbone):
         Plotter_Backbone.__init__(self,args)
         self.cL10 = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']  # 10 distinct colors
         self.mL7=['*','^','x','h','o','x','D']
-        
-        
+                
 #...!...!..................
     def waveArray(self,bigD,plDD,figId=5):
         figId=self.smart_append(figId)
         nrow,ncol=4,2; yIn=9
-        #nrow,ncol=2,2; yIn=5
         fig=self.plt.figure(figId,facecolor='white', figsize=(14,yIn))
         
         timeV=bigD['time']
@@ -56,7 +53,6 @@ class Plotter(Plotter_Backbone):
         stimA=bigD['stim'][ihc]*5 # better visibility
         spikeC=bigD['spikeCount'][ihc]
         spikeT=bigD['spikeTrait'][ihc]
-        #scoreA=bigD['score'][ihc]
         waveA=bigD['waveform'][ihc]
         
         #print('wdif0',waveA.shape,stimT.shape,len(spikeA[0]))
@@ -127,13 +123,55 @@ class Plotter(Plotter_Backbone):
             dmk=self.mL7[ihc%7]
             ax.plot(stimA,scoreA[ihc], dmk+'-',linewidth=0.8,label=dLab)
 
-        #ax.plot(stimA,avrScore,linewidth=1.5,label='average')
+        #ax.set_xlim(0.6,1.5)
         
-        tit1='simulation: %s, baseline'%plDD['shortName']
+        tit1='%s simulation: %s, baseline'%(plDD['simVer'],plDD['shortName'])
         ax.set(ylabel=yTit,xlabel='stim ampl (FS)',title=tit1)
         ax.legend(loc='best')
         ax.grid()
         
+#...!...!..................
+    def stims_fixedAmpl(self,bigD,plDD,figId=51):
+        figId=self.smart_append(figId)
+        nrow,ncol=1,1
+        fig=self.plt.figure(figId,facecolor='white', figsize=(10,5))
+        ax = self.plt.subplot(nrow,ncol,1)
+         
+        timeV=bigD['time']
+        iAmp=plDD['iAmp']
+        
+        stimA=bigD['stim'][:,iAmp]
+        M=stimA.shape[0]
+        for j in range(M):
+            dLab='holdCurr=%.2f nA'%(inpMD['holdCurr'][j])
+            ax.plot(timeV,stimA[j],color='C%d'%j,label=dLab)
+
+        yLab='stimulus (nA)'
+        xLab='time (ms) '
+        ax.set(xlabel=xLab,ylabel=yLab)
+        ax.legend(loc='best')
+        ax.grid()
+        
+#...!...!..................
+    def stims_fixedHoldCurr(self,bigD,plDD,figId=52):
+        figId=self.smart_append(figId)
+        nrow,ncol=1,1
+        fig=self.plt.figure(figId,facecolor='white', figsize=(10,5))
+        ax = self.plt.subplot(nrow,ncol,1)
+         
+        timeV=bigD['time']
+        ihc=plDD['iHoldCurr']
+        stimA=bigD['stim'][ihc]
+
+        for j in range(15,24,2):
+            dLab='stimAmpl=%.2f FS'%(inpMD['stimAmpl'][j])
+            ax.plot(timeV,stimA[j],color='C%d'%j,label=dLab,linewidth=0.8)
+
+        yLab='stimulus (nA)'
+        xLab='time (ms) '
+        ax.set(xlabel=xLab,ylabel=yLab)
+        ax.legend(loc='best')
+        ax.grid()
         
 #...!...!..................
     def spikes_survey2D(self,bigD,plDD,figId=6):
@@ -238,20 +276,6 @@ class Plotter(Plotter_Backbone):
         ax.hist(tbaseA,bins=20,facecolor='C3')        
         ax.set(xlabel='spike base width (ms)',ylabel='num spikes')
 
-#...!...!..................
-def M_save_summary(bigD,plDD):
-    scoreA=bigD['spikeCount']
-    stimA=plDD['stimAmpl']
-    avrScore=np.mean(scoreA,axis=0)
-    maxScore=np.max(scoreA,axis=0)
-    minScore=np.min(scoreA,axis=0)
-    errScore=(maxScore-minScore)/2.
-    sumL=[stimA,avrScore,errScore,np.ones_like(stimA)]
-    sum2D=np.array(sumL)
-    outF=args.dataName+'.sum.h5'
-    print('sum2D:',sum2D.shape)
-    outD={'spikeCount':sum2D}
-    write2_data_hdf5(outD,args.outPath+outF)
             
 #=================================
 #=================================
@@ -269,8 +293,7 @@ if __name__=="__main__":
 
     simAuth='simRoy'
     if 'simV' in inpMD['formatName']: simAuth='simVyassa'
-    
-    
+        
     # - - - - - PLOTTER - - - - -
 
     plot=Plotter(args)
@@ -278,7 +301,8 @@ if __name__=="__main__":
     for x in [ 'units','shortName']: plDD[x]=inpMD[x]
     plDD['stimAmpl']=np.array(inpMD['stimAmpl'])
     plDD['simAuth']=simAuth
-   
+    plDD['simVer']='NeuronSim_2019_1'
+    
     if 1:  # wavforms as array, decimated
         plDD['idxLR']=[8,24,2] # 1st range(n0,n1,step) ampl-index
         #plDD['idxLR']=[19,35,2] # 
@@ -298,6 +322,12 @@ if __name__=="__main__":
 
     if 1 and  simAuth=='simRoy':   # score vs. stimAmpl , all data
         plot.score_stimAmpl(bigD,plDD)
+        
+    if 1 and  simAuth=='simRoy':
+        plDD['iAmp']=19
+        plot.stims_fixedAmpl(bigD,plDD)
+        plDD['iHoldCurr']=0
+        plot.stims_fixedHoldCurr(bigD,plDD)
         
     if 1:   # spike analysis, all data, many 2D plots
         ihc=0  # select holding current

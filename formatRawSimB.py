@@ -8,7 +8,6 @@ Uses advanced hd5 storage, includes meta-data in hd5
 from pprint import pprint
 import numpy as np
 
-#sys.path.append(os.path.abspath("../"))
 from toolbox.Util_H5io3  import  write3_data_hdf5, read3_data_hdf5
 from toolbox.Util_Experiment import rebin_data1D 
 

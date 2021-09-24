@@ -1,7 +1,7 @@
 if [[ `hostname` == cori* ]]  || [[ `hostname` == cgpu*  ]] ; then
    echo "on CoriGpu "
    module load cgpu
-   module load pytorch/1.8.0-gpu
+   module load pytorch/1.8.0
 
    eval  `ssh-agent   -s`
    ssh-add ~/.ssh/pdsf-nim.pem
