@@ -4,7 +4,7 @@
 Uses advanced hd5 storage, includes meta-data in hd5
 
 '''
-#import sys,os
+
 from pprint import pprint
 import numpy as np
 

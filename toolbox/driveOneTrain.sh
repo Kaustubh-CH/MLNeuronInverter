@@ -17,7 +17,12 @@ if [ ${SLURM_PROCID} -eq 0 ] ; then
     echo D: survey-end
     #nvidia-smi -l 5 >&L.smi_${SLURM_JOBID} &
 fi
-
+if [ ${SLURM_LOCALID} -eq 0 ] ; then
+    echo "D:`hostname` rank=${SLURM_PROCID}  check ECC  on device :"
+    nvidia-smi --query-gpu=ecc.errors.uncorrected.volatile.device_memory --format=csv,noheader
+else
+    sleep 1
+fi 
 # the task command executed here:
 ${CMD}
 

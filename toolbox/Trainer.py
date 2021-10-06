@@ -65,14 +65,7 @@ class Trainer():
       logging.info('T:rank %d of %d, prime data loaders'%(params['world_rank'],params['world_size']))
 
     params['shuffle']=True
-    self.train_loader = get_data_loader(params, inpMD,'train', verb=self.verb)
-    '''
-    try: 
-      params['numLocalSamples']//=8  # reduce smaples for validation & test
-    except:
-      pass # hack to make 1-cell-dataloader num smaples are taken from data
-    '''
-
+    self.train_loader = get_data_loader(params, inpMD,'train', verb=self.verb)    
     params['shuffle']=True # use False for reproducibility
     self.valid_loader = get_data_loader(params,  inpMD,'val', verb=self.verb)
     

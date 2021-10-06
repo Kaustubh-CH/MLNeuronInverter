@@ -44,7 +44,7 @@ class Plotter(Plotter_Backbone):
 #...!...!..................
     def waveArray(self,bigD,plDD,figId=5):
         figId=self.smart_append(figId)
-        nrow,ncol=4,2; yIn=9
+        nrow,ncol=4,2; yIn=8
         fig=self.plt.figure(figId,facecolor='white', figsize=(14,yIn))
         
         timeV=bigD['time']
@@ -227,7 +227,7 @@ class Plotter(Plotter_Backbone):
     def spikes_survey1D(self,bigD,plDD,figId=6):
         figId=self.smart_append(figId)
         nrow,ncol=1,4
-        fig=self.plt.figure(figId,facecolor='white', figsize=(12,3))
+        fig=self.plt.figure(figId,facecolor='white', figsize=(12,2.5))
 
         if plDD['simAuth']=='simRoy':
             ia=plDD['iStimAmpl']
@@ -329,7 +329,7 @@ if __name__=="__main__":
         plDD['iHoldCurr']=0
         plot.stims_fixedHoldCurr(bigD,plDD)
         
-    if 1:   # spike analysis, all data, many 2D plots
+    if 0:   # spike analysis, all data, many 2D plots
         ihc=0  # select holding current
         #plDD['iHoldCurr']=ihc # holding current index
         plDD['fwhmLR']=[0.5,3.5] # clip plotting range
@@ -342,4 +342,4 @@ if __name__=="__main__":
         plDD['fwhmLR']=[0.5,3.5] # clip plotting range
         plot.spikes_survey1D(bigD,plDD)        
         
-    plot.display_all('scoreSim')
+    plot.display_all(args.dataName)

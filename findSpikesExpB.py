@@ -6,8 +6,6 @@ score wavforms by counting valid spikes
 '''
 from pprint import pprint
 
-#import sys,os
-#sys.path.append(os.path.abspath("../"))
 from toolbox.Util_H5io3 import  write3_data_hdf5, read3_data_hdf5
 from toolbox.Util_IOfunc import write_yaml, read_yaml
 from toolbox.Util_Experiment import SpikeFinder
@@ -18,7 +16,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2,3],
                         help="increase output verbosity", default=1, dest='verb')
-    parser.add_argument("-d", "--dataPath",  default='/global/homes/b/balewski/prjn/2021-roys-experiment/june/data8kHz/',help="formated data location")
+    parser.add_argument("-d", "--dataPath",  default='/global/homes/b/balewski/prjn/2021-roys-experiment/october/data8kHz/',help="formated data location")
 
     parser.add_argument("--dataName",  default='210611_3_NI', help="shortName for a set of routines ")
     parser.add_argument("--formatName",  default='expB.8kHz', help="data name extesion maps to sampling rate ")
@@ -33,7 +31,6 @@ def get_parser():
 #...!...!..................
 def pack_scores(spikeTraitL2,mxSpk, inp_shape,bigD,traitUnits):
     #...... pack scores & spikeTraits  as np-arrays 
-    #bigD['score']=np.array(scoreL,dtype=np.float32).reshape(inp_shape)
     nsw=len(spikeTraitL2)
     totSpikes=0
     nSweep=0

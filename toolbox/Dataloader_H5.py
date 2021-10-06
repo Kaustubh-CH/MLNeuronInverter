@@ -163,28 +163,36 @@ class Dataset_h5_neuronInverter(Dataset):
             xm=np.mean(X,axis=0) # average over 1600 time bins
             xs=np.std(X,axis=0)
 
-            if self.verb: print('DLI:PWN xm:',xm.shape,'Xswap:',X.shape)
+            if self.verb: print('DLI:PWN xm:',xm.shape,'Xswap:',X.shape,'dom=',cf['domain'])
+
+            nZer=np.sum(xs==0)
+            if nZer>0: print('DLI:WARN nZer:',nZer,xs.shape, 'rank=%d corrected  mu'%self.conf['world_rank'])
+            # to see indices of frames w/ 0s:   result = np.where(xs==0)  
+            xs[xs==0]=1  # hack - for zero-value samples use mu=1
             X=(X-xm)/xs
             self.data_frames=np.swapaxes(X,0,1)# returns view
             
         #.... end of embeddings ........
         # .......................................................
 
-        if 0 : # check normalizations
-            
+        if 0 : # check X normalizations            
             X=self.data_frames
             xm=np.mean(X,axis=1)  # average over 1600 time bins
             xs=np.std(X,axis=1)
             print('DLI:X',X[0,::80,0],X.shape,xm.shape)
 
             print('DLI:Xm',xm[:10],'\nXs:',xs[:10],myShard,'dom=',cf['domain'],'X:',X.shape)
-            if dom=='exper': ok98
+            
+        if 0:  # check Y avr
             Y=self.data_parU
             ym=np.mean(Y,axis=0)
             ys=np.std(Y,axis=0)
             print('DLI:U',myShard,cf['domain'],Y.shape,ym.shape,'\nUm',ym[:10],'\nUs',ys[:10])
             print(self.conf)
             ok99
+
+
+
         
         self.numLocFrames=self.data_frames.shape[0]
         #self.numLocFrames=512*10  # reduce number of  samples manually

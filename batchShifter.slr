@@ -1,26 +1,26 @@
 #!/bin/bash -l
 # common job script for CoriGpu and Perlmutter using Shifter
-#SBATCH --time=50:00  -J ni_h5
+#SBATCH --time=2:50:00  -J ni_h5
 #SBATCH -C gpu
 #SBATCH --image=nersc/pytorch:ngc-21.08-v1
 #SBATCH -o out/slurm-%j.out
 #-SBATCH  -x cgpu08 # block sick nodes
 #---CORI_GPU---
-#SBATCH  -N1 --ntasks-per-node=4  --gpus-per-task=1  --cpus-per-task=10
+#-SBATCH  -N1 --ntasks-per-node=4  --gpus-per-task=1  --cpus-per-task=10
 #-SBATCH -N8 --ntasks-per-node=8 --gpus-per-task=1 --cpus-per-task=10 --exclusive
 #---PERLMUTTER---
-#-SBATCH -N1 --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive 
+#SBATCH -N4 --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive 
 # - - - E N D    O F    SLURM    C O M M A N D S
-
-#cellName=practice10c  # has 4.8M training samples
-#cellName=witness2c # has 1M training samples
-cellName=bbp153  # has 0.5M training samples
-design=expA
-numProbe=4
-epochs=121
-
 nprocspn=${SLURM_NTASKS_PER_NODE}
 #nprocspn=1  # special case for partial use of full node
+
+cellName=practice10c  # has 4.8M training samples
+#cellName=witness2c # has 1M training samples
+#cellName=bbp153  # has 0.5M training samples
+design=expF2us
+numProbe=1
+epochs=221
+
 
 N=${SLURM_NNODES}
 G=$[ $N * $nprocspn ]
@@ -33,17 +33,17 @@ echo S:node-list $nodeList
 # grab some variables from environment - if defined
 [[ -z "${NEUINV_INIT_LR}" ]] && initLRstr="  " || initLRstr=" --initLR ${NEUINV_INIT_LR} "
 [[ -z "${NEUINV_WRK_SUFIX}" ]] && wrkSufix=$SLURM_JOBID || wrkSufix="${NEUINV_WRK_SUFIX}"
-[[ -z "${NEUINV_JOBID}" ]] && jobId=$SLURM_JOBID || jobId="${design}_${NEUINV_JOBID}"
+[[ -z "${NEUINV_JOBID}" ]] && jobId=j$SLURM_JOBID || jobId="${design}_${NEUINV_JOBID}"
 env |grep NEUINV
 
-wrkSufix=normScan3b/$jobId
+#wrkSufix=normScan3b/$jobId
 
 if [[  $NERSC_HOST == cori ]]   ; then
-    echo "on Cori-GPU"
+    echo "S:on Cori-GPU"
     facility=corigpu
 
 elif [[  $NERSC_HOST == perlmutter ]]   ; then
-    echo "on Perlmutter-fixme"
+    echo "S:on Perlmutter"
     facility=perlmutter
     # bash -c 'printf "#include <stdio.h>\nint main() {  cudaFree(0);printf(\"cudaFree-done\"); }" > dummy.cu && nvcc -o dummy.exe dummy.cu'
     #  opening and closing a GPU context on each node to reset GPUs
@@ -51,7 +51,7 @@ elif [[  $NERSC_HOST == perlmutter ]]   ; then
 fi
 
 #wrkDir0=$SCRATCH/tmp_digitalMind/neuInv/september/
-wrkDir0=/global/cfs/cdirs/mpccc/balewski/tmp_neurInv/
+wrkDir0=/global/cfs/cdirs/mpccc/balewski/tmp_neurInv/exp_excite/
 
 wrkDir=$wrkDir0/$wrkSufix
 
@@ -71,9 +71,8 @@ cd  $wrkDir
 echo lsfPWD=`pwd`
 
 echo "starting  jobId=$jobId neurInv 2021-08 " `date` " outPath= $outPath"
-toolbox/pm_log_energy_all.sh $jobId start
 time srun -n $G  shifter  bash  toolbox/driveOneTrain.sh  >& log.train
-toolbox/pm_log_energy_all.sh $jobId stop
+
 sleep 3
 
 echo S:done train

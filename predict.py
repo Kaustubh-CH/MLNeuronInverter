@@ -4,9 +4,10 @@ read trained net : model+weights
 read test data from HD5
 infere for  test data 
 
-Inference works alwasy on 1 GPU
+Inference works alwasy on 1 GPU or CPUs
 
-srun -n1  ./predict.py  --modelPath  /global/homes/b/balewski/prjn/2021-roys-ml/bbp153-soma-v2
+ ./predict.py  --modelPath /global/cfs/cdirs/mpccc/balewski/tmp_neurInv/exp_excite/70257/out
+
 
 """
 
@@ -42,7 +43,7 @@ def get_parser():
     parser.add_argument("-n", "--numSamples", type=int, default=None, help="limit samples to predict")
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
 
-    parser.add_argument("--cellName", type=str, default=None, help="alternative cell shortName ")
+    parser.add_argument("--cellName", type=str, default=None, help="alternative data file name ")
     args = parser.parse_args()
     args.prjName='neurInfer'
 

@@ -4,9 +4,6 @@ identify spikes in simulated  wave forms
 score wavforms by counting valid spikes
 
 '''
-#import sys,os
-
-#sys.path.append(os.path.abspath("../"))
 from toolbox.Util_H5io3 import  write3_data_hdf5, read3_data_hdf5
 from toolbox.Util_Experiment import SpikeFinder
 from findSpikesExpB import score_me, pack_scores
