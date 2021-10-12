@@ -1,3 +1,4 @@
+#.........................................................
 if [[ `hostname` == cori* ]]  || [[ `hostname` == cgpu*  ]] ; then
    echo "on CoriGpu "
    module load cgpu
@@ -6,15 +7,15 @@ if [[ `hostname` == cori* ]]  || [[ `hostname` == cgpu*  ]] ; then
    ssh-add ~/.ssh/pdsf-nim.pem
    echo 'Cori interactive 1x2 GPU:   salloc -C gpu  -c 10   --gpus-per-task=1 --image=nersc/pytorch:ngc-21.08-v1  -N1  -t4:00:00  --ntasks-per-node=2   '
    echo Local Shifter:   shifter --image=nersc/pytorch:ngc-21.08-v1 bash
-
+#.........................................................
 elif [[   $NERSC_HOST == perlmutter  ]]   ; then
    echo "on Perlmutter" 
    eval  `ssh-agent   -s`
    echo $NERSC_HOST  $SHELL
    module load pytorch
-   echo 'PM interactive 1 node:   salloc  -C gpu -q regular -N 1   -t4:00:00  --gpus-per-task=1 --image=nersc/pytorch:ngc-21.08-v1  --ntasks-per-node=4    '
+   echo 'PM interactive 1 node:   salloc  -C gpu -q regular  -t4:00:00  --gpus-per-task=1 --image=nersc/pytorch:ngc-21.08-v1 -A m2043_g --ntasks-per-node=4   -N 1   '
    echo 'do:   export MASTER_ADDR=`hostname`'
-
+#.........................................................
 elif [[ `hostname -f ` == *olcf* ]]   ; then
  echo "on Summit"
  eval  `ssh-agent   -s`

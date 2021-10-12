@@ -1,7 +1,8 @@
 #!/bin/bash -l
 # common job script for CoriGpu and Perlmutter using Shifter
-#SBATCH --time=2:50:00  -J ni_h5
-#SBATCH -C gpu
+#SBATCH --time=1:50:00  -J ni_h5
+#-SBATCH -C gpu -A m2043_g  -q debug # Kris
+#SBATCH -C gpu -A nstaff_g  -q early_science # for early_science
 #SBATCH --image=nersc/pytorch:ngc-21.08-v1
 #SBATCH -o out/slurm-%j.out
 #-SBATCH  -x cgpu08 # block sick nodes
@@ -9,17 +10,20 @@
 #-SBATCH  -N1 --ntasks-per-node=4  --gpus-per-task=1  --cpus-per-task=10
 #-SBATCH -N8 --ntasks-per-node=8 --gpus-per-task=1 --cpus-per-task=10 --exclusive
 #---PERLMUTTER---
-#SBATCH -N4 --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive 
+#SBATCH -N16 --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive
 # - - - E N D    O F    SLURM    C O M M A N D S
 nprocspn=${SLURM_NTASKS_PER_NODE}
 #nprocspn=1  # special case for partial use of full node
 
-cellName=practice10c  # has 4.8M training samples
-#cellName=witness2c # has 1M training samples
-#cellName=bbp153  # has 0.5M training samples
-design=expF2us
+cellName=practice140c  # has 21M training samples, inhibitory
+#cellName=witness17c # has 2.5M training samples, inhibitory
+#cellName=october12c # has 5.8M training samples, inhibitory
+#cellName=practice10c  # has 4.8M training samples, excitatory
+#cellName=witness2c # has 1M training samples, excitatory
+#cellName=bbp124  # has 0.5M training samples, inhibitory
+design=expF2us  # 'expF2us' is optimal for experiment
 numProbe=1
-epochs=221
+epochs=401
 
 
 N=${SLURM_NNODES}
@@ -36,7 +40,7 @@ echo S:node-list $nodeList
 [[ -z "${NEUINV_JOBID}" ]] && jobId=j$SLURM_JOBID || jobId="${design}_${NEUINV_JOBID}"
 env |grep NEUINV
 
-#wrkSufix=normScan3b/$jobId
+wrkSufix=lrScan/$jobId
 
 if [[  $NERSC_HOST == cori ]]   ; then
     echo "S:on Cori-GPU"
@@ -51,7 +55,7 @@ elif [[  $NERSC_HOST == perlmutter ]]   ; then
 fi
 
 #wrkDir0=$SCRATCH/tmp_digitalMind/neuInv/september/
-wrkDir0=/global/cfs/cdirs/mpccc/balewski/tmp_neurInv/exp_excite/
+wrkDir0=/global/cfs/cdirs/mpccc/balewski/tmp_neurInv/${cellName}_${numProbe}pr/
 
 wrkDir=$wrkDir0/$wrkSufix
 

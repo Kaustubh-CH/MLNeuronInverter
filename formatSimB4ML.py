@@ -18,7 +18,9 @@ def get_parser():
     parser.add_argument( "--dataPath",  default='/global/homes/b/balewski/prjn/2021-roys-simulation/sim8kHz/',help="formated data location")
 
     parser.add_argument("--dataName",  default='bbp153', help="shortName for a set of routines ")
+    
     parser.add_argument("--amplIdx",  default=19,type=int, help="amplitude index")
+    parser.add_argument("--numPredConduct",  default=15,type=int, help="number of predicted conductances")
     parser.add_argument("--holdCurrIdx",  default=None,type=int, help="(optional) holdingcurrent index")
     parser.add_argument("--formatName",  default='simB.8kHz', help="data name extesion maps to sampling rate ")
     parser.add_argument("--comment3",  default=None, help="additional info stored in meta-data")
@@ -78,7 +80,7 @@ if __name__=="__main__":
         waves=X.astype(np.float32)
         
     #add fake Y
-    unitStar=np.zeros((nSweep,15))
+    unitStar=np.zeros((nSweep,args.numPredConduct))
     print('use ampl=',ampl,nSweep,waves.shape,unitStar.shape)
 
     #... assemble output meta-data

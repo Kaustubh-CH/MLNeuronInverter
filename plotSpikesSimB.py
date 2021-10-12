@@ -17,12 +17,12 @@ def get_parser():
     parser.add_argument( "-X","--noXterm", dest='noXterm',
         action='store_true', default=False,help="disable X-term for batch mode")
 
-    parser.add_argument("-d", "--dataPath",  default='out/',help="scored data location")
+    parser.add_argument("-d", "--dataPath",  default='out2019/',help="scored data location")
 
     parser.add_argument("--dataName",  default='bbp153', help="shortName ")
     parser.add_argument("--formatName",  default='spikerSum', help="data name extesion ")
 
-    parser.add_argument("-o","--outPath", default='out/',help="output path for plots and tables")
+    parser.add_argument("-o","--outPath", default='out2019/',help="output path for plots and tables")
 
     args = parser.parse_args()
     args.formatVenue='prod'
@@ -104,6 +104,7 @@ class Plotter(Plotter_Backbone):
             
             if jc==0:   ax.text(0.01,0.9,plDD['shortName'],transform=ax.transAxes,color='m')
             if jc==1:  ax.text(0.01,0.9,plDD['text1'],transform=ax.transAxes,color='m')
+            if jc==2:   ax.text(0.01,0.9,plDD['bbpName'],transform=ax.transAxes,color='m')
 
 #...!...!..................
     def score_stimAmpl(self,bigD,plDD,figId=6):
@@ -125,7 +126,7 @@ class Plotter(Plotter_Backbone):
 
         #ax.set_xlim(0.6,1.5)
         
-        tit1='%s simulation: %s, baseline'%(plDD['simVer'],plDD['shortName'])
+        tit1='%s simulation:   %s,   %s'%(plDD['simVer'],plDD['shortName'],plDD['bbpName'])
         ax.set(ylabel=yTit,xlabel='stim ampl (FS)',title=tit1)
         ax.legend(loc='best')
         ax.grid()
@@ -204,7 +205,7 @@ class Plotter(Plotter_Backbone):
                     
         ax = self.plt.subplot(nrow,ncol,1)
         ax.scatter(tposA,amplA, alpha=0.6)
-        ax.set(xlabel='spike time (ms)',ylabel='spike ampl (mV)')
+        ax.set(xlabel='stim time (ms)',ylabel='spike ampl (mV)')
         ax.text(0.01,0.9,plDD['shortName'],transform=ax.transAxes,color='m')
 
         if simAuth=='simRoy':
@@ -215,8 +216,9 @@ class Plotter(Plotter_Backbone):
         
         ax = self.plt.subplot(nrow,ncol,3)
         ax.scatter(tposA,widthA, alpha=0.6)
-        ax.set(xlabel='spike time (ms)',ylabel='spike width (ms)')
+        ax.set(xlabel='stim time (ms)',ylabel='spike width (ms)')
         if 'fwhmLR' in plDD: ax.set_ylim(tuple(plDD['fwhmLR']))
+        ax.text(0.01,0.9,plDD['bbpName'],transform=ax.transAxes,color='m')
 
         if simAuth=='simRoy':
             ax = self.plt.subplot(nrow,ncol,4)
@@ -257,25 +259,28 @@ class Plotter(Plotter_Backbone):
         tit='%s stim ampl=%.2f'%(plDD['shortName'],stimAmpl)
         ax = self.plt.subplot(nrow,ncol,1)
         binsX= np.linspace(-0.5,10.5,12)  # good choice
-        print('xx',binsX)
-        ax.hist(spikeC[:M],binsX,facecolor='g')
-        
+        ax.hist(spikeC[:M],binsX,facecolor='g')        
         ax.set(xlabel='num spikes per sweep',ylabel='num sweeps',title=tit)
-        #ax.grid()
+        ax.grid()
 
         ax = self.plt.subplot(nrow,ncol,2)
-        ax.hist(widthA,bins=20,facecolor='b')        
-        ax.set(xlabel='spike half-width (ms), aka FWHM',ylabel='num spikes')
+        binsX= np.linspace(0.5,3.5,20)
+        ax.hist(widthA,bins=binsX,facecolor='b')        
+        ax.set(xlabel='spike half-width (ms), aka FWHM',ylabel='num spikes',title=plDD['bbpName'])
         if 'fwhmLR' in plDD: ax.set_xlim(tuple(plDD['fwhmLR']))
-        
+        ax.grid()
+                
         ax = self.plt.subplot(nrow,ncol,3)
-        ax.hist(amplA,bins=20,facecolor='C1')        
-        ax.set(xlabel='spike peak ampl (mV)',ylabel='num spikes')
-        
+        binsX= np.linspace(20,60,40)
+        ax.hist(amplA,bins=binsX,facecolor='C1')        
+        ax.set(xlabel='spike peak ampl (mV)',ylabel='num spikes',title='gen:'+plDD['simAuth'])
+        ax.grid()
+                
         ax = self.plt.subplot(nrow,ncol,4)
-        ax.hist(tbaseA,bins=20,facecolor='C3')        
+        binsX= np.linspace(0,10,40)
+        ax.hist(tbaseA,bins=binsX,facecolor='C3')        
         ax.set(xlabel='spike base width (ms)',ylabel='num spikes')
-
+        ax.grid()
             
 #=================================
 #=================================
@@ -298,15 +303,15 @@ if __name__=="__main__":
 
     plot=Plotter(args)
     plDD={}
-    for x in [ 'units','shortName']: plDD[x]=inpMD[x]
+    for x in [ 'units','shortName','bbpName']: plDD[x]=inpMD[x]
     plDD['stimAmpl']=np.array(inpMD['stimAmpl'])
     plDD['simAuth']=simAuth
     plDD['simVer']='NeuronSim_2019_1'
     
     if 1:  # wavforms as array, decimated
         plDD['idxLR']=[8,24,2] # 1st range(n0,n1,step) ampl-index
-        #plDD['idxLR']=[19,35,2] # 
-        #plDD['idxLR']=[50,58,1] # has spike at t=~1.6 ms
+        #plDD['idxLR']=[0,8,1] # low ampl
+        
         if simAuth=='simRoy':
             ihc=0  # select holding current
             plDD['iHoldCurr']=ihc # holding current index
@@ -316,7 +321,7 @@ if __name__=="__main__":
             plDD['text1']='Vyassa-sim'
         #plDD['timeLR']=[10.,160.]  # (ms)  time range
         #plDD['timeLR']=[15.,40.]  # (ms)  time range 
-        plDD['amplLR']=[-90,70]  #  (mV) amplitude range
+        plDD['amplLR']=[-100,70]  #  (mV) amplitude range
         plDD['peak_thr']=inpMD['spikerConf']['min_peak_ampl_mV']
         plot.waveArray(bigD,plDD)
 
@@ -329,7 +334,7 @@ if __name__=="__main__":
         plDD['iHoldCurr']=0
         plot.stims_fixedHoldCurr(bigD,plDD)
         
-    if 0:   # spike analysis, all data, many 2D plots
+    if 1:   # spike analysis, all data, many 2D plots
         ihc=0  # select holding current
         #plDD['iHoldCurr']=ihc # holding current index
         plDD['fwhmLR']=[0.5,3.5] # clip plotting range

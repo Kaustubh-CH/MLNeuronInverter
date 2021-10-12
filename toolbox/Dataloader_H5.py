@@ -67,7 +67,7 @@ def get_data_loader(params, inpMD,domain, verb=1):
 #-------------------
 #-------------------
 #-------------------
-class Dataset_h5_neuronInverter(Dataset):
+class Dataset_h5_neuronInverter(object):
 #...!...!..................    
     def __init__(self, conf,verb=1):
         self.conf=conf
@@ -107,7 +107,7 @@ class Dataset_h5_neuronInverter(Dataset):
             exit(22)
 
         startTm0 = time.time()
-
+        
         # = = = READING HD5  start
         h5f = h5py.File(inpF, 'r')
         Xshape=h5f[dom+'_frames'].shape
@@ -158,12 +158,13 @@ class Dataset_h5_neuronInverter(Dataset):
           
         if self.verb: print('DLI:per_waveform_norm=',cf['train_conf']['per_wavform_norm'],'dom=',cf['domain'])
         if cf['train_conf']['per_wavform_norm']:
+            Ta = time.time()
             # for breadcasting to work the 1st dim must be skipped
             X=np.swapaxes(self.data_frames,0,1)# returns view, no data duplication            
             xm=np.mean(X,axis=0) # average over 1600 time bins
             xs=np.std(X,axis=0)
-
-            if self.verb: print('DLI:PWN xm:',xm.shape,'Xswap:',X.shape,'dom=',cf['domain'])
+            elaTm=(time.time()-Ta)/60.
+            if self.verb: print('DLI:PWN xm:',xm.shape,'Xswap:',X.shape,'dom=',cf['domain'],'elaT=%.2f min'%elaTm)
 
             nZer=np.sum(xs==0)
             if nZer>0: print('DLI:WARN nZer:',nZer,xs.shape, 'rank=%d corrected  mu'%self.conf['world_rank'])
@@ -190,9 +191,6 @@ class Dataset_h5_neuronInverter(Dataset):
             print('DLI:U',myShard,cf['domain'],Y.shape,ym.shape,'\nUm',ym[:10],'\nUs',ys[:10])
             print(self.conf)
             ok99
-
-
-
         
         self.numLocFrames=self.data_frames.shape[0]
         #self.numLocFrames=512*10  # reduce number of  samples manually

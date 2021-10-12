@@ -12,7 +12,7 @@ def roys_fontset(plt):
     print('load Roys fonts')
     plt.rcParams['axes.spines.right'] = False
     plt.rcParams['axes.spines.top'] = False
-    plt.rcParams['font.sans-serif'] = "Arial"
+    #plt.rcParams['font.sans-serif'] = "Arial"
     plt.rcParams['font.family'] = "sans-serif"
     plt.rcParams['pdf.fonttype'] = 42
     plt.rcParams['ps.fonttype'] = 42

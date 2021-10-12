@@ -3,7 +3,7 @@ To display TensorBoard on the laptop
 To see TB on laptop use port forwarding:
 
 NERSC: from your laptop  in a new Xterm
-ssh -L 9800:localhost:9800 balewski@cori.nersc.gov
+ssh  A -Y -L 9800:localhost:9800 balewski@cori.nersc.gov
   cd /global/cscratch1/sd/balewski/tmp_neurInv/
   module load cgpu  pytorch
   tensorboard  --port 9800 --logdir=./

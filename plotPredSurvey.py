@@ -86,17 +86,19 @@ class Plotter(Plotter_Backbone):
 #...!...!..................
     def physParams1D(self,bigD,plDD,figId=4):
 
-        logC=np.log10(bigD['pred_cond'])
+        predC=bigD['pred_cond']
+        logC=np.log10(predC)
         logB=np.log10(plDD['base_cond'])
         parName=plDD['parName']
+        crossTile=plDD['crossTile']
         
         nPar=len(parName)
         assert nPar==logC.shape[1]
         print('PP1Da:',logC.shape)
-        nrow,ncol=3,5
+        nrow,ncol=4,5
         
         figId=self.smart_append(figId)
-        fig=self.plt.figure(figId,facecolor='white', figsize=(2.75*ncol,2.2*nrow))
+        fig=self.plt.figure(figId,facecolor='white', figsize=(3.1*ncol,2.2*nrow))
 
         binsX=30
         for i in range(0,nPar):
@@ -104,21 +106,31 @@ class Plotter(Plotter_Backbone):
             v=logC[:,i]
             #v=v[8]  # pick only one sample to plot
             lbase=logB[i]
-            #print('iii',i,v,base)
+            # compute avr on phys values of conductance
+            pv=predC[:,i]
+            avrC=np.mean(pv); stdC=np.std(pv)/np.sqrt( len(pv)-1)
+            #print('iii',i,v,pv)
+            avrTxt='avr(S)=%.2g\n+/- %.1g'%(avrC, stdC)
+            #print(i,'avrTxt',avrTxt)
+            #ok11
             hcol=get_arm_color(parName[i])
             lfac=1.5
             binsX=np.linspace(lbase-lfac,lbase+lfac,50)
             (binCnt,_,_)=ax.hist(v,binsX,color=hcol)
-                                  
-            ax.set(title=parName[i], xlabel='log10(cond/(S)) %d'%(i),ylabel='samples')
-            ary=0.6
+
+            ax.text(0.6,0.65,avrTxt,transform=ax.transAxes, color='b')
+            ax.set(title=parName[i], xlabel='log10(cond/(S)) p=%d'%(i),ylabel='samples')
+            ary=1.6
             #arrow(x, y, dx, dy, **kwargs)
             ax.arrow(lbase, ary, 0,-ary+0.1, head_width=0.2, head_length=0.15, fc='k', ec='k')
+            if i in crossTile:
+                ax.text(0.8,0.1,"BAD\nML",transform=ax.transAxes, color='b')
+            
             for x in [-1,1]:
                 ax.axvline(lbase+x, color='black', linestyle='--')
             ax.grid()
             if i==0:
-                ax.text(-0.05,0.85,plDD['short_name'],transform=ax.transAxes, color='r')
+                ax.text(-0.05,0.85,plDD['short_name'][:25],transform=ax.transAxes, color='r')
             if i==1:
                 ax.text(0.05,0.85,'n=%d'%logC.shape[0],transform=ax.transAxes, color='r')
 
@@ -162,6 +174,7 @@ if __name__=="__main__":
         plot.waveArray(bigD,plDD)
 
     if 1:  # phys conductances
+        plDD['crossTile']=[6,7,11,13,15,16,17,18,19]
         plot.physParams1D(bigD,plDD)
         
     plot.display_all('scoreSim')

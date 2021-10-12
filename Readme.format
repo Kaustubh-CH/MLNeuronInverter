@@ -1,0 +1,50 @@
+= = = = =
+Data aggregation for excitatory, use
+agerageData.py
+It needs summary from any example trainig(! run a job , do not hack it) meta-data to grab info needed for data loader
+needed Large memory node
+ module load cmem
+salloc -N 1 -C amd -t 2:00:00  -q interactive
+
+practice: [  #len=10
+    bbp054, bbp098, bbp102, bbp152, bbp153,bbp155, bbp156,  bbp205, bbp206, bbp207 ],
+  witness: [  bbp154, bbp176 ]
+
+time  ./aggregateData.py --numSamplesPerFile 480010 --cellName  bbp054 bbp098 bbp102 bbp152 bbp153 bbp155 bbp156  bbp205 bbp206 bbp207 --outName practice10c
+
+Produced:   5M training samples file
+practice10c_excite.cellSpike_4prB8kHz.data.h5   size 144 GB
+h5-write : train_frames (4800100, 1600, 4) float32
+
+time  ./aggregateData.py --numSamplesPerFile 480010 --cellName   bbp154 bbp176  --outName witness2c
+
+Produced:  1M training samples file
+witness2c_excite.cellSpike_4prB8kHz.data.h5 size: 29GB
+h5-write : train_frames (960020, 1600, 4) float32
+
+srun -n2 train_dist_mh5.py  --cellName witness2c  --globalTrainSamples 960020
+
+= = = = = =
+Inhibitory
+
+ practice140c: 21M train samples, 472 GB, (30% of all generated)
+ witness17c: 2.7M train samples, 130 GB, (30% of all generated)
+ october12c: 5.8 M train samples, 58 GB (100% of generated)
+
+Data overlap:
+   practice140c and  witness17c have NO overlap
+   october12c:  comprises 12 similar morphologies possibly matching to experiments Roy run on October-2021
+   
+
+Prerequisit:
+To produce 'any' training summary do
+srun -n1 python -u train_dist.py --cellName bbp124	 --facility corigpu --outPath ./out --design expF2us   --epochs 2
+
+do 12 cells selected by Roy for expermient on October-2021
+time  ./aggregateData.py --numSamplesPerFile 480010 --cellName   bbp124 bbp125 bbp126 bbp127 bbp128 bbp129 bbp139 bbp140 bbp141 bbp142 bbp143 bbp144   --outName october12c
+
+
+time  ./aggregateData.py --numSamplesPerFile 150010 --cellName bbp012 bbp086 bbp179 bbp076 bbp035 bbp090 bbp140 bbp193 bbp174 bbp014 bbp025 bbp112 bbp167 bbp201 bbp043 bbp168 bbp144   --outName witness17c
+
+
+ time  ./aggregateData.py --numSamplesPerFile 150010 --cellName  bbp001 bbp004 bbp007 bbp017 bbp023 bbp031 bbp034 bbp040 bbp045 bbp050 bbp055 bbp060 bbp075 bbp094 bbp099 bbp106 bbp118 bbp145 bbp149 bbp159 bbp171 bbp185 bbp198 bbp202 bbp066 bbp119 bbp132 bbp139 bbp172 bbp180 bbp186 bbp192 bbp008 bbp013 bbp018 bbp024 bbp026 bbp032 bbp041 bbp046 bbp051 bbp056 bbp061 bbp067 bbp070 bbp077 bbp080 bbp087 bbp095 bbp100 bbp107 bbp111 bbp113 bbp120 bbp124 bbp133 bbp146 bbp150 bbp160 bbp164 bbp166 bbp173 bbp187 bbp199 bbp203 bbp005 bbp047 bbp078 bbp091 bbp121 bbp125 bbp141 bbp188 bbp194 bbp002 bbp003 bbp006 bbp009 bbp011 bbp019 bbp027 bbp036 bbp042 bbp048 bbp052 bbp062 bbp068 bbp071 bbp079 bbp081 bbp088 bbp092 bbp096 bbp108 bbp114 bbp122 bbp126 bbp134 bbp142 bbp147 bbp161 bbp165 bbp175 bbp181 bbp189 bbp195 bbp200 bbp010 bbp037 bbp053 bbp082 bbp097 bbp127 bbp135 bbp143 bbp148 bbp182 bbp196 bbp028 bbp038 bbp049 bbp057 bbp069 bbp072 bbp083 bbp089 bbp093 bbp101 bbp115 bbp128 bbp136 bbp151 bbp204 bbp020 bbp063 bbp084 bbp109 bbp129 bbp162 bbp197 --outName practice140c

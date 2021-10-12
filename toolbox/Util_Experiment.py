@@ -119,7 +119,7 @@ class SpikeFinder(object):
                 self.spikes.append([tPeak,yPeak,twidth,ref_amp,twidth_base])
 
         # clear data over base range
-        for i in range(idx_span[0],idx_span[1]):
+        for i in range(idx_span[0],idx_span[1]+1):
             self.wave[i]=amp_base
 
         return 0

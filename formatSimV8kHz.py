@@ -10,7 +10,6 @@ import numpy as np
 
 sys.path.append(os.path.abspath("../"))
 from toolbox.Util_H5io3  import  write3_data_hdf5, read3_data_hdf5
-#from Util_Experiment import rebin_data1D 
 from toolbox.Util_IOfunc import write_yaml, read_yaml
 
 import argparse
@@ -20,12 +19,15 @@ def get_parser():
         
     parser.add_argument("--cellName",  default='bbp153', help="cell shortName ")
     parser.add_argument("--inpPath",help="path to input",
-                        #default='/global/homes/b/balewski/prjn/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1/' # inhibitory
-                        default='/global/homes/b/balewski/prjn/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/' # excitaory
+                        default='/global/homes/b/balewski/prjn/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1/' # inhibitory
+                        #default='/global/homes/b/balewski/prjn/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/' # excitaory
     )
     parser.add_argument("--outPath", default='/global/homes/b/balewski/prjn/2021-roys-simulation/vyassa8kHz/',help="output path  formatted Vyassa simu  ")
     parser.add_argument("-n", "--numSample", type=int, default=50, help="clip number of input samples")
-    parser.add_argument("--probeType",default='excite',  help="probe partition ")
+    parser.add_argument("--probeType",  help="probe partition ",
+        #default='excite'
+        default='8inhib'
+    )
 
     args = parser.parse_args()
     for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
@@ -41,7 +43,7 @@ if __name__=="__main__":
 
     args=get_parser()
     domain='val'
-    metaF=args.inpPath+'%s_%s.cellSpike_4prB8kHz.meta.yaml'%(args.cellName,args.probeType)
+    metaF=args.inpPath+'%s_%s.cellSpike_3prB8kHz.meta.yaml'%(args.cellName,args.probeType)
     bulk=read_yaml(metaF,verb=1)
     inpMD=bulk['dataInfo']
     rawMD=bulk['rawInfo']

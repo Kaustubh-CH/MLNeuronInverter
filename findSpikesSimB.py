@@ -14,12 +14,12 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2, 3],
                         help="increase output verbosity", default=1, dest='verb')
-    parser.add_argument("-d", "--dataPath",  default='/global/homes/b/balewski/prjn/2021-roys-simulation/sim8kHz//',help="formated data location")
+    parser.add_argument("-d", "--dataPath",  default='/global/homes/b/balewski/prjn/2021-roys-simulation/sim8kHz-as2019//',help="formated data location")
 
     parser.add_argument("--dataName",  default='bbp153', help="shortName for a set of routines ")
     parser.add_argument("--formatName",  default='simB.8kHz', help="data name extesion ")
 
-    parser.add_argument("-o","--outPath", default='out/',help="output path for plots and tables")
+    parser.add_argument("-o","--outPath", default='out2019/',help="output path for plots and tables")
     parser.add_argument("--confName",  default='conf_scoreChaos.yaml', help="algo configuration")
  
     args = parser.parse_args()
@@ -46,9 +46,10 @@ if __name__=="__main__":
 
     waves2D=bigD['waveform']
     #1waves2D=waves2D[1:2,15:16]  # pick 1 good waveform, for debug
+    #waves2D=waves2D[2:4,1:3]  # pick 1 for debug
     inp_shape=tuple(waves2D.shape[:-1])
     numTimeBin=inpMD['numTimeBin']
-    print('inp_shape',inp_shape)
+    print('M:inp_shape',inp_shape, 'waves2D:',waves2D.shape)
     spikeTraitL2,mxSpk=score_me(waves2D.reshape(-1,numTimeBin),spiker)
     traitUnits=[['tPeak','ms'],['yPeak','mV'],['twidth','ms'],['y_twidth','mV'],['twidth_at_base','ms']]
     bigD['waveform']=waves2D # save only soma-data

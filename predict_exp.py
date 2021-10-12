@@ -33,17 +33,21 @@ def get_parser():
     #parser.add_argument("--facility", default='corigpu', type=str)
     parser.add_argument("-m","--modelPath",  default='/global/homes/b/balewski/prjn/2021-roys-ml/bbp153-soma-expF2/out/', help="trained model ")
     parser.add_argument("-d","--dataPath",  default='exp4ml/', help="exp dat for ML pred")
-    parser.add_argument("-o", "--outPath", default='mlPred/',help="output path for plots and tables")
+    parser.add_argument("-o", "--outPath", default='mlPred/',help="output path for plots and tables, can be 'same'")
  
     parser.add_argument( "-X","--noXterm", dest='noXterm', action='store_true', default=False, help="disable X-term for batch mode")
 
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
 
     parser.add_argument("--dataName", type=str, default='210611_3_NI-a0.17', help="experimental data ")
+    parser.add_argument("--conductName", type=str, default='bbp000', help="name of conductances set needed to recover physical conductances ")
+    parser.add_argument("--trainTag", type=str, default=None, help="(optional) shorter name for trained model")
+
     args = parser.parse_args()
     args.prjName='neurInfer'
     args.formatVenue='prod'
-
+    if args.outPath=='same': args.outPath=args.dataPath
+    
     for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
     if not os.path.isdir(args.outPath):  os.makedirs(args.outPath)
     return args
@@ -69,8 +73,12 @@ def model_infer_exper(model,loader):
     return np.array(waves), np.array(target) , np.array(output), float(loss)
 
 #...!...!..................
-def get_base_conductances(mltrMD,mlinpMD):
-    simMDF=mltrMD['full_h5name'].replace('.data.h5','.meta.yaml')
+def M_get_base_conductances():
+    
+    templL=mlinpMD['h5nameTemplate'].split('.')
+    print('aaa',templL)
+    myType=templL[0].split('_')[1]
+    simMDF='%s/%s_%s.%s.meta.yaml'%(parMD['data_path'],args.conductName,myType,templL[-3])
     simMD=read_yaml(simMDF)
     rngs=simMD['rawInfo']['physRange']
     parName=mlinpMD['parName']
@@ -101,9 +109,10 @@ if __name__ == '__main__':
   trainMD = read_yaml( sumF)
   parMD=trainMD['train_params']
   mlinpMD=trainMD['input_meta']
+
   #print('mlinpMD');pprint(mlinpMD); ok0
   #print('parMD');pprint(parMD); ok1
-  base_cond=get_base_conductances(parMD,mlinpMD)
+  base_cond=M_get_base_conductances()
   
   assert torch.cuda.is_available() 
   model=load_model(trainMD,args.modelPath)
@@ -133,14 +142,17 @@ if __name__ == '__main__':
   sumRec['domain']=domain
 
   sumRec['numSamples']=float(U.shape[0])
-  sumRec['short_name']=args.dataName+'_'+str(trainMD['job_id'])
-  #sumRec['train_info']= trainMD
+  if args.trainTag==None:
+      sumRec['short_name']=args.dataName+'_'+str(trainMD['job_id'])
+  else:
+      sumRec['short_name']=args.dataName+'_ML-'+args.trainTag
   sumRec['exper_info']= expMD
   sumRec['parName']=mlinpMD['parName']
   orgName=expand_param_names(sumRec['parName'])
   #for a,b in zip(orgName,sumRec['parName']):  print(a,'   ',b)
   sumRec['parNameOrg']=orgName
   sumRec['base_cond']=base_cond.tolist()
+  sumRec['base_cell']=args.conductName
   
   bigD['pred_cond']=C.astype(np.float32)
   bigD['pred_upar']=Z

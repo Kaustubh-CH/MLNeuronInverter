@@ -23,6 +23,7 @@ def get_parser():
 
     parser.add_argument("--dataName",  default='210611_3_NI', help="shortName ")
     parser.add_argument("--formatName",  default='spikerSum', help="data name extesion ")
+    parser.add_argument("--amplIdx",  default=6,type=int, help="amplitude index")
 
     parser.add_argument("-o","--outPath", default='out/',help="output path for plots and tables")
 
@@ -247,12 +248,12 @@ class Plotter(Plotter_Backbone):
         ax.scatter(resA,widthA, alpha=0.6,color='b')
         ax.set(xlabel='serial resistance (MOhm)',ylabel='spike width (ms)')
         ax.grid()
-
+            
 #...!...!..................
     def spikes_survey1D(self,bigD,plDD,figId=6):
         figId=self.smart_append(figId)
         nrow,ncol=1,4
-        fig=self.plt.figure(figId,facecolor='white', figsize=(12,3))
+        fig=self.plt.figure(figId,facecolor='white', figsize=(12,2.5))
 
         ia=plDD['iStimAmpl']
         stimAmpl=plDD['stimAmpl'][ia]
@@ -274,27 +275,33 @@ class Plotter(Plotter_Backbone):
                 tbaseA.append(twidth_base)
 
         #print('pl1D: widthA:',widthA)
+
         tit='%s stim ampl=%.2f'%(plDD['shortName'],stimAmpl)
         ax = self.plt.subplot(nrow,ncol,1)
         binsX= np.linspace(-0.5,10.5,12)  # good choice
-        print('xx',binsX)
-        ax.hist(spikeC[:M],binsX,facecolor='g')
-        
+        ax.hist(spikeC[:M],binsX,facecolor='g')        
         ax.set(xlabel='num spikes per sweep',ylabel='num sweeps',title=tit)
-        #ax.grid()
+        ax.grid()
 
         ax = self.plt.subplot(nrow,ncol,2)
-        ax.hist(widthA,bins=20,facecolor='b')        
+        binsX= np.linspace(0.5,3.5,20)
+        ax.hist(widthA,bins=binsX,facecolor='b')        
         ax.set(xlabel='spike half-width (ms), aka FWHM',ylabel='num spikes')
-        
+        if 'fwhmLR' in plDD: ax.set_xlim(tuple(plDD['fwhmLR']))
+        ax.grid()
+                
         ax = self.plt.subplot(nrow,ncol,3)
-        ax.hist(amplA,bins=20,facecolor='C1')        
+        binsX= np.linspace(20,60,40)
+        ax.hist(amplA,bins=binsX,facecolor='C1')        
         ax.set(xlabel='spike peak ampl (mV)',ylabel='num spikes')
-        
+        ax.grid()
+                
         ax = self.plt.subplot(nrow,ncol,4)
-        ax.hist(tbaseA,bins=20,facecolor='C3')        
+        binsX= np.linspace(0,10,40)
+        ax.hist(tbaseA,bins=binsX,facecolor='C3')        
         ax.set(xlabel='spike base width (ms)',ylabel='num spikes')
-        
+        ax.grid()
+            
 #...!...!..................
 def M_save_summary(sumL):
     sum2D=np.array(sumL)
@@ -332,16 +339,16 @@ if __name__=="__main__":
     plDD={}
     for x in [ 'units','shortName']: plDD[x]=inpMD[x]
     plDD['stimAmpl']=np.array(inpMD['stimAmpl'])
-    ia=4  # select stim-ampl
+    
     plDD['timeLR']=[0.,200.]  # (ms)  time range
         
     if 1:  # wavforms as array, decimated
         plDD['idxLR']=[0,8,1] # 1st range ampl-index
 
-        plDD['iStimAmpl']=ia #select 1 stim-ampl index
-        plDD['text1']='stim ampl=%.2f FS'%(inpMD['stimAmpl'][ia])
+        plDD['iStimAmpl']=args.amplIdx
+        plDD['text1']='stim ampl=%.2f FS'%(inpMD['stimAmpl'][args.amplIdx])
         #plDD['timeLR']=[10.,160.]  # (ms)  time range 
-        plDD['amplLR']=[-90,70]  #  (mV) amplitude range
+        plDD['amplLR']=[-100,70]  #  (mV) amplitude range
         plDD['peak_thr']=inpMD['spikerConf']['min_peak_ampl_mV']
         plot.waveArray(bigD,plDD)
         plDD.pop('iStimAmpl')
@@ -360,7 +367,7 @@ if __name__=="__main__":
         plot.spikes_survey2D(bigD,plDD)        
         
     if 1:   # spike analysis, one stim-ampl, many 1D plots        
-        plDD['iStimAmpl']=ia # stim-ampl index 
+        plDD['iStimAmpl']=args.amplIdx
         plot.spikes_survey1D(bigD,plDD)        
         
     plot.display_all('scoreExp')

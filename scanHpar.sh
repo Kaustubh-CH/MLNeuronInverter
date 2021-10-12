@@ -4,8 +4,8 @@ set -u ;  # exit  if you try to use an uninitialized variable
 #set -o errexit ;  # exit if any statement returns a non-true return value
 k=0
 
-#for lr in  0.0002 0.0005 0.0010 0.0020 0.0050 0.010 ; do  #  LR - Cori/PM/Summit
-for lr in 0.0030 ; do # one-off
+#for lr in  0.0002 0.0005 0.0010 0.0020 0.0050 0.0100 ; do  #  LR - Cori/PM/Summit
+for lr in 0.0015 ; do # one-off
     jobId=lr${lr}
 
     echo 

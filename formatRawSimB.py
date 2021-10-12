@@ -9,15 +9,16 @@ from pprint import pprint
 import numpy as np
 
 from toolbox.Util_H5io3  import  write3_data_hdf5, read3_data_hdf5
-from toolbox.Util_Experiment import rebin_data1D 
+from toolbox.Util_Experiment import rebin_data1D
+from toolbox.Util_IOfunc  import   read_one_csv
 
 import argparse
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
 
-    parser.add_argument("--rawPath", default='/global/homes/b/balewski/prjn/2021-roys-simulation/simRaw40kHz/',help="input  raw data path for experiments")
-    parser.add_argument("--dataPath", default='/global/homes/b/balewski/prjn/2021-roys-simulation/sim8kHz/',help="output path  rebinned Waveforms  ")
+    parser.add_argument("--rawPath", default='/global/homes/b/balewski/prjn/2021-roys-simulation/simRaw40kHz/sim_exp_data3/',help="input  raw data path for experiments")
+    parser.add_argument("--dataPath", default='/global/homes/b/balewski/prjn/2021-roys-simulation/sim8kHz-as2019/',help="output path  rebinned Waveforms  ")
 
     parser.add_argument("--cellName",  default='bbp153', help="cell shortName ")
     args = parser.parse_args()
@@ -25,20 +26,22 @@ def get_parser():
     return args
 
 #...!...!..................
+def find_long_name(mapN):
+    mapT,_= read_one_csv(mapN)
 
-inpConf={'bbpName':'L5_TTPC1_cADpyr','shortName':'bbp153'}
-# hopefully generic
-inpConf['holdCurr']=[0.00, 0.05, 0.20, 0.35 ]
-inpConf['stimAmpl']=[float('%.2f'%(0.05+i*0.05)) for i in range(0,40)]
-#inpConf['stimAmpl']=[float('%.2f'%(0.05+i*0.05)) for i in range(0,24)]  # amp<=1.2
-
-inpConf['units']={'stimAmpl':'FS','holdCurr':'nA','waveform':'mV','time':'ms'}
-inpConf['probe']=['soma']
-inpConf['stimName']='chaotic_2'
-                 
+    bbp_name=None
+    for rec in mapT:
+        if args.cellName != rec['short_name']: continue
+        bbp_name=rec['bbp_name']
+    assert bbp_name!=None
+    #print(bbp_name)
+    return bbp_name
+ 
 #...!...!..................
 def read_one(ic,ia):
-    inpF='%s/%s_factor_%.2f_add%.2f.h5'%(args.cellName,inpConf['bbpName'],inpConf['stimAmpl'][ia],inpConf['holdCurr'][ic])
+    #inpF='%s/%s_factor_%.2f_add%.2f.h5'%(args.cellName,inpConf['bbpName'],inpConf['stimAmpl'][ia],inpConf['holdCurr'][ic])
+
+    inpF='%s/%s_%s_factor_%.2f_add%.2f.h5'%(inpConf['bbpName'],inpConf['bbpName'],inpConf['bbpName'],inpConf['stimAmpl'][ia],inpConf['holdCurr'][ic])  # double name typo for 12-inhibt
     print('RO:',ic,ia,inpF)
     blob,_=read3_data_hdf5(args.rawPath+inpF)
     stimA=blob['stim']
@@ -60,9 +63,23 @@ def read_one(ic,ia):
 if __name__=="__main__":
 
     args=get_parser()
+    mapN=args.rawPath+'/12inhibt.namemap.csv'
+
+    inpConf={}
+    inpConf['bbpName']=find_long_name(mapN)
+    inpConf['holdCurr']=[0.00, 0.05, 0.20, 0.35 ]
+    inpConf['stimAmpl']=[float('%.2f'%(0.05+i*0.05)) for i in range(0,40)]
+    #inpConf['stimAmpl']=[float('%.2f'%(0.05+i*0.05)) for i in range(0,24)]  # amp<=1.2
+
+    inpConf['units']={'stimAmpl':'FS','holdCurr':'nA','waveform':'mV','time':'ms'}
+    inpConf['probe']=['soma']
+    inpConf['stimName']='chaotic_2'
 
     pprint(inpConf)
-    assert args.cellName==inpConf['shortName']
+    #assert args.cellName==inpConf['shortName']
+    inpConf['shortName']=args.cellName # for 12 inhibitory
+    
+    
     numHold=len(inpConf['holdCurr'])
     numAmpl=len(inpConf['stimAmpl'])
     

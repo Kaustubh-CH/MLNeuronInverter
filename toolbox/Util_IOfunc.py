@@ -87,6 +87,10 @@ def read_one_csv(fname,delim=','):
         print('got %d rows \n'%(len(tabL)))
     #print('LAST:',row)
     return tabL,drd.fieldnames
+    # use case
+    #for rec in mapT:
+    #    if args.cellName != rec['short_name']: continue
+ 
 
 #...!...!..................
 def write_one_csv(fname,rowL,colNameL):

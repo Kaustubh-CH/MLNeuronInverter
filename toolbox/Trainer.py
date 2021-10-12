@@ -105,9 +105,10 @@ class Trainer():
     self.model=myModel.to(self.device)
     
     if self.verb:
-      print('\n\nT: torchsummary.summary(model):');
+      print('\n\nT: torchsummary.summary(model):',params['model']['inputShape']);
+      timeBins,inp_chan=params['model']['inputShape']
       from torchsummary import summary
-      summary(self.model,(1,4,1600))
+      summary(self.model,(1,timeBins,inp_chan))
       if self.verb>1: print(self.model)
 
       # save entirel model before training

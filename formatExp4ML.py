@@ -19,6 +19,7 @@ def get_parser():
 
     parser.add_argument("--dataName",  default='210611_3_NI', help="shortName for a set of routines ")
     parser.add_argument("--amplIdx",  default=6,type=int, help="amplitude index")
+    parser.add_argument("--numPredConduct",  default=15,type=int, help="number of predicted conductances")
     parser.add_argument("--formatName",  default='expB.8kHz', help="data name extesion maps to sampling rate ")
 
     parser.add_argument("-o","--outPath", default='exp4ml/',help="output path for plots and tables")
@@ -59,7 +60,7 @@ if __name__=="__main__":
     # do NOT normalize waveforms - Dataloader uses per-wavform normalization
     
     #add fake Y
-    unitStar=np.zeros((nSweep,15))
+    unitStar=np.zeros((nSweep,args.numPredConduct))
     print('use ampl=',ampl,nSweep,waves.shape,unitStar.shape)
 
     #... assemble output meta-data
