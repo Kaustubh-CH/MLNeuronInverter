@@ -88,6 +88,7 @@ def read_one_csv(fname,delim=','):
     #print('LAST:',row)
     return tabL,drd.fieldnames
     # use case
+    # mapT,_=read_one_csv(inpF)
     #for rec in mapT:
     #    if args.cellName != rec['short_name']: continue
  

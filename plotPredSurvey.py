@@ -88,7 +88,7 @@ class Plotter(Plotter_Backbone):
 
         predC=bigD['pred_cond']
         logC=np.log10(predC)
-        logB=np.log10(plDD['base_cond'])
+        logB=plDD['log10_phys_cent']
         parName=plDD['parName']
         crossTile=plDD['crossTile']
         
@@ -99,8 +99,7 @@ class Plotter(Plotter_Backbone):
         
         figId=self.smart_append(figId)
         fig=self.plt.figure(figId,facecolor='white', figsize=(3.1*ncol,2.2*nrow))
-
-        binsX=30
+        
         for i in range(0,nPar):
             ax=self.plt.subplot(nrow,ncol,i+1)
             v=logC[:,i]
@@ -108,19 +107,20 @@ class Plotter(Plotter_Backbone):
             lbase=logB[i]
             # compute avr on phys values of conductance
             pv=predC[:,i]
-            avrC=np.mean(pv); stdC=np.std(pv)/np.sqrt( len(pv)-1)
+            avrC=np.mean(pv); stdC=-1
+            if pv.shape[0]>1: stdC=np.std(pv)/np.sqrt( len(pv)-1)
             #print('iii',i,v,pv)
-            avrTxt='avr(S)=%.2g\n+/- %.1g'%(avrC, stdC)
+            avrTxt='avr(S)=%.2g\n   +/- %.1g'%(avrC, stdC)
             #print(i,'avrTxt',avrTxt)
             #ok11
             hcol=get_arm_color(parName[i])
             lfac=1.5
-            binsX=np.linspace(lbase-lfac,lbase+lfac,50)
+            binsX=np.linspace(lbase-lfac,lbase+lfac,30)
             (binCnt,_,_)=ax.hist(v,binsX,color=hcol)
 
             ax.text(0.6,0.65,avrTxt,transform=ax.transAxes, color='b')
             ax.set(title=parName[i], xlabel='log10(cond/(S)) p=%d'%(i),ylabel='samples')
-            ary=1.6
+            ary=0.7
             #arrow(x, y, dx, dy, **kwargs)
             ax.arrow(lbase, ary, 0,-ary+0.1, head_width=0.2, head_length=0.15, fc='k', ec='k')
             if i in crossTile:
@@ -150,13 +150,15 @@ if __name__=="__main__":
 
     #pprint(inpMD)
 
+    #for a,b in zip(inpMD['parName'],inpMD['log10_phys_cent']):   print(a,b)
+    
     # - - - - - PLOTTER - - - - -
 
     plot=Plotter(args)
     plDD={}
-    for x in ['short_name', 'parName', 'base_cond']: plDD[x]=inpMD[x]
+    for x in ['short_name', 'parName', 'log10_phys_cent']: plDD[x]=inpMD[x]
    
-    if 1:  # wavforms as array, decimated
+    if 0:  # wavforms as array, decimated
         plDD['idxLR']=[0,8,1] # 1st range(n0,n1,step) ampl-index
         plDD['text1']='raw waveform'
         plDD['yLab']='AP (mV)'
@@ -164,7 +166,7 @@ if __name__=="__main__":
         #plDD['amplLR']=[-90,70]  #  (mV) amplitude range
         plot.waveArray(bigD,plDD)
 
-    if 1:  # wavforms as array, decimated
+    if 0:  # wavforms as array, decimated
         plDD['idxLR']=[0,4,1] # 1st range(n0,n1,step) ampl-index
         plDD['text1']='ML input waveform'
         plDD['yLab']='normalized (a.u.)'

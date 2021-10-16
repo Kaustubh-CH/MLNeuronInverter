@@ -47,6 +47,7 @@ class Plotter_Backbone(object):
         else:
             mpl.use('TkAgg') # on baci-desktop
             print(self.__class__.__name__,':','Graphics started')
+        #mpl.rcParams['text.usetex'] = True
         import matplotlib.pyplot as plt
         plt.close('all')
         self.plt=plt

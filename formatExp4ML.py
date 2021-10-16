@@ -7,7 +7,7 @@ from pprint import pprint
 
 from toolbox.Util_H5io3 import  write3_data_hdf5, read3_data_hdf5
 from toolbox.Util_IOfunc import write_yaml, read_yaml
-
+from fftRawExpB import Plotter
 
 import numpy as np
 import argparse
@@ -56,26 +56,61 @@ if __name__=="__main__":
     waves=np.expand_dims(waves,2) # add 1-channel index for ML compatibility
     sweepTrait=trait2D[args.amplIdx][:nSweep]
     stims=stim2D[args.amplIdx][:nSweep]  # for future plotting 
-
+    shortName='%s-a%.2f'%(args.dataName,ampl)
     # do NOT normalize waveforms - Dataloader uses per-wavform normalization
+
+    if 0: # skip some waveforms : cherry picking for proposal 2021-10
+        #dropL=[2,5,6]  #  'a' = no drug
+        #useL=[ i for i in range(waves.shape[0])]
+        #[useL.remove(x) for x in dropL ]
+        useL= [0, 1, 3, 4, 7, 8, 9]  #  'a' = no drug
+        #useL= [1,4] # [3,5] #  'c' = 0.5umol drug
+        #useL=[ 0,1, 2,3 , 4,5 ,6,7, 8,9,12,13] #  'd' = 1.0umol drug
+        print('ww-in',waves.shape)        
+        print('useL=',useL)
+        waves=waves[useL]
+        shortName+='s'
+        if 1:
+            nSweep=1
+            sweepTrait=sweepTrait[:1]
+            stims=stims[:1]
+            waves=np.mean(waves,axis=0)
+            waves=np.expand_dims(waves,0) 
+        print('ww',waves.shape)
+        
     
     #add fake Y
     unitStar=np.zeros((nSweep,args.numPredConduct))
     print('use ampl=',ampl,nSweep,waves.shape,unitStar.shape)
 
     #... assemble output meta-data
-    keyL=['formatName','numTimeBin','rawDataPath','sampling','shortName','stimName']
+    keyL=['formatName','numTimeBin','rawDataPath','sampling','stimName']
     outMD={ k:inpMD[k] for k in keyL}
     outMD['stimAmpl']=float(ampl)
     outMD['normWaveform']=True
     outMD['numSweep']=int(nSweep)
     outMD['comment']='added fake unitStar_par for consistency with simulations'
-
+    outMD['shortName']=shortName
+    
     # ... wrap it up
-    outF='%s-a%.2f.h5'%(args.dataName,ampl)
+    outF=shortName+'.h5'
     bigD={'exper_frames':waves,'exper_unitStar_par':unitStar,'time':timeV,'stims':stims}
     bigD['sweep_trait']=sweepTrait
     bigD['stims']=stims
     write3_data_hdf5(bigD,args.outPath+outF,metaD=outMD)
     print('M:done,\n outMD:')
     pprint(outMD)
+
+    
+    # - - - - - PLOTTER - - - - -
+    args.noXterm=0
+    args.formatVenue='prod'
+    args.prjName='repackB'
+    plot=Plotter(args)
+    plDD={}
+    plDD['shortName']=shortName
+    plDD['timeV']=timeV
+    plDD['timeLR']=[0.,200]  # (ms)  time range 
+    plot.waveform(waves,plDD)
+    plot.display_all()
+    
