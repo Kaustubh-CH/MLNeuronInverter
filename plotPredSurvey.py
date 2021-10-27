@@ -158,7 +158,7 @@ if __name__=="__main__":
     plDD={}
     for x in ['short_name', 'parName', 'log10_phys_cent']: plDD[x]=inpMD[x]
    
-    if 0:  # wavforms as array, decimated
+    if 1:  # wavforms as array, decimated
         plDD['idxLR']=[0,8,1] # 1st range(n0,n1,step) ampl-index
         plDD['text1']='raw waveform'
         plDD['yLab']='AP (mV)'

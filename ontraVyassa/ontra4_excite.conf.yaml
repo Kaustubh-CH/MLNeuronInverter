@@ -1,0 +1,41 @@
+# PATHS
+#inpPath: /global/cfs/cdirs/m2043/balewski/neuronBBP-data_67pr/
+#outPath: /global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/
+inpPath: /global/cscratch1/sd/balewski//neuronBBP2-packed1/data_67pr_6Kfr/
+outPath: /global/cscratch1/sd/balewski//neuronBBP2-tmp/ontra4/
+
+# config switches
+goalFeatureName: [soma, axon_150um , apic_dend_150um, soma_dend_50um]
+probeNamePerCell:
+  bbp0541: [[0, 'soma_0', 8.3], [35, 'axon_8', 138.2], [6, 'apic_12', 134.6], [40, 'dend_12', 48.3]]
+  bbp0981: [[0, 'soma_0', 9.9], [35, 'axon_2', 149.1], [48, 'apic_6', 149.5], [38, 'dend_70', 45.0]]
+  bbp1021: [[0, 'soma_0', 9.6], [11, 'axon_31', 153.1], [62, 'apic_24', 147.7], [8, 'dend_29', 42.3]]
+  bbp1521: [[0, 'soma_0', 14.4], [35, 'axon_42', 155.0], [24, 'apic_7', 172.2], [20, 'dend_3', 42.0]]
+  bbp1531: [[0, 'soma_0', 14.5], [1, 'axon_0', 99.8], [26, 'apic_121', 160.4], [20, 'dend_93', 47.7]]
+  bbp1541: [[0, 'soma_0', 13.1], [35, 'axon_120', 190.4], [26, 'apic_107', 155.3], [38, 'dend_15', 42.9]]
+  bbp1551: [[0, 'soma_0', 8.4], [7, 'axon_18', 150.3], [16, 'apic_32', 150.7], [22, 'dend_37', 46.5]]
+  bbp1561: [[0, 'soma_0', 9.1], [39, 'axon_70', 150.1], [30, 'apic_4', 145.3], [40, 'apic_47', 52.1]]
+  bbp1761: [[0, 'soma_0', 7.5], [21, 'axon_7', 151.1], [14, 'apic_59', 145.5], [12, 'dend_13', 61.7]]
+  bbp2051: [[0, 'soma_0', 8.8], [39, 'axon_43', 147.4], [52, 'apic_6', 148.0], [40, 'dend_7', 48.8]]
+  bbp2061: [[0, 'soma_0', 7.4], [19, 'axon_73', 154.1], [52, 'apic_5', 138.4], [22, 'dend_27', 50.1]]
+  bbp2071: [[0, 'soma_0', 7.7], [39, 'axon_7', 153.5], [28, 'apic_32', 127.1], [42, 'dend_37', 51.2]]
+
+conductName:
+ [[0, 'gNaTs2.tbar.NaTs2.t.api', -1.751552263920557, 1.1689409102644481],
+ [1, 'gSKv3.1bar.SKv3.1.api', -2.3440905338045113, 1.9457920895720962],
+ [2, 'gImbar.Im.api', -3.4223319905813763, 1.4223319796101745],
+ [3, 'gNaTa.tbar.NaTa.t.axn', 0.5493490365346249, 1.0527005420377518],
+ [4, 'gK.Tstbar.K.Tst.axn', -2.017203815123177, 1.967855825446991],
+ [5, 'gNap.Et2bar.Nap.Et2.axn', -3.1302264861722424, 2.121585494971412],
+ [6, 'gSK.E2bar.SK.E2.axn', -1.5778017363150396, 1.5706953133453245],
+ [7, 'gCa.HVAbar.Ca.HVA.axn', -3.2593216945173697, 1.254956876547805],
+ [8, 'gK.Pstbar.K.Pst.axn', -0.18967893864608368, 1.178031851647468],
+ [10, 'gCa.LVAstbar.Ca.LVAst.axn', -3.606397322494187, 2.548504645641411],
+ [11, 'gSKv3.1bar.SKv3.1.som', -0.8274905633786234, 1.309609191816969],
+ [14, 'gNaTs2.tbar.NaTs2.t.som', -0.016570065761408695, 1.016488426687493],
+ [15, 'gIhbar.Ih.som', -4.0969100141045445, 1.0],
+ [16, 'gCa.LVAstbar.Ca.LVAst.som', -2.820362750011693, 1.6571930307744134],
+ [17, 'gIhbar.Ih.den', -4.0969100141045445, 1.0]]
+
+
+

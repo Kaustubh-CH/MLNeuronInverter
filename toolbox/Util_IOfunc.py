@@ -15,36 +15,34 @@ import hashlib
 
 #...!...!..................
 def read_yaml(ymlFn,verb=1):
-        if verb: print('  read  yaml:',ymlFn,end='')
-        start = time.time()
-        ymlFd = open(ymlFn, 'r')
-        bulk=yaml.load( ymlFd, Loader=yaml.CLoader)
+    if verb: print('  read  yaml:',ymlFn,end='')
+    start = time.time()
+    ymlFd = open(ymlFn, 'r')
+    bulk=yaml.load( ymlFd, Loader=yaml.CLoader)
 
-        ymlFd.close()
-        #  
-        #print('\nee2',type(bulk),'size=%d'%len(bulk))
-        #print(bulk)
-        if verb: print(' done  elaT=%.1f sec'%(time.time() - start))
-        return bulk
+    ymlFd.close()
+    if verb: print(' done  elaT=%.1f sec'%(time.time() - start))
+    return bulk
 
 #...!...!..................
 def write_yaml(rec,ymlFn,verb=1):
-        start = time.time()
-        ymlFd = open(ymlFn, 'w')
-        yaml.dump(rec, ymlFd, Dumper=yaml.CDumper)
-        ymlFd.close()
-        xx=os.path.getsize(ymlFn)/1024
-        if verb:
-                print('  closed  yaml:',ymlFn,' size=%.1f kB'%xx,'  elaT=%.1f sec'%(time.time() - start))
+    start = time.time()
+    ymlFd = open(ymlFn, 'w')
+    yaml.dump(rec, ymlFd, Dumper=yaml.CDumper)
+    ymlFd.close()
+    xx=os.path.getsize(ymlFn)/1024
+    if verb:
+            print('  closed  yaml:',ymlFn,' size=%.1f kB'%xx,'  elaT=%.1f sec'%(time.time() - start))
 
 
 
 #...!...!..................
 def write_data_hdf5(dataD,outF,verb=1):
     h5f = h5py.File(outF, 'w')
+    start = time.time()
     if verb>0:
             print('saving data as hdf5:',outF)
-            start = time.time()
+
     for item in dataD:
         rec=dataD[item]
         if verb>1: print('x=',item,type(rec))
@@ -141,15 +139,41 @@ def md5hash(text):
 
 #...!...!..................    
 def build_name_hash(prjName,nameSuffix):
-        t1=time.localtime()
-        dataNF='%s_%s_%s'%(prjName,nameSuffix,dateT2Str(t1))
-        dataNH,dataNH8=md5hash(dataNF)
-        tc={}
-        tc['task_name']=prjName
-        tc['hash32_name']=dataNH
-        tc['hash8_name']=dataNH8
-        tc['full_name']=dataNF
-        dataName_short='%s_%s'%(tc['task_name'],dataNH8)
-        tc['short_name']=dataName_short
-        print('hash of data name=',dataName_short,' full data name:',tc['full_name'])
-        return tc
+    t1=time.localtime()
+    dataNF='%s_%s_%s'%(prjName,nameSuffix,dateT2Str(t1))
+    dataNH,dataNH8=md5hash(dataNF)
+    tc={}
+    tc['task_name']=prjName
+    tc['hash32_name']=dataNH
+    tc['hash8_name']=dataNH8
+    tc['full_name']=dataNF
+    dataName_short='%s_%s'%(tc['task_name'],dataNH8)
+    tc['short_name']=dataName_short
+    print('hash of data name=',dataName_short,' full data name:',tc['full_name'])
+    return tc
+
+#...!...!..................
+def expand_dash_list(kL=['']): 
+    # expand list if '-' are present
+    #   if present [,] : removes them and only expands the portion inside
+    #print('kL',type(kL))
+    assert type(kL)==type([])
+    kkL=[]
+    for x in kL:
+        #print('aa',x, '-' not in x)
+        if '-' not in x:  # nothing to expand
+            kkL.append(x) ; continue
+
+        core=''
+        if '[' in x and x[-1]==']':
+            j=x.index('[')
+            core=x[:j]; y=x[j+1:-1]
+            #print('mm',core,y)
+            x=y
+        xL=x.split('-')
+        #print('b',xL)
+        for i in range(int(xL[0]),int(xL[1])+1):
+            z='%s%d'%(core,i)
+            kkL.append(z)
+    #print('EL:',kL,'  to ',kkL)
+    return kkL

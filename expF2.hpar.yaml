@@ -4,7 +4,8 @@
 probe_type: excite_4prB8kHz  # Ontra4 on Cori
 
 data_path:
-  corigpu: /global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # Ontra4 on Cori
+  corigpu0: /global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # Ontra4 on Cori
+  corigpu: /global/cscratch1/sd/balewski//neuronBBP2-tmp/ontra4/ # Ontra4 w/ clones
   perlmutter: /global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # Ontra4 on PM=Cori
   summit_ontra3: /gpfs/alpine/nro106/proj-shared/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1
   summit: /gpfs/alpine/nro106/proj-shared/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # ontra3

@@ -1,0 +1,44 @@
+#!/bin/bash -l
+#SBATCH  -Jmulti_pack  -C knl
+#SBATCH -L SCRATCH,cfs
+#SBATCH -N 4
+#-SBATCH  -q regular -t  14:00:00
+#SBATCH  -q premium  -t 14:00:00
+#-SBATCH  -q debug -t 30:00
+#SBATCH  --account m2043
+# - - -  no SBATCH commands below this line - - - - 
+
+nprocspn=4   #  rarely OOM for 5 tasks/KNL, use 4 and do not change !!!
+nCpu=20
+
+cloneId=1  # valid choices: 1...5
+nameList=BBP2-jobs3.csv
+packExt=6K  # valid choices:  0K, 1K, 6K 
+
+list=$(scontrol show hostname $SLURM_NODELIST)
+for nodeN in $list ;  do
+    echo "slurm see node $nodeN"
+done
+
+date
+echo pack-`hostname`- start-jid ${SLURM_JOB_ID} nCpu=$nCpu
+echo SLURM_CLUSTER_NAME=$SLURM_CLUSTER_NAME 
+
+#srun env|grep SLURM
+
+( sleep 180; echo "TTTTTTTTT_3m";  date; hostname; free -g; top ibn1)&
+( sleep 600; echo "TTTTTTTTT_10m";  date; hostname; free -g; top ibn1)&
+( sleep 1200; echo "TTTTTTTTT_20m";   date;  hostname; free -g; top ibn1)&
+
+#4 tasks/KNL --> load 3 , min free ram 28
+# 6 task/KNL : OOM
+
+N=${SLURM_NNODES}
+G=$[ $N * $nprocspn ]
+
+module load pytorch
+
+srun -l -n $G -c $nCpu  --cpu-bind=cores --ntasks-per-node=$nprocspn -l  bash -c " ./drivePacking.sh  $nameList $cloneId $packExt "
+
+echo slurm-h5-packing-done-`date`
+

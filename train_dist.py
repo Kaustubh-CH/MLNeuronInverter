@@ -5,9 +5,11 @@ Not running on CPUs !
 1 or many GPU configuraton is completed in this file
 
 export MASTER_ADDR=`hostname`
+export MASTER_PORT=8881
+
 
 ML training on soma only
-srun -n2 python -u train_dist.py --design expE --numInpChan 1  --outPath  out2
+srun -n2 python -u train_dist.py --design expF2 --numInpChan 1  --outPath  out2
 2 GPU, LR=1e-3, 6.4 sec/epoch, 70 epochs is enough, val=0.0837
 
 ML training on 4 probes , 2 GPUs CoriGpu

@@ -46,7 +46,7 @@ def get_parser():
     parser.add_argument("--cellName", type=str, default=None, help="alternative data file name ")
     args = parser.parse_args()
     args.prjName='neurInfer'
-
+    args.outPath+'/'
     for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
     return args
 

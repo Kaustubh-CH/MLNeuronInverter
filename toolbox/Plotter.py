@@ -35,7 +35,8 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         maxX=nBin ; xtit='time bins'
         binsX=np.linspace(0,maxX,nBin)
         numProbe=X.shape[-1]
-        
+
+        #print('zz',numProbe,len(probeNameL))
         assert numProbe<=len(probeNameL)
         
         figId=self.smart_append(figId)
@@ -206,6 +207,55 @@ class Plotter_NeuronInverter(Plotter_Backbone):
                 ax.text(0.05,0.85,tit1,transform=ax.transAxes, color='r')
             if i==1:
                 ax.text(0.05,0.85,'n=%d'%p.shape[0],transform=ax.transAxes, color='r')
+
+#............................
+    def params1D_vyassa(self,P,tit,figId=4,tit2='',isPhys=False):
+        #fix_phys_range_handling_iced_params
+        metaD=self.inpMD
+        parName=metaD['parName']
+        nPar=metaD['numPar']
+        rangeLD=metaD['physRange']
+        nrow,ncol=4,8
+
+        figId=self.smart_append(figId)
+        fig=self.plt.figure(figId,facecolor='white', figsize=(2.7*ncol,2.*nrow))
+
+        j=1
+        for i in range(0,nPar):
+
+            if isPhys:
+                range12=rangeLD[i]
+                #print('\n',i,rangeLD[i][0],parName[i],range12,j)
+                base=np.sqrt(range12[1]*range12[2])
+                lgBase=np.log10(base)
+                mm2=lgBase+1.1
+                mm1=lgBase-1.1
+                #print('www4',base,lgBase,mm1,mm2)
+                p=np.log10(P[:,i])
+                unitStr='log10(phys)'
+                hcol='g'
+            else:
+                mm2=1.2; mm1=-mm2
+                p=P[:,i]
+                unitStr='unit'
+                hcol='b'
+            binsX= np.linspace(mm1,mm2,30)
+
+            ax=self.plt.subplot(nrow,ncol,j)
+            j+=1
+            binsY=np.linspace(mm1,mm2,50)
+            ax.hist(p,binsX,color=hcol)
+            ax.set(title='par %d'%(i),ylabel='frames',xlabel=unitStr)
+            ax.text(0.02,0.5,parName[i],rotation=20, fontsize=10,transform=ax.transAxes)
+
+            for x in [mm1,mm2]:
+                ax.axvline(x, color='yellow', linestyle='--')
+            ax.grid()
+            if i==0:
+                ax.text(0.1,0.85,tit2,transform=ax.transAxes)
+            if i==1:
+                ax.text(0.1,0.85,'n=%d'%p.shape[0],transform=ax.transAxes)
+
 
 #...!...!..................
     def params_vs_expTime(self,P,bigD,figId=4):  # only for experimental data       

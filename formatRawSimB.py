@@ -17,7 +17,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
 
-    parser.add_argument("--rawPath", default='/global/homes/b/balewski/prjn/2021-roys-simulation/simRaw40kHz/sim_exp_data3/',help="input  raw data path for experiments")
+    parser.add_argument("--rawPath", default='/global/homes/b/balewski/prjn/2021-roys-simulation/simRaw40kHz-as2019/sim_exp_data3/',help="input  raw data path for experiments")
     parser.add_argument("--dataPath", default='/global/homes/b/balewski/prjn/2021-roys-simulation/sim8kHz-as2019/',help="output path  rebinned Waveforms  ")
 
     parser.add_argument("--cellName",  default='bbp153', help="cell shortName ")
