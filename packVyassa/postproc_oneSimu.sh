@@ -86,7 +86,7 @@ echo created complete metafile
 ls -l $metaF2
 
 echo 4-execute formating of Vyassas $nHD5 HD5 files ...
-time python3 -u ./format_CellSpike.py  --dataPath $outPath 
+time python3 -u ./format_Vyassa.py  --dataPath $outPath 
 
 echo 5-open read access
 chmod a+rx -R $targetPath/$bbpId

@@ -32,7 +32,7 @@ def get_parser():
 
     args = parser.parse_args()
     #args.dataPath='/global/cfs/cdirs/m2043/balewski/neuronBBP-pack40kHzDisc/probe_orig/'
-    args.dataPath='/global/cscratch1/sd/balewski//neuronBBP2-packed1/data_67pr_6Kfr/'
+    args.dataPath='/global/cfs/cdirs/m2043/balewski/neuronBBP2-data_67pr/'
     args.prjName='uparCal'
     args.formatVenue='prod'
     for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
@@ -188,7 +188,15 @@ args=get_parser()
 plot=Plotter_UparCalib(args)
 
 parRng2D=None
-cellNL=args.cellName
+cellNL0=args.cellName
+# expand cells to clones
+cellNL=[]
+for shortN in cellNL0:
+    for x in [1,2,3,4,5]:
+        if 'bbp208'==shortN and x<3 : continue
+    #for x in [3]:
+        cellNL.append('%s%d'%(shortN,x))
+print('cc',cellNL,len(cellNL))
 lgp2D=[]
 for shortN in cellNL:
     metaF=args.dataPath+shortN+"/meta.cellSpike.yaml"
@@ -214,7 +222,8 @@ u,ustar=test_u2ustar(jCell=2)
 #plot.paramCorrel(u,ustar,parNL)
 
 if 1:  # log10(base) overlaps
-    tit=',  all 8 inhib e-types'
+    #tit=',  all 8 inhib e-types'
+    tit=',  all 12*5+3=63 excitatory clones'
     plot.paramRange(lgp2D,parNL,idx0=0,tit=tit)
     plot.paramRange(lgp2D,parNL,idx0=10,tit=tit)
 

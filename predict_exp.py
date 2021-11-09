@@ -72,6 +72,7 @@ def model_infer_exper(model,loader):
 
 #...!...!..................
 def M_get_phys_packing():
+  abort - take 'conductName' from sum_train
     inpF='/global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1/ontra3_8inhb.conf.yaml'
     blob = read_yaml( inpF)
     ustar2physLL=blob['conductName']
@@ -119,7 +120,7 @@ if __name__ == '__main__':
   parMD['train_conf']['recover_upar_from_ustar']=False    
   loader = get_data_loader(parMD,  mlinpMD,domain, verb=args.verb)
 
-  if 1:  # hack: read all data again to access meta-data
+  if 1:  # hack: read all *experimental* data again to access meta-data
       print('M: re-read data for auxiliary info:')      
       inpF=parMD['full_h5name']
       bigD,expMD=read3_data_hdf5(inpF)

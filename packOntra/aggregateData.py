@@ -2,9 +2,20 @@
 """ 
 uses multi-h5 data reader to repack multiple files into one monster file
 take exactly the same number of samples from each finput file
+Dependendy: needs 1 train summary file to get al paths
+
 Naming convention for  out files: 
 Excitatory use 100% of samples: practice10c (144G ),  witness2c (29G)
+Excitatory+clones : practice50c 29M samp (859G ),  witness13c 7.5M samp (224G)
 Inhibitory use 30% of samples: practice140c (472G) witness17c(58G)  october12c(130G)
+
+Do it on big memory node
+
+ssh cori
+module load cmem  pytorch
+salloc -C amd -q bigmem -t 2:00:00
+
+
 """
 
 __author__ = "Jan Balewski"
@@ -55,16 +66,19 @@ if __name__ == '__main__':
     parMD['world_size']=1
     parMD['world_rank']=0
     parMD['shuffle']=True
-    parMD['cell_name']=args.cellName
+    if 'bbp' in args.cellName[0]:
+        parMD['cell_name']=args.cellName
+    else:  # practice or witness : use all
+        parMD['cell_name']=inpMD['cellSplit'][args.cellName[0]]
     parMD['local_batch_size']=222
 
     pprint(parMD)
     #pprint(inpMD)
 
-    numCell=len(args.cellName)
+    numCell=len(parMD['cell_name'])
     bigData={}
     startT=time.time()
-    for dom in [ 'test', 'val','train']:
+    for dom in [ 'train','test', 'val']:
         
         parMD['numLocalSamples']=args.numSamplesPerFile*numCell
         if dom!='train': parMD['numLocalSamples']//=8

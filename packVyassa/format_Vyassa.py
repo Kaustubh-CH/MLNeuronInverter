@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """ 
-format training data, save as hd5
- ./format_CellSpike.py  --dataPath data_bbp8v4_1_5h
+
+ re-pack samll hd5 NEURON output to one  6k-samples HD5 files
+ ./format_Vyassa.py  --dataPath data_bbp8v4_1_5h
+
+See: https://docs.google.com/document/d/1K6qD2DFBAFl86InG85LvWhL3S2zp3fghyqKiBGNfcuE/edit?usp=sharing 
 
 """
 
 __author__ = "Jan Balewski"
 __email__ = "janstar1122@gmail.com"
 
-#import sys,os
-#sys.path.append(os.path.abspath("../toolbox"))
 from toolbox.Util_IOfunc import write_yaml, read_yaml, read_one_csv, write_one_csv, expand_dash_list
 from Pack_Func import agregate_raw_data
 from pprint import pprint

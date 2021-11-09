@@ -2,7 +2,7 @@
 """ 
  ONTRA-3,4 transformation for ONE cell belonging to any inhib etype: see Readme.ontra-3,-4
  INPUT:  67probes,  40 kHz, ~40 cells
- OUTPUT:  3 probes, 8 kHz, train+val+test subsest stored in the common h5 file + maching meta-file
+ OUTPUT:  3(4) probes, 8 kHz, train+val+test subsest stored in the common h5 file + maching meta-file
   input conductances are reduced to 19 which are common to all 3 etaypes and U-par are lineary transformed to preserve phys-par mapping across all calls and e-types
 
  it reads *all* data in to RAM and then writes one output file at the end
@@ -27,7 +27,7 @@ import argparse
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cellName", type=str, default='bbp153', help="cell shortName list, blanks separated")
-    parser.add_argument( "--transformConfig", default='ontra4_excite', help="defines all needed switches and choices")
+    parser.add_argument( "--transformConfig", default='ontra4_excite2', help="defines all needed switches and choices")
 
     args = parser.parse_args()
     args.verb=1
@@ -62,7 +62,7 @@ def rebin_data3D(X,nReb):
 def repack_one_cell(confD,goalD,nReb,verb=1):
     numShardsPerCell=goalD['dataInfo'].pop('numDataFiles')
     numFramesPerShard=6144 # excatly 6k
-    #numShardsPerCell=3; numFramesPerShard=1024  #tmp , for quck test
+    #numShardsPerCell=3;# numFramesPerShard=1024  #tmp , for quck test
 
     # out dims
     totalFrameCount=numFramesPerShard*numShardsPerCell

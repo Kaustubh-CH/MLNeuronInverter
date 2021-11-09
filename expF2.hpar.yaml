@@ -1,20 +1,22 @@
 # Neur-inver  config for Roy's experiment
 #
 # choose data pathe depending on facility
-probe_type: excite_4prB8kHz  # Ontra4 on Cori
+#probe_type: excite_4prB8kHz  # Ontra4 : 12 cells
+probe_type: excite2_4prB8kHz  # Ontra4 : 63 clones
 
 data_path:
   corigpu0: /global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # Ontra4 on Cori
-  corigpu: /global/cscratch1/sd/balewski//neuronBBP2-tmp/ontra4/ # Ontra4 w/ clones
-  perlmutter: /global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # Ontra4 on PM=Cori
+  perlmutter: /global/cfs/cdirs/m2043/balewski/neuronBBP2-pack8kHzRam/probe_4prB8kHz/ontra4 # Ontra4 w/ clones PM=Cori
+  perlmutter0: /global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # Ontra4 on PM=Cori
   summit_ontra3: /gpfs/alpine/nro106/proj-shared/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1
   summit: /gpfs/alpine/nro106/proj-shared/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # ontra3
 
-max_epochs: 221  
+max_epochs: 121
 batch_size: 512
 const_local_batch: True   # True is faster  but LR changes w/ num GPUs
 # validation is computed if  epoch%period<len
 validation_period: [1, 1] # [ period, len] (epochs)
+#??max_samples_per_epoch
 
 num_data_workers: 4  
 log_freq_per_epoch: 3
@@ -38,7 +40,7 @@ train_conf:
     warmup_epochs: 10
     optimizer: [adam, 5e-3] # initLR
     LRsched: { plateau_patience: 8, reduceFactor: 0.11  }
-    recover_upar_from_ustar: True # True: will un-do ontra scaling to upar*
+    recover_upar_from_ustar: False # True: will un-do ontra scaling to upar*
     per_wavform_norm:  True
     
 model:

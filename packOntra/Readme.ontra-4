@@ -1,0 +1,160 @@
+'One Network to Rule them all' (aka ONTRA)
+Revised in 2021-10 after Aditya produces 13 exitatory cells x 5 clones
+
+Steps necessary and  data preparation for training of ONTRA-4
+Works with 13 excitatory cells x 5 clones,  e-types: cAD
+
+Those are the cell types:
+bbp205	L6_TPC_L1_cADpyr231
+bbp208	L4_SS_cADpyr230  Note, this one was not in Vyassa's list, but clone _1, _2 have missing apical dendrite and are excluded from Ontra4 
+bbp102	L4_SP_cADpyr230
+bbp207	L6_UTPC_cADpyr231
+bbp054	L23_PC_cADpyr229
+bbp155	L5_UTPC_cADpyr232
+bbp152	L5_STPC_cADpyr232
+bbp176	L6_IPC_cADpyr231
+bbp206	L6_TPC_L4_cADpyr231
+bbp156	L6_BPC_cADpyr231
+bbp153	L5_TTPC1_cADpyr232
+bbp154	L5_TTPC2_cADpyr232
+bbp098	L4_PC_cADpyr230
+
+
+See also:
+https://docs.google.com/document/d/1eOAI2nTTduELE489cuIDe5qIwzXzQn1L9ENlcv2FYwA/edit
+
+https://bitbucket.org/balewski/pitchforkoracle/src/master/docs/Readme.ontra-4
+
+
+a)  procure list of cells to be averaged & infered
+E.g. use master3 spreadsheet and run: rdCellTable.py 
+For  all 13 cells are:
+
+cd ~/neuronInverter/packOntra>
+$  ./uparCalib.py  --cellName  bbp054 bbp098 bbp102 bbp152 bbp153 bbp154 bbp155 bbp156 bbp176 bbp205 bbp206 bbp207 bbp208
+
+
+a.1) add some output to ontra4_excite.conf.yaml
+
+
+b) free 
+For each e-type the physical ranges of conductances were the same.
+c) determin linear transformation u --> u*  which will adjust unit-parameters to represent the same physical value for each conductance. See Fig 1a,b in gDoc
+
+Let is j-cell index, k-conductance index, i-frame index
+
+u(j,i,k) has uniform distribution in [-1,1] but the mapping to physical conductances is different for each j-cell:
+p(j,i,k)= base(j,k)*10^u(j,i,k)
+
+For fixed k-condutance the following is computed
+*) Let a_k=min(base(j,k), b=max(base(j,k)  - min/max over all cells
+*) define:
+   log10P_jk=log10(base(j,k))
+   centP_k= (a_k+b_k)/2.
+   delP_k=  (b_k-a_k)/2+1
+
+*) During re-packing u --> u* transormation is as follows
+  u*(j,i,k) = ( u(j,i,k) +log10P_jk - contP_k ) / delP_k
+
+*) after prediction, the inverse transformations are:
+ u(j,i,k) = u*(j,i,k) * delP  -log10P_jk + contP_k
+ p(j,i,k)= base(j,k)*10^u(j,i,k)
+
+The base values for skipped conductances can be recovered from metadata:
+ontra4_excite.conf.yaml
+
+*) Quicker method to recover phys conductances from u*:
+ontra4_excite.conf.yaml  contains:  centP_k,  delP_k
+for [idx, name, centP,delP] in ['conductName']:
+    p_k= 10^( u*/delP_k +centP_k)
+    p_k=np.exp(( u*/delP_k +centP_k)*np.log(10))
+
+
+d) identify 4 probes indices
+get from Roy list of 4 probe names per morphology and repack the to my format:
+./repack_probNames.py
+Add the output to ontra4_excite2.conf.yaml
+    
+Criterium:  dist2soma is closest to 50um for soma_dendrites, 150um for axon, apic_dend 150um:
+probeNamePerCell:
+   bbp2051:  [[0, 'soma_0', 0.0], [39, 'axon_43', 147.4], [52, 'apic_6', 148.0], [40, 'dend_7', 48.8]]
+  bbp2052:  [[0, 'soma_0', 0.0], [21, 'axon_2', 130.7], [6, 'apic_11', 128.9], [22, 'dend_35', 51.1]]
+  
+d.1) add it to ontra4_excite.conf.yaml
+
+e) decide if all avaliable frames per cell will be used and stored in to a single h5 file named. The train/val/test data split is done (legacy decision).
+...ontra4/bbp0985_excite.cellSpike_4prB8kHz.data.h5
+
+train_frames                   Dataset {73728, 1600, 4}
+train_phys_par                 Dataset {73728, 19}
+train_unit_par                 Dataset {73728, 19}
+val_xxx (all 3)
+test_xx  (all 3) etc.
+
+The meta-file will have the same core name:
+bbp019_8inhib.cellSpike_3prB8kHz.meta.yaml
+Here the train/val/test data split is saved as well
+
+f) decide outPath: ??/global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/
+
+g) input data are 'oryginal': 67pr, 40 kHz: neuronBBP2-data_67pr/
+
+h) all the above decisions are stored in: ontra4_excite2.conf.yaml
+
+******* Execute transformation ****
+for each cell, it taks 10-15 min for ~700k frames
+
+cd ~/neuronInverter/packOntra
+./ontraTransformOne.py --cellName bbp1533
+
+OR use batch: (in misc)
+batchOntraTransform.slr
+
+executed like this:
+cd ~/neuronInverter/packOntra> 
+ sleep 3; sbatch batchOntraTransform.slr bbp1532
+
+Use ./repack_probNames.py to generate script for all cells
+
+
+i) prep meta-data yaml file  for the training.
+- must be stored w/ data (hd5 - files location)
+- the name is: meta.cellSpike_excite2_4prB8kHz.yaml
+- use --probeType excite2_4prB8kHz
+- assembled manually, include conductName to recover phys conductances
+
+Single H5 file perr clone:
+/global/cfs/cdirs/m2043/balewski/neuronBBP2-pack8kHzRam/probe_4prB8kHz/ontra4> du -hs .
+1.2T	.
+
+j) to aggeraget amny clones into 1 H5 (real ONTRA) one more step is needed:
+
+j.1) generate um_train.yaml for one clone, to be used as aux input for aggregation
+j.2) go to high-mem node
+Do it on big memory node
+
+
+ssh cori
+module load cmem  pytorch
+salloc -C amd -q bigmem -t 2:00:00
+
+cd ~/neuronInverter
+time  packOntra/aggregateData.py --numSamplesPerFile 575000 --cellName practice --outPath /global/cfs/cdirs/m2043/balewski/neuronBBP2-pack8kHzRam/probe_4prB8kHz/ontra4/
+
+
+
+*****  run test training on 4 PM node on 16 GPUs *******
+ssh pm
+
+Allocate whole node:
+salloc  -C gpu -q interactive  -t4:00:00  --gpus-per-task=1 --image=nersc/pytorch:ngc-21.08-v1 -A m2043_g --ntasks-per-node=4   -N 4
+export MASTER_ADDR=`hostname`
+export MASTER_PORT=8881
+srun -n16  shifter python -u train_dist.py --design expF2us  --facility perlmutter --cellName witness13c  --outPath outX1 
+
+
+*****  PREDICTING *******
+To predict for the test-data, based on completed training, do:
+shifter ./predict.py -n 5000 --modelPath outX1
+
+

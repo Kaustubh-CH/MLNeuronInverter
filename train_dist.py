@@ -39,7 +39,7 @@ import torch.distributed as dist
 def get_parser():  
   parser = argparse.ArgumentParser()
   parser.add_argument("--design", default='expE', help='[.hpar.yaml] configuration of model and training')
-  parser.add_argument("-o","--outPath", default='/global/cscratch1/sd/balewski/tmp_digitalMind/neuInv/manual/', type=str)
+  parser.add_argument("-o","--outPath", default='/global/homes/b/balewski/prjs/tmp_neuInv/manual/', type=str)
   parser.add_argument("--facility", default='corigpu', help='data location differes')
   parser.add_argument("--cellName", type=str, default='bbp153', help="cell shortName ")
   parser.add_argument("--numInpChan",default=None, type=int, help="if defined, reduces num of input channels")

@@ -1,0 +1,25 @@
+#!/bin/bash -l
+#SBATCH  -Jontra_pack
+#SBATCH  -C knl
+#SBATCH -N 1
+#SBATCH   -t 2:30:00 
+#SBATCH  -q regular
+#-SBATCH  -q premium
+#-SBATCH  -q debug -t 25:00
+#SBATCH  --account m2043
+# - - -  no SBATCH commands below this line - - - - 
+
+date
+echo ontraTrans-`hostname`
+module load pytorch
+export HDF5_USE_FILE_LOCKING=FALSE
+( sleep 60; echo; date; free -g; top ibn1)&
+( sleep 600; echo; date; free -g; top ibn1)&
+
+#cellN='bbp019'
+cellN=$1
+echo transform cellN=$cellN start ...
+cd /global/homes/b/balewski/neuronInverter/packOntra
+time python -u ./ontraTransformOne.py --cellName $cellN
+#time python -u ./ontra3TransformOne.py --transformConfig ontra3_inhibit_67pr --cellName $cellN 
+echo done
