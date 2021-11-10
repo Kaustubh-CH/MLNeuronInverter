@@ -1,0 +1,37 @@
+dataInfo:
+  fullName: 'ontra4 excitatory cAD with clones'
+  shortName: 'ontra4_50-13'
+  dataNormalized: true
+  ustarTransform: true
+  featureName: [soma, axon_150um, apic_dend_150um, soma_dend_50um]
+  featureType: probes_4prB8kHz	  
+  h5nameTemplate: '*_excite.cellSpike_4prB8kHz.data.h5'
+  numFeature: 4
+  numPar: 15
+  numTimeBin: 1600
+  parName: [gNaTs2.tbar.NaTs2.t.api, gSKv3.1bar.SKv3.1.api, gImbar.Im.api, gNaTa.tbar.NaTa.t.axn, gK.Tstbar.K.Tst.axn, gNap.Et2bar.Nap.Et2.axn, gSK.E2bar.SK.E2.axn, gCa.HVAbar.Ca.HVA.axn, gK.Pstbar.K.Pst.axn, gCa.LVAstbar.Ca.LVAst.axn, gSKv3.1bar.SKv3.1.som, gNaTs2.tbar.NaTs2.t.som, gIhbar.Ih.som, gCa.LVAstbar.Ca.LVAst.som, gIhbar.Ih.den]
+
+  cellSplit: { # e-type=cAD w/ clones, num =12*5+3=63
+    practice: [  #len=50
+      bbp2054, bbp2055, bbp2051, bbp2053, bbp2083, bbp2084, bbp1023, bbp1021, bbp1025, bbp1024, bbp2075, bbp2074, bbp2073, bbp2072, bbp0545, bbp0544, bbp0543, bbp0542, bbp1552, bbp1554, bbp1555, bbp1551, bbp1525, bbp1521, bbp1522, bbp1523, bbp1762, bbp1763, bbp1765, bbp1761, bbp2065, bbp2062, bbp2061, bbp2063, bbp1565, bbp1562, bbp1563, bbp1561, bbp1531, bbp1534, bbp1535, bbp1533, bbp1542, bbp1541, bbp1545, bbp1544, bbp0982, bbp0983, bbp0985, bbp0984 ],
+    witness: [  #len=13
+      bbp2052, bbp2085, bbp1022, bbp2071, bbp0541, bbp1553, bbp1524, bbp1764, bbp2064, bbp1564, bbp1532, bbp1543, bbp0981 ]
+  }
+
+  conductName:
+   [[0, 'gNaTs2.tbar.NaTs2.t.api', -1.751552263920557, 1.1689409102644481],
+   [1, 'gSKv3.1bar.SKv3.1.api', -2.3440905338045113, 1.9457920895720962],
+   [2, 'gImbar.Im.api', -3.4223319905813763, 1.4223319796101745],
+   [3, 'gNaTa.tbar.NaTa.t.axn', 0.5493490365346249, 1.0527005420377518],
+   [4, 'gK.Tstbar.K.Tst.axn', -2.017203815123177, 1.967855825446991],
+   [5, 'gNap.Et2bar.Nap.Et2.axn', -3.1302264861722424, 2.121585494971412],
+   [6, 'gSK.E2bar.SK.E2.axn', -1.5778017363150396, 1.5706953133453245],
+   [7, 'gCa.HVAbar.Ca.HVA.axn', -3.2593216945173697, 1.254956876547805],
+   [8, 'gK.Pstbar.K.Pst.axn', -0.18967893864608368, 1.178031851647468],
+   [10, 'gCa.LVAstbar.Ca.LVAst.axn', -3.606397322494187, 2.548504645641411],
+   [11, 'gSKv3.1bar.SKv3.1.som', -0.8274905633786234, 1.309609191816969],
+   [14, 'gNaTs2.tbar.NaTs2.t.som', -0.016570065761408695, 1.016488426687493],
+   [15, 'gIhbar.Ih.som', -4.0969100141045445, 1.0],
+   [16, 'gCa.LVAstbar.Ca.LVAst.som', -2.820362750011693, 1.6571930307744134],
+   [17, 'gIhbar.Ih.den', -4.0969100141045445, 1.0]]
+    

@@ -4,8 +4,8 @@ __email__ = "janstar1122@gmail.com"
 import numpy as np
 
 from matplotlib import cm as cmap
-#import matplotlib as mpl # for LogNorm()
 from toolbox.Plotter_Backbone import Plotter_Backbone
+from pprint import pprint
 
 #...!...!..................
 def get_arm_color(parName):
@@ -143,10 +143,12 @@ class Plotter_NeuronInverter(Plotter_Backbone):
             if resS < 0.01:
                 ax1.text(0.1,0.6,'CONST',color='sienna',transform=ax1.transAxes)
 
+            #print('sss');pprint(self.sumRec)
             dom=self.sumRec['domain']
             tit1='dom='+dom
             tit2='MSEloss=%.3g'%self.sumRec[dom+'LossMSE']
             tit3='inp:'+str(self.sumRec['inpShape'])
+            tit4='job:'+str(self.sumRec['jobId'])
             
             yy=0.90; xx=0.04
             if j==0: ax1.text(xx,yy,tit1,transform=ax1.transAxes)
@@ -156,6 +158,7 @@ class Plotter_NeuronInverter(Plotter_Backbone):
             if j==4: ax1.text(xx,yy,'dom:'+self.sumRec['domain'][:20],transform=ax1.transAxes)
             
             if j==6: ax1.text(0.2,yy,tit3,transform=ax1.transAxes)
+            if j==7: ax1.text(0.2,yy,tit4,transform=ax1.transAxes)
             
         # more info in not used pannel
         dataTxt='data:'+sumRec['short_name'][:20]
@@ -164,6 +167,7 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         txt3+='\npred.loss %s %.3g'%(sumRec['domain'],sumRec[sumRec['domain']+'LossMSE'])
         txt3+='\ninp:'+str(sumRec['inpShape'])+',  nSampl=%d'%(u.shape[0])
         txt3+='\n train ranks=%d  time/min=%.1f '%(sumRec['trainRanks'],sumRec['trainTime']/60.)
+        txt3+='\n'+tit4
         ax1=axs[j]
         ax1.text(0.02,0.2,txt3,transform=ax1.transAxes)
 

@@ -150,7 +150,7 @@ Allocate whole node:
 salloc  -C gpu -q interactive  -t4:00:00  --gpus-per-task=1 --image=nersc/pytorch:ngc-21.08-v1 -A m2043_g --ntasks-per-node=4   -N 4
 export MASTER_ADDR=`hostname`
 export MASTER_PORT=8881
-srun -n16  shifter python -u train_dist.py --design expF2us  --facility perlmutter --cellName witness13c  --outPath outX1 
+srun -n16  shifter python -u train_dist.py --design expF2  --facility perlmutter --cellName witness13c  --outPath outX1 
 
 
 *****  PREDICTING *******

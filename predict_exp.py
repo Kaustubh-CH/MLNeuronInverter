@@ -31,7 +31,7 @@ import argparse
 def get_parser():
     parser = argparse.ArgumentParser()
     #parser.add_argument("--facility", default='corigpu', type=str)
-    parser.add_argument("-m","--modelPath",  default='/global/homes/b/balewski/prjn/2021-roys-ml/bbp153-soma-expF2/out/', help="trained model ")
+    parser.add_argument("-m","--modelPath",  default='/global/homes/b/balewski/prjn/2021-roys-ml/??', help="trained model ")
     parser.add_argument("-d","--dataPath",  default='exp4ml/', help="exp dat for ML pred")
     parser.add_argument("-o", "--outPath", default='mlPred/',help="output path for plots and tables, can be 'same'")
  
@@ -71,11 +71,8 @@ def model_infer_exper(model,loader):
     return np.array(waves), np.array(target) , np.array(output), float(loss)
 
 #...!...!..................
-def M_get_phys_packing():
-  abort - take 'conductName' from sum_train
-    inpF='/global/cfs/cdirs/m2043/balewski/neuronBBP-pack8kHzRam/probe_3prB8kHz/ontra3/etype_8inhib_v1/ontra3_8inhb.conf.yaml'
-    blob = read_yaml( inpF)
-    ustar2physLL=blob['conductName']
+def M_get_phys_packing(): 
+    ustar2physLL=mlinpMD['conductName']
     parName=mlinpMD['parName']
     centP=[];delP=[]
     for x,y in zip(ustar2physLL,parName):
@@ -133,7 +130,8 @@ if __name__ == '__main__':
     
   sumRec={}
   sumRec['domain']=domain
-
+  sumRec['jobId']=trainMD['job_id']
+  
   sumRec['numSamples']=float(U.shape[0])
   if args.trainTag==None:
       sumRec['short_name']=args.dataName+'_'+str(trainMD['job_id'])

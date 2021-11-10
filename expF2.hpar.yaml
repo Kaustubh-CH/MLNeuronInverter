@@ -16,7 +16,7 @@ batch_size: 512
 const_local_batch: True   # True is faster  but LR changes w/ num GPUs
 # validation is computed if  epoch%period<len
 validation_period: [1, 1] # [ period, len] (epochs)
-#??max_samples_per_epoch
+max_local_samples_per_epoch: 400000  # optional, 600k/task is probably still OK on PM
 
 num_data_workers: 4  
 log_freq_per_epoch: 3
@@ -44,7 +44,7 @@ train_conf:
     per_wavform_norm:  True
     
 model:
-    myId:  bbp153+expF2
+    myId:  bbp+expF2
     comment: very optimized ML model
 
     conv_block: # CNN params

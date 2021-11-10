@@ -111,8 +111,6 @@ class Plotter(Plotter_Backbone):
             if pv.shape[0]>1: stdC=np.std(pv)/np.sqrt( len(pv)-1)
             #print('iii',i,v,pv)
             avrTxt='avr(S)=%.2g\n   +/- %.1g'%(avrC, stdC)
-            #print(i,'avrTxt',avrTxt)
-            #ok11
             hcol=get_arm_color(parName[i])
             lfac=1.5
             binsX=np.linspace(lbase-lfac,lbase+lfac,30)
@@ -120,9 +118,9 @@ class Plotter(Plotter_Backbone):
 
             ax.text(0.6,0.65,avrTxt,transform=ax.transAxes, color='b')
             ax.set(title=parName[i], xlabel='log10(cond/(S)) p=%d'%(i),ylabel='samples')
-            ary=0.7
+            ary=2
             #arrow(x, y, dx, dy, **kwargs)
-            ax.arrow(lbase, ary, 0,-ary+0.1, head_width=0.2, head_length=0.15, fc='k', ec='k')
+            ax.arrow(lbase, ary, 0,-ary+0.1, head_width=0.2, head_length=0.2*ary, fc='k', ec='k')
             if i in crossTile:
                 ax.text(0.8,0.1,"BAD\nML",transform=ax.transAxes, color='b')
             

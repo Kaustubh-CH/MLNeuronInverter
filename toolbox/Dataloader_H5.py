@@ -43,11 +43,6 @@ def get_data_loader(params, inpMD,domain, verb=1):
 
   #print('bb inpChan=',conf['numInpChan'],params['num_inp_chan']); ok11
   dataset=  Dataset_h5_neuronInverter(conf,verb)
-  if 'max_samples_per_epoch' in params:
-        max_samp= params['max_samples_per_epoch']
-        print('GDL: WARN, shorter %s max_samples=%d from %d'%(domain,max_samp,dataset.numLocFrames))
-        dataset.numLocFrames=min(dataset.numLocFrames,max_samp)
-
   
   # return back some of info
   params[domain+'_steps_per_epoch']=dataset.sanity()
@@ -112,9 +107,15 @@ class Dataset_h5_neuronInverter(object):
         h5f = h5py.File(inpF, 'r')
         Xshape=h5f[dom+'_frames'].shape
         totSamp=Xshape[0]
-        
+
+        if 'max_local_samples_per_epoch' in cf:
+            max_loc_samp= cf['max_local_samples_per_epoch']
+            if cf['world_rank']==0 : logging.warning('GDL: shorter dom=%s max_local_samples=%d from %d'%(dom,max_loc_samp,totSamp//cf['world_size']))
+            totSamp=min(totSamp,max_loc_samp*cf['world_size'])
+            if dom=='val': totSamp//=8  
+            
         if dom=='exper':  # special case for exp data
-          cf['local_batch_size']=totSamp
+            cf['local_batch_size']=totSamp
 
         locStep=int(totSamp/cf['world_size']/cf['local_batch_size'])
         locSamp=locStep*cf['local_batch_size']

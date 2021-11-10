@@ -69,7 +69,7 @@ class Plotter_Backbone(object):
             self.plt.tight_layout()
             #self.plt.subplots_adjust(bottom=0.06, top=0.97) # for 21-pred
             
-            figName=self.outPath+'%s_%s_f%d'%(self.prjName,ext,fid)
+            figName=os.path.join(self.outPath,'%s_%s_f%d'%(self.prjName,ext,fid))
             if png: figName+='.png'
             else: figName+='.pdf'            
             print('Graphics saving to ',figName)

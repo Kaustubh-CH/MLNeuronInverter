@@ -51,13 +51,13 @@ def get_parser():
     return args
 
 #...!...!..................
-def load_model(sumMD,modelPath):
+def load_model(trainMD,modelPath):
     # ... assemble model
 
     device = torch.device("cuda")
     # load entirel model
-    modelF = os.path.join(modelPath, sumMD['train_params']['blank_model'])
-    stateF= os.path.join(modelPath, sumMD['train_params']['checkpoint_name'])
+    modelF = os.path.join(modelPath, trainMD['train_params']['blank_model'])
+    stateF= os.path.join(modelPath, trainMD['train_params']['checkpoint_name'])
 
     model = torch.load(modelF)
     model2 = torch.nn.DataParallel(model)
@@ -72,7 +72,7 @@ def load_model(sumMD,modelPath):
     return model2
 
 #...!...!..................
-def model_infer(model,test_loader,sumMD):
+def model_infer(model,test_loader,trainMD):
     device=torch.cuda.current_device()   
 
     model.eval()
@@ -81,7 +81,7 @@ def model_infer(model,test_loader,sumMD):
 
     # prepare output container, Thorsten's idea
     num_samp=len(test_loader.dataset)
-    outputSize=sumMD['train_params']['model']['outputSize']
+    outputSize=trainMD['train_params']['model']['outputSize']
     print('predict for num_samp=',num_samp,', outputSize=',outputSize)
     # clever list-->numpy conversion, Thorsten's idea
     Uall=np.zeros([num_samp,outputSize],dtype=np.float32)
@@ -117,19 +117,19 @@ if __name__ == '__main__':
 
   if args.outPath=='same' : args.outPath=args.modelPath
   sumF=args.modelPath+'/sum_train.yaml'
-  sumMD = read_yaml( sumF)
-  parMD=sumMD['train_params']
-  inpMD=sumMD['input_meta']
+  trainMD = read_yaml( sumF)
+  parMD=trainMD['train_params']
+  inpMD=trainMD['input_meta']
   
   assert torch.cuda.is_available() 
-  model=load_model(sumMD,args.modelPath)
+  model=load_model(trainMD,args.modelPath)
   #1print(model)
 
   if args.cellName!=None:
       parMD['cell_name']=args.cellName
 
   if args.numSamples!=None:
-      parMD['max_samples_per_epoch' ] = args.numSamples
+      parMD['max_local_samples_per_epoch' ] = args.numSamples
   domain=args.dom
 
   parMD['world_size']=1
@@ -137,22 +137,23 @@ if __name__ == '__main__':
   data_loader = get_data_loader(parMD,  inpMD,domain, verb=1)
 
   startT=time.time()
-  loss,U,Z=model_infer(model,data_loader,sumMD)
+  loss,U,Z=model_infer(model,data_loader,trainMD)
   predTime=time.time()-startT
   print('M: infer : Average loss: %.4f  dom=%s samples=%d , elaT=%.2f min\n'% (loss, domain, Z.shape[0],predTime/60.))
 
   sumRec={}
   sumRec['domain']=domain
+  sumRec['jobId']=trainMD['job_id']
   sumRec[domain+'LossMSE']=float(loss)
   sumRec['predTime']=predTime
   sumRec['numSamples']=U.shape[0]
   sumRec['lossThrHi']=0.50  # for tagging plots
-  sumRec['inpShape']=sumMD['train_params']['model']['inputShape']
-  sumRec['short_name']=sumMD['train_params']['cell_name']
-  sumRec['modelDesign']=sumMD['train_params']['model']['myId']
-  sumRec['trainRanks']=sumMD['train_params']['world_size']
-  sumRec['trainTime']=sumMD['trainTime_sec']
-  sumRec['loss_valid']= sumMD['loss_valid']
+  sumRec['inpShape']=trainMD['train_params']['model']['inputShape']
+  sumRec['short_name']=trainMD['train_params']['cell_name']
+  sumRec['modelDesign']=trainMD['train_params']['model']['myId']
+  sumRec['trainRanks']=trainMD['train_params']['world_size']
+  sumRec['trainTime']=trainMD['trainTime_sec']
+  sumRec['loss_valid']= trainMD['loss_valid']
 
   #
   #  - - - -  only plotting code is below - - - - -
