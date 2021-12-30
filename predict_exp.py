@@ -136,7 +136,7 @@ if __name__ == '__main__':
   if args.trainTag==None:
       sumRec['short_name']=args.dataName+'_'+str(trainMD['job_id'])
   else:
-      sumRec['short_name']=args.dataName+'_ML-'+args.trainTag
+      sumRec['short_name']=args.dataName+'_ML'+args.trainTag
   sumRec['exper_info']= expMD
   sumRec['parName']=mlinpMD['parName']
   orgName=expand_param_names(sumRec['parName'])

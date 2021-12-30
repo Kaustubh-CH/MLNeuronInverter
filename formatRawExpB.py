@@ -17,8 +17,11 @@ import argparse
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
-    parser.add_argument("--rawPath", default='/global/homes/b/balewski/prjn/2021-roys-experiment/october/raw/',help="input  raw data path for experiments")
-    parser.add_argument("--dataPath", default='/global/homes/b/balewski/prjn/2021-roys-experiment/october/data8kHz/',help="output path  rebinned Waveforms  ")
+    parser.add_argument("--rawPath",
+                        #default='/global/homes/b/balewski/prjn/2021-roys-experiment/october/raw/',
+                        default='/global/homes/r/roybens/fromMac/',
+                        help="input  raw data path for experiments")
+    parser.add_argument("--dataPath", default='/global/homes/b/balewski/prjn/2021-roys-experiment/october/Xdata8kHz/',help="output path  rebinned Waveforms  ")
 
     parser.add_argument("--templeteName",  default='211002_1_NI', help="all files matching  *template* will be agregated ")
     parser.add_argument("--saveNameExt",  default='', help="optional output h5 output extension, if same cell data needs split ")
@@ -222,7 +225,7 @@ if __name__=="__main__":
     print('M:metaD');pprint(metaD)
          
     outF='%s.%s.h5'%(saveF,metaD['formatName'])
-    write3_data_hdf5(bigData,args.dataPath+outF,metaD=metaD)
+    write3_data_hdf5(bigData,os.path.join(args.dataPath,outF),metaD=metaD)
     print('M:done %s numSweep=%d'%(saveF,totNumSweep))
 
  

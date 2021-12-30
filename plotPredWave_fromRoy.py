@@ -11,7 +11,7 @@ from toolbox.Util_Experiment import rebin_data1D
 
 
 import numpy as np
-import argparse
+import argparse,os
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2],
@@ -19,7 +19,10 @@ def get_parser():
     parser.add_argument( "-X","--noXterm", dest='noXterm',
         action='store_true', default=False,help="disable X-term for batch mode")
 
-    parser.add_argument("-d", "--dataPath",  default='/global/homes/b/balewski/prjn/2021-roys-simulation/2021-neuron-pred-from-ml/exp_pred_NEURON_2019_1/',help=" data location")
+    parser.add_argument("-d", "--dataPath",help=" data location",
+                        #default='/global/homes/b/balewski/prjn/2021-roys-simulation/2021-neuron-pred-from-ml/exp_pred_NEURON_2019_1/'
+                        default='pred2'
+    )
 
     
     parser.add_argument("--formatName",  default='neurPred', help="data name extesion ")
@@ -50,10 +53,10 @@ class Plotter(Plotter_Backbone):
         ax = self.plt.subplot(nrow,ncol,1)
 
         # experiment
-        bigD=h5D['15-pred']
+        bigD=h5D['14-pred']
         
         timeV=bigD['time']
-        waveA=bigD['waves_ml']
+        waveA=bigD['exper_frames']
         stimA=bigD['stims']
             
         wave=waveA[iSamp,:,0]
@@ -137,45 +140,6 @@ class Plotter(Plotter_Backbone):
 
 
 #...!...!..................
-    def XphysParams1D(self,bigD,plDD,figId=4):
-
-        logC=np.log10(bigD['pred_cond'])
-        logB=np.log10(plDD['base_cond'])
-        parName=plDD['parName']
-        
-        nPar=len(parName)
-        assert nPar==logC.shape[1]
-        print('PP1Da:',logC.shape)
-        nrow,ncol=3,5
-        
-        figId=self.smart_append(figId)
-        fig=self.plt.figure(figId,facecolor='white', figsize=(2.75*ncol,2.2*nrow))
-
-        binsX=30
-        for i in range(0,nPar):
-            ax=self.plt.subplot(nrow,ncol,i+1)
-            v=logC[:,i]
-            v=v[8]  # pick only one sample to plot
-            lbase=logB[i]
-            #print('iii',i,v,base)
-            hcol=get_arm_color(parName[i])
-            lfac=1.5
-            binsX=np.linspace(lbase-lfac,lbase+lfac,50)
-            (binCnt,_,_)=ax.hist(v,binsX,color=hcol)
-                                  
-            ax.set(title=parName[i], xlabel='log10(cond/(S)) %d'%(i),ylabel='samples')
-            ary=0.6
-            #arrow(x, y, dx, dy, **kwargs)
-            ax.arrow(lbase, ary, 0,-ary+0.1, head_width=0.2, head_length=0.15, fc='k', ec='k')
-            for x in [-1,1]:
-                ax.axvline(lbase+x, color='black', linestyle='--')
-            ax.grid()
-            if i==0:
-                ax.text(-0.05,0.85,plDD['short_name'],transform=ax.transAxes, color='r')
-            if i==1:
-                ax.text(0.05,0.85,'n=%d'%logC.shape[0],transform=ax.transAxes, color='r')
-
-#...!...!..................
             
 #=================================
 #=================================
@@ -186,13 +150,16 @@ if __name__=="__main__":
 
     args=get_parser()
 
-    inpD={'15-pred':'all_params','13-pred':'2params_fixed','12-pred':'3params_fixed'}
+    #inpD={'15-pred':'all_params','13-pred':'2params_fixed','12-pred':'3params_fixed'}
+    inpD={'14-pred'}
+    
 
     h5D={}
     md={}
     for x in inpD:        
-        inpF='210611_3_exp_predictions_%s.%s.h5'%(inpD[x],args.formatName)
-        bigD,inpMD=read3_data_hdf5(args.dataPath+inpF, verb=args.verb)
+        #inpF='210611_3_exp_predictions_%s.%s.h5'%(inpD[x],args.formatName)
+        inpF='210611_3_NI-a0.17_j329867.mlPred._neurPred_L5TTPC2_1.h5'
+        bigD,inpMD=read3_data_hdf5( os.path.join(args.dataPath,inpF), verb=args.verb)
         h5D[x]=bigD
         md[x]=inpMD
    
@@ -209,7 +176,7 @@ if __name__=="__main__":
         plDD['idxLR']=[0,8,1] # 1st range(n0,n1,step) ampl-index
         #plDD['wave_data']='exper_frames'
         #plDD['amplLR']=[-90,70]  #  (mV) amplitude range
-        plot.waveArrayOne(h5D,plDD,iSamp=3)
+        plot.waveArrayOne(h5D,plDD,iSamp=1)
         #plot.waveArray(h5D,plDD)
         
     if 0:  # phys conductances

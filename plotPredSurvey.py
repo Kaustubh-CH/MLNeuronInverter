@@ -122,7 +122,7 @@ class Plotter(Plotter_Backbone):
             #arrow(x, y, dx, dy, **kwargs)
             ax.arrow(lbase, ary, 0,-ary+0.1, head_width=0.2, head_length=0.2*ary, fc='k', ec='k')
             if i in crossTile:
-                ax.text(0.8,0.1,"BAD\nML",transform=ax.transAxes, color='b')
+                ax.text(0.8,0.1,"BAD\nML",transform=ax.transAxes, color='g')
             
             for x in [-1,1]:
                 ax.axvline(lbase+x, color='black', linestyle='--')
@@ -174,7 +174,7 @@ if __name__=="__main__":
         plot.waveArray(bigD,plDD)
 
     if 1:  # phys conductances
-        plDD['crossTile']=[6,7,11,13,15,16,17,18,19]
+        plDD['crossTile']=[12]
         plot.physParams1D(bigD,plDD)
         
     plot.display_all('scoreSim')

@@ -19,13 +19,13 @@ def get_parser():
                         help="increase output verbosity", default=1, dest='verb')
     parser.add_argument( "-X","--noXterm", dest='noXterm', action='store_true', default=False,help="disable X-term for batch mode")
     parser.add_argument("--rawPath",
-                        #default='/global/homes/b/balewski/prjn/2021-roys-experiment/october/raw/',
-                        default='/global/homes/r/roybens/fromMac/',
+                        default='/global/homes/r/roybens/fromMac/neuron_wrk/cori_mount',
                         help="input  raw data path for experiments")
 
     parser.add_argument("-o","--outPath", default='out/',help="output path for plots and tables")
 
-    parser.add_argument("-r", "--routine", type=str, default='211002_1_NI_018_16', help="[.h5]  single measurement file")
+    parser.add_argument("-r", "--routine", type=int, default=21, help=" [.h5]  single measurement file")
+    parser.add_argument('-c',"--cellName", type=str, default='211219_5', help=" [_analyzed.h5] raw measurement file")
 
     args = parser.parse_args()
     args.formatVenue='prod'
@@ -42,17 +42,15 @@ class Plotter(Plotter_Backbone):
         
         
 #...!...!..................
-    def stims(self,stims,plDD,presc=1,figId=5):
+    def stims(self,stim,plDD,figId=5):
         figId=self.smart_append(figId)
         fig=self.plt.figure(figId,facecolor='white', figsize=(16,8))
         ax = self.plt.subplot(1,1,1)
         pprint(plDD)
-        timeV=plDD['timeV']
         
-        N=stims.shape[0]
-        for n in range(0,N,presc):
-            hexc='C%d'%(n%10)
-            ax.plot(timeV,stims[n], color=hexc, label='%d'%n,linewidth=0.7)
+        timeV=plDD['timeV']
+        amp=plDD['stim_ampl']
+        ax.plot(timeV,stim, label='%d'%amp,linewidth=0.7)
 
         ax.legend(loc='best',title='stim ampl')
         tit=plDD['shortName']
@@ -94,33 +92,45 @@ class Plotter(Plotter_Backbone):
 #=================================
 if __name__=="__main__":
 
-
     args=get_parser()
-    args.prjName='expA'
-    xL=args.routine.split('_')
-    args.rawPath+='/'+'_'.join(xL[:2])+'/'
-    inpF='%s/%s.h5'%(args.rawPath,args.routine)
+    args.prjName='expC'
+    inpF=os.path.join(args.rawPath,args.cellName+'_analyzed.h5')
     print('M:rawPath=',args.rawPath,inpF)
     bulk,expMD=read3_data_hdf5(inpF)
+    
     waves=bulk['Vs']
-    timeV=bulk['time']
-    stims=bulk['stim']
+    stim_time=bulk['stim_time']
+    stims=bulk['stim_waveform']
 
+    exp_log=expMD.pop('exp_log')
     pprint(expMD)
+    for rec in exp_log:
+        #
+        rtn_id_start=rec.pop('rtn_id_start')
+        print('\nrtn_id_start:',rtn_id_start,end=' ')
+        pprint(rec)
+
+    print('my routine=',args.routine)
+    plDD={}
+    for x in ['routine_id','stim_ampl','time_from_start']:
+        y=bulk[x]
+        print(x,y[args.routine])
+        plDD[x]=y[args.routine]
     # - - - - - PLOTTER - - - - -
 
     plot=Plotter(args)
-    plDD={}
+    
     plDD['shortName']=args.routine
-    #for x in [ 'units',: plDD[x]=inpMD[x]
-    plDD['timeV']=timeV
+  
+    plDD['timeV']=stim_time
+    
 
     #- - - -  display
     #plDD['timeLR']=[10.,160.]  # (ms)  time range 
-    if 0:
-        plot.stims(stims,plDD,presc=3)
+    if 1:
+        plot.stims(stims[args.routine],plDD)
     if 1:
         #plDD['amplLR']=[-90,70]  #  (mV) amplitude range
-        sumL=plot.waveform(waves,plDD)
+        sumL=plot.waveform(waves[args.routine],plDD)
 
-    plot.display_all('rawB')
+    plot.display_all('rawC')
