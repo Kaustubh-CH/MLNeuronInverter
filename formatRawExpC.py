@@ -18,7 +18,8 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
     parser.add_argument("--rawPath",
-                        default='/global/homes/r/roybens/fromMac/neuron_wrk/cori_mount/',
+                        #default='/global/homes/r/roybens/fromMac/neuron_wrk/cori_mount/',
+                        default='/global/homes/r/roybens/fromMac/neuron_wrk/NeuronStable',
                         help="input  raw data path for experiments")
     parser.add_argument("--dataPath", default='/global/homes/b/balewski/prjn/2021-roys-experiment/december/data8kHz/',help="output path  rebinned Waveforms  ")
     parser.add_argument('-c',"--cellName", type=str, default='211219_5', help=" [_analyzed.h5] raw measurement file")
@@ -49,6 +50,7 @@ def survey_routines(bigRaw,rawMD, rr):
     for ir in range(rr[0],rr[1]+1):
         stimAmpl=float(bigRaw['stim_ampl'][ir])
         print('ir:',ir,stimAmpl)
+        if stimAmpl<0.01 : continue
         if stimAmpl not in tmpD: tmpD[stimAmpl]=[]
         tmpD[stimAmpl].append(ir)
         cnt+=1
@@ -156,7 +158,8 @@ if __name__=="__main__":
     numSweepPerRoutine=2  # each routine has 2 sweeps 
     sweepDurationInRoutine=3 # Roy: 3 sec separation between sweeps
 
-    inpF=os.path.join(args.rawPath,args.cellName+'_analyzed.h5')
+    #inpF=os.path.join(args.rawPath,args.cellName+'_analyzed.h5')
+    inpF=os.path.join(args.rawPath,args.cellName+'.NiExp.h5')
     print('M:rawPath=',args.rawPath)
     bigRaw,rawMD=read3_data_hdf5(inpF)
 

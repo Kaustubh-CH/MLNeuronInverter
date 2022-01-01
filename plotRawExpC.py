@@ -19,7 +19,8 @@ def get_parser():
                         help="increase output verbosity", default=1, dest='verb')
     parser.add_argument( "-X","--noXterm", dest='noXterm', action='store_true', default=False,help="disable X-term for batch mode")
     parser.add_argument("--rawPath",
-                        default='/global/homes/r/roybens/fromMac/neuron_wrk/cori_mount',
+                        #default='/global/homes/r/roybens/fromMac/neuron_wrk/cori_mount',
+                        default='/global/homes/r/roybens/fromMac/neuron_wrk/NeuronStable',
                         help="input  raw data path for experiments")
 
     parser.add_argument("-o","--outPath", default='out/',help="output path for plots and tables")
@@ -49,8 +50,8 @@ class Plotter(Plotter_Backbone):
         pprint(plDD)
         
         timeV=plDD['timeV']
-        amp=plDD['stim_ampl']
-        ax.plot(timeV,stim, label='%d'%amp,linewidth=0.7)
+        ampl=plDD['stim_ampl']
+        ax.plot(timeV,stim, label=str(ampl),linewidth=0.7)
 
         ax.legend(loc='best',title='stim ampl')
         tit=plDD['shortName']
@@ -94,11 +95,13 @@ if __name__=="__main__":
 
     args=get_parser()
     args.prjName='expC'
-    inpF=os.path.join(args.rawPath,args.cellName+'_analyzed.h5')
+    #inpF=os.path.join(args.rawPath,args.cellName+'_analyzed.h5')
+    inpF=os.path.join(args.rawPath,args.cellName+'.NiExp.h5')
     print('M:rawPath=',args.rawPath,inpF)
     bulk,expMD=read3_data_hdf5(inpF)
     
-    waves=bulk['Vs']
+    waves=bulk['Vs']  # as-is
+    #waves=bulk['60HzFilteredVs']  # filtered by roy
     stim_time=bulk['stim_time']
     stims=bulk['stim_waveform']
 
@@ -107,23 +110,22 @@ if __name__=="__main__":
     for rec in exp_log:
         #
         rtn_id_start=rec.pop('rtn_id_start')
-        print('\nrtn_id_start:',rtn_id_start,end=' ')
-        pprint(rec)
+        print('rtn_id_start:',rtn_id_start)
+        print("   ",rec)
 
     print('my routine=',args.routine)
     plDD={}
-    for x in ['routine_id','stim_ampl','time_from_start']:
+    for x in ['time_from_start']:
         y=bulk[x]
         print(x,y[args.routine])
         plDD[x]=y[args.routine]
     # - - - - - PLOTTER - - - - -
 
     plot=Plotter(args)
-    
-    plDD['shortName']=args.routine
-  
+      
     plDD['timeV']=stim_time
-    
+    plDD['stim_ampl']=bulk['stim_ampl'][args.routine]
+    plDD['shortName']='routine=%d stim_ampl=%s'%(args.routine,plDD['stim_ampl'])
 
     #- - - -  display
     #plDD['timeLR']=[10.,160.]  # (ms)  time range 

@@ -19,7 +19,7 @@ def get_parser():
 
     parser.add_argument("-d", "--dataPath",  default='out/',help="scored data location")
 
-    parser.add_argument("--dataName",  default='bbp153', help="shortName ")
+    parser.add_argument("--dataName",  default='211215_0a-A0.14_MLontra3', help="shortName ")
     parser.add_argument("--formatName",  default='mlPred', help="data name extesion ")
 
     parser.add_argument("-o","--outPath", default='out/',help="output path for plots and tables")
@@ -116,6 +116,7 @@ class Plotter(Plotter_Backbone):
             binsX=np.linspace(lbase-lfac,lbase+lfac,30)
             (binCnt,_,_)=ax.hist(v,binsX,color=hcol)
 
+            print('PW:',i,parName[i],avrTxt)
             ax.text(0.6,0.65,avrTxt,transform=ax.transAxes, color='b')
             ax.set(title=parName[i], xlabel='log10(cond/(S)) p=%d'%(i),ylabel='samples')
             ary=2
