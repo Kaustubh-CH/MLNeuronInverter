@@ -127,7 +127,7 @@ if __name__ == '__main__':
 
   if args.cellName!=None:
       parMD['cell_name']=args.cellName
-
+      
   if args.numSamples!=None:
       parMD['max_local_samples_per_epoch' ] = args.numSamples
   domain=args.dom
@@ -177,5 +177,5 @@ if __name__ == '__main__':
     plot.frames_vsTime(xx,yy,9)
    
   
-  plot.display_all('predict_'+domain)  
+  plot.display_all(domain+'_'+args.cellName, png=0)  
 

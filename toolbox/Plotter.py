@@ -86,7 +86,7 @@ class Plotter_NeuronInverter(Plotter_Backbone):
 
         sumRec=self.sumRec
         nrow,ncol=4,5 # match to pitchfork layout 
-        #nrow,ncol=4,4
+        nrow,ncol=4,4  # for proposal update, 2022-01
 
         if  self.formatVenue=='poster':
             # grant August-2020
@@ -120,6 +120,7 @@ class Plotter_NeuronInverter(Plotter_Backbone):
             ax1.plot([0, 1], [0,1], color='magenta', linestyle='--',linewidth=0.5,transform=ax1.transAxes) #diagonal
             # 
             ax1.set_title('%d:%s'%(iPar,parName[iPar]), size=10)
+            tit4='job:'+str(self.sumRec['jobId'])
 
             if  self.formatVenue=='poster': continue
 
@@ -148,7 +149,7 @@ class Plotter_NeuronInverter(Plotter_Backbone):
             tit1='dom='+dom
             tit2='MSEloss=%.3g'%self.sumRec[dom+'LossMSE']
             tit3='inp:'+str(self.sumRec['inpShape'])
-            tit4='job:'+str(self.sumRec['jobId'])
+            
             
             yy=0.90; xx=0.04
             if j==0: ax1.text(xx,yy,tit1,transform=ax1.transAxes)

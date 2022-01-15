@@ -1,16 +1,17 @@
 #!/bin/bash -l
 # common job script for CoriGpu and Perlmutter using Shifter
-#SBATCH --time=1:50:00  -J ni_h5
+#SBATCH --time=30:00  -J ni_h5
 #-SBATCH -C gpu -A m2043_g  -q debug # Kris
-#SBATCH -C gpu -A nstaff_g  -q early_science # for early_science
+#SBATCH -C gpu  
+#-SBATCH -C gpu -A nstaff_g  -q early_science # for early_science
 #SBATCH --image=nersc/pytorch:ngc-21.08-v2
 #SBATCH -o out/slurm-%j.out
 #-SBATCH  -x cgpu08 # block sick nodes
 #---CORI_GPU---
-#-SBATCH  -N1 --ntasks-per-node=4  --gpus-per-task=1  --cpus-per-task=10
+#SBATCH  -N1 --ntasks-per-node=4  --gpus-per-task=1  --cpus-per-task=10
 #-SBATCH -N8 --ntasks-per-node=8 --gpus-per-task=1 --cpus-per-task=10 --exclusive
 #---PERLMUTTER---
-#SBATCH -N16 --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive
+#-SBATCH -N16 --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive
 # - - - E N D    O F    SLURM    C O M M A N D S
 nprocspn=${SLURM_NTASKS_PER_NODE}
 #nprocspn=1  # special case for partial use of full node
@@ -19,12 +20,13 @@ nprocspn=${SLURM_NTASKS_PER_NODE}
 #cellName=witness17c # has 2.5M training samples, inhibitory
 #cellName=october12c # has 5.8M training samples, inhibitory
 #cellName=practice10c  # has 4.8M training samples, excitatory
-cellName=practice50c  # has 29M training samples, excitatory2
+#cellName=practice50c  # has 29M training samples, excitatory2
 #cellName=witness2c # has 1M training samples, excitatory
-#cellName=bbp124  # has 0.5M training samples, inhibitory
+cellName=bbp1543  # has 0.5M training samples, inhibitory
 design=expF2us  # 'expF2us' is optimal for experiment
-numProbe=1
-epochs=211
+numProbe=4
+epochs=211 # 50 cells
+epochs=141 # 1 cells
 
 
 N=${SLURM_NNODES}
@@ -56,7 +58,7 @@ elif [[  $NERSC_HOST == perlmutter ]]   ; then
 fi
 
 #wrkDir0=$SCRATCH/tmp_digitalMind/neuInv/september/
-wrkDir0=/global/cfs/cdirs/mpccc/balewski/tmp_neurInv/${cellName}_${numProbe}pr/
+wrkDir0=/global/cfs/cdirs/mpccc/balewski/tmp_neurInv2/${cellName}_${numProbe}pr/
 
 wrkDir=$wrkDir0/$wrkSufix
 
@@ -81,6 +83,6 @@ time srun -n $G  shifter  bash  toolbox/driveOneTrain.sh  >& log.train
 sleep 3
 
 echo S:done train
-time srun -n1 shifter   ./predict.py --numSamples 500000 --modelPath out/ -X  >& log.predict
+time srun -n1 shifter   ./predict.py --numSamples 500000 --modelPath out/ --cellName $cellName -X  >& log.predict
 echo S:done predict
 date

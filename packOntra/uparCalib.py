@@ -154,6 +154,20 @@ def find_u2ustar_trans(parN2D,data2D):
         #print(j,a,b,abh,dh1)
 
 #...!...!..................
+def find_common_bbp3_range(parN2D,data2D):
+    print('find_common_bbp3_range:',data2D.shape)
+
+    nCell,nPar=data2D.shape
+    for j in range( nPar):
+        valV=data2D[:,j]
+        a=np.min(valV)
+        b=np.max(valV)
+        # restore conductance in Simens
+        cLo=np.exp(a*2.3026)
+        cHi=np.exp(b*2.3026)
+        print('%s,%3g,%3g'%(parN2D[j][1],cLo,cHi))
+
+#...!...!..................
 def buil_var_parL(metaD):
 
     #blackList={'gkbar.StochKv.den','gK.Tstbar.K.Tst.axn','gNap.Et2bar.Nap.Et2.den','gkbar.KdShu2007.den'}  # for all inhibitory cells 
@@ -215,6 +229,8 @@ print('\nparNames: [',', '.join(parNL),' ]')
 
 
 print('M: lgp2D:',lgp2D.shape)
+find_common_bbp3_range(parRng2D,lgp2D)
+
 find_u2ustar_trans(parRng2D,lgp2D)
 pprint(parRng2D)
 
