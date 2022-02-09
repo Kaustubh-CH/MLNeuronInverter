@@ -62,13 +62,15 @@ class SpikeFinder(object):
         self.verb=verb
 
 #...!...!..................
-    def make(self,wave1):
+    def make(self,wave1):  # returnes time-sorted list of spikes
         if self.verb>1: print('JSS:make  wave shape:',wave1.shape)
         assert wave1.shape==self.timeAx.shape
+        assert not np.isnan(wave1).any()
         self.wave=np.copy(wave1) # analysis is destructive
         avrPreMemBias=np.mean(wave1[:50])
         
-        self.spikes=[]
+        #self.spikes=[]
+        self.spikesD={}
         if avrPreMemBias > -30:
             print('JSPM corruped waveform, skip it')
             print('wave1',avrPreMemBias,wave1[:50])
@@ -77,15 +79,20 @@ class SpikeFinder(object):
             if self.find_spike()<0: break
             #break #tmp
 
+        #... sort spikes by tPeak
+        tX=sorted(self.spikesD)
+        print('tX',type(tX),tX)
+        self.spikes=[ [x]+self.spikesD[x] for x in tX]
         return len(self.spikes)
 
 #...!...!..................
     def find_spike(self):
         idx=np.argmax(self.wave)
-        yPeak=self.wave[idx]
+        ampPeak=self.wave[idx]
         tPeak=self.timeAx[idx]
-        accept=yPeak>self.conf['min_peak_ampl_mV']
-        if self.verb>1: print('\n  FP:new max t=%.2f ms  y=%.1f mV  accept=%r idx=%d'%(tPeak,yPeak,accept,idx))
+        accept=ampPeak>self.conf['min_peak_ampl_mV']
+        if self.verb>1: print('\n  FP:new max t=%.2f ms  y=%.1f mV  accept=%r idx=%d'%(tPeak,ampPeak,accept,idx))
+        #print('www',self.wave)
         if not accept : return -1
 
         isSpike,idxL=self.slideLeft(idx)
@@ -99,13 +106,14 @@ class SpikeFinder(object):
         if self.verb>1: print('idxR=%d  t=%.2f ns, y=%.1f mV '%(idxR,self.timeAx[idxR],yR))
         
 
-        twidth_base=(idxR-idxL)*self.tstep
-        amp_base=(yL+yR)/2.
+        twidthBase=(idxR-idxL)*self.tstep
+        ampBase=(yL+yR)/2.
+        tBase=self.timeAx[idxL]
 
-        if self.verb>1: print('base: twidth=%.1f ms, base amp=%.1f mV'%(twidth_base,amp_base))
+        if self.verb>1: print('base: twidth=%.1f ms, base amp=%.1f mV'%(twidthBase,ampBase))
 
         idx_span=[idxL,idxR]
-        ref_amp=(yPeak+amp_base)/2.
+        ref_amp=(ampPeak+ampBase)/2.
         isFwhm,ixdL,idxR=self.getFWHM(idx,ref_amp,idx_span)
         yR=self.wave[idxR]
         #print('fwhm: idxR=%d  t=%.2f ns, y=%.1f mV '%(idxR,self.timeAx[idxR],yR))
@@ -115,12 +123,13 @@ class SpikeFinder(object):
         if self.verb>1: print(' half-peak twidth=%.2f ms amp=%.1f spikeId=%d'%(twidth,(yR+yL)/2.,len(self.spikes)))
         #  isFwhm==False for  rare cases spike is at the edge of time-axis
         
-        if isSpike and isFwhm:
-                self.spikes.append([tPeak,yPeak,twidth,ref_amp,twidth_base])
-
+        if isSpike and isFwhm:            
+            #self.spikes.append([tPeak,ampPeak,twidth,tBase,ampBase,twidthBase])
+            self.spikesD[tPeak]=[ampPeak,twidth,tBase,ampBase,twidthBase]
+                
         # clear data over base range
         for i in range(idx_span[0],idx_span[1]+1):
-            self.wave[i]=amp_base
+            self.wave[i]=ampBase
 
         return 0
 

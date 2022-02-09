@@ -11,6 +11,14 @@ from toolbox.Model import  MyModel
 from toolbox.Dataloader_H5 import get_data_loader
 from toolbox.Util_IOfunc import read_yaml
 
+    
+#...!...!..................
+def average_gradients(model):
+    world_size=dist.get_world_size()
+    for param in model.parameters():
+        dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+        param.grad.data /= world_size
+
 #............................
 #............................
 #............................
@@ -84,7 +92,7 @@ class Trainer():
     # wait for all ranks to finish downloading the data - lets keep some order
     if params['world_size']>1:
       import torch.distributed as dist
-      from torch.nn.parallel import DistributedDataParallel
+      from torch.nn.parallel import DistributedDataParallel as DDP
       assert dist.is_initialized()
       dist.barrier()
       self.dist=dist # nneded by this class member methods
@@ -142,9 +150,9 @@ class Trainer():
     self.criterion =torch.nn.MSELoss().to(self.device) # Mean Squared Loss
 
     if params['world_size']>1:
-      self.model = DistributedDataParallel(self.model,
+      self.model = DDP(self.model,
                device_ids=[params['local_rank']],output_device=[params['local_rank']])
-      # note, using DDP assures the same as average_gradients(self.model), no need to do it manually ??
+      # note, using DDP assures the same as average_gradients(self.model), no need to do it manually 
     self.iters = 0
     self.startEpoch = 0
     if params['resuming']  and   self.verb:
@@ -266,7 +274,7 @@ class Trainer():
     lossSum = 0.0
 
     # Loop over training data batches
-    for i, data in enumerate(self.train_loader, 0):
+    for step, data in enumerate(self.train_loader, 0):
       self.iters += 1
 
       # Move our images and labels to GPU
@@ -295,13 +303,13 @@ class Trainer():
       # AMP: Update GradScaler loss scale value
       self.grad_scaler.update()
 
-      torch.cuda.synchronize()      
+      torch.cuda.synchronize() # Waits for all kernels in all streams on a CUDA device to complete.      
       report_bs += len(images)
       lossSum+=loss.detach()
       
-      if i % self.params['log_freq_step'] == 0 and i>0:
+      if step % self.params['log_freq_step'] == 0 and step>0:
         torch.cuda.synchronize()
-        if self.verb: logging.info('Epoch: %2d, step: %3d, Avg samp/msec/gpu: %.1f'%(self.epoch, i, report_bs / (time.time() - report_time)/1000.))
+        if self.verb: logging.info('Epoch: %2d, step: %3d, Avg samp/msec/gpu: %.1f'%(self.epoch, step, report_bs / (time.time() - report_time)/1000.))
         report_time = time.time()
         report_bs = 0
 
@@ -339,32 +347,6 @@ class Trainer():
     return  logs
 
   
-#...!...!..................
-  def Xvalidate_one_epoch(self):
-    self.model.eval()
-    optTorch=self.params['opt_pytorch']
-    loss = 0.0
-
-    with torch.no_grad():
-      for data in self.valid_loader:
-        # Move our images and labels to GPU
-        images, labels = map(lambda x: x.to(self.device), data)
-        # AMP: Add autocast context manager
-        with torch.cuda.amp.autocast(enabled=optTorch['amp']):
-          # Model forward pass and loss computation
-          outputs = self.model(images)
-          loss += self.criterion(outputs, labels)
-        
-    logs = {'loss': loss/len(self.valid_loader),}
-
-    if self.params['world_size']>1:
-      for key in sorted(logs.keys()):
-        logs[key] = torch.as_tensor(logs[key]).to(self.device)
-        self.dist.all_reduce(logs[key].detach())
-        logs[key] = float(logs[key]/self.dist.get_world_size())
-
-    return  logs
-
 #...!...!..................
   def save_checkpoint(self, checkpoint_path, model=None):
     """ We intentionally require a checkpoint_dir to be passed

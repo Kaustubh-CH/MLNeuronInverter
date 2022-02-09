@@ -14,7 +14,7 @@
 #-SBATCH -N16 --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive
 # - - - E N D    O F    SLURM    C O M M A N D S
 nprocspn=${SLURM_NTASKS_PER_NODE}
-#nprocspn=1  # special case for partial use of full node
+#nprocspn=2  # special case for partial use of full node
 
 #cellName=practice140c  # has 21M training samples, inhibitory
 #cellName=witness17c # has 2.5M training samples, inhibitory
@@ -22,11 +22,11 @@ nprocspn=${SLURM_NTASKS_PER_NODE}
 #cellName=practice10c  # has 4.8M training samples, excitatory
 #cellName=practice50c  # has 29M training samples, excitatory2
 #cellName=witness2c # has 1M training samples, excitatory
-cellName=bbp1543  # has 0.5M training samples, inhibitory
+cellName=bbp2052  # has 0.5M training samples, inhibitory
 design=expF2us  # 'expF2us' is optimal for experiment
 numProbe=4
 epochs=211 # 50 cells
-epochs=141 # 1 cells
+epochs=121 # 1 cells
 
 
 N=${SLURM_NNODES}

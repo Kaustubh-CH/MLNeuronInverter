@@ -40,7 +40,7 @@ class Plotter(Plotter_Backbone):
 #...!...!..................
     def waveform(self,plDD,figId=5):
         figId=self.smart_append(figId)
-        fig=self.plt.figure(figId,facecolor='white', figsize=(7.5,6))
+        fig=self.plt.figure(figId,facecolor='white', figsize=(13.5,6))
         ax = self.plt.subplot(1,1,1)
 
         timeV=plDD['timeV']
@@ -111,7 +111,7 @@ if __name__=="__main__":
 
     #- - - -  display
     #plDD['timeLR']=[31.,41]  # (ms)  time range 1st spike
-    plDD['timeLR']=[52.,60]  # (ms)  time range 2nd spike
+    #plDD['timeLR']=[52.,60]  # (ms)  time range 2nd spike
     
     if 1:
         #plDD['amplLR']=[-90,70]  #  (mV) amplitude range
