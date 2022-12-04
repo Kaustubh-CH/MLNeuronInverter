@@ -2,25 +2,7 @@
 '''
 Not running on CPUs !
 
-1 or many GPU configuraton is completed in this file
-
-export MASTER_ADDR=`hostname`
-export MASTER_PORT=8881
-
-
-ML training on soma only
-srun -n2 python -u train_dist.py --design expF2 --numInpChan 1  --outPath  out2
-2 GPU, LR=1e-3, 6.4 sec/epoch, 70 epochs is enough, val=0.0837
-
-ML training on 4 probes , 2 GPUs CoriGpu
-7.9 sec/epoch, val=0.0507
-
-
-Run on 4 GPUs on 1 node
- salloc -N1 -C gpu  -c 10 --gpus-per-task=1 -t4:00:00 --image=nersc/pytorch:ngc-21.02-v0 --ntasks-per-node=4 
-
-Full node
- salloc -N1 --ntasks-per-node=8  -C gpu  -c 10   --gpus-per-task=1   --exclusive  -t4:00:00    --image=nersc/pytorch:ngc-21.02-v0
+See Readmee.perlmutter
 
 
 '''
@@ -38,17 +20,20 @@ import torch.distributed as dist
 
 def get_parser():  
   parser = argparse.ArgumentParser()
-  parser.add_argument("--design", default='expE', help='[.hpar.yaml] configuration of model and training')
+  parser.add_argument("--design", default='expF2us', help='[.hpar.yaml] configuration of model and training')
   parser.add_argument("-o","--outPath", default='/global/homes/b/balewski/prjs/tmp_neuInv/manual/', type=str)
-  parser.add_argument("--facility", default='corigpu', help='data location differes')
+  parser.add_argument("--facility", default='perlmutter', help='data location differes')
   parser.add_argument("--cellName", type=str, default='bbp153', help="cell shortName ")
-  parser.add_argument("--numInpChan",default=None, type=int, help="if defined, reduces num of input channels")
+  parser.add_argument("--probsSelect",default=[0,1,2], type=int, nargs='+', help="list of probes, space separated")
+  parser.add_argument("--stimsSelect",default=[0], type=int, nargs='+', help="list of stims, space separated")
   parser.add_argument("--initLR",default=None, type=float, help="if defined, replaces learning rate from hpar")
   parser.add_argument("--epochs",default=None, type=int, help="if defined, replaces max_epochs from hpar")
    
 
   parser.add_argument("-j","--jobId", default=None, help="optional, aux info to be stored w/ summary")
   parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
+  parser.add_argument("-n", "--numGlobSamp", type=int, default=None, help="(optional) cut off num samples per epoch")
+
 
   args = parser.parse_args()
   return args
@@ -65,6 +50,7 @@ if __name__ == '__main__':
       for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
 
   #os.environ['MASTER_PORT'] = "8879"
+  #int(os.environ['SLURM_LOCALID']
   
   params ={}
   #print('M:faci',args.facility)
@@ -74,24 +60,20 @@ if __name__ == '__main__':
     os.environ['MASTER_ADDR'] = str(subprocess.check_output(get_master, shell=True))[2:-3]
     os.environ['WORLD_SIZE'] = os.environ['OMPI_COMM_WORLD_SIZE']
     os.environ['RANK'] = os.environ['OMPI_COMM_WORLD_RANK']
-    params['local_rank'] = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
   else:
-    #os.environ['MASTER_ADDR'] = os.environ['SLURM_LAUNCH_NODE_IPADDR']
     os.environ['RANK'] = os.environ['SLURM_PROCID']
     os.environ['WORLD_SIZE'] = os.environ['SLURM_NTASKS']
-    params['local_rank'] = int(os.environ['SLURM_LOCALID'])
 
   params['world_size'] = int(os.environ['WORLD_SIZE'])
     
   params['world_rank'] = 0
   if params['world_size'] > 1:  # multi-GPU training
-    torch.cuda.set_device(params['local_rank'])
+    torch.cuda.set_device(0)
     dist.init_process_group(backend='nccl', init_method='env://')
     params['world_rank'] = dist.get_rank()
     #print('M:locRank:',params['local_rank'],'rndSeed=',torch.seed())
   params['verb'] =params['world_rank'] == 0
 
-  #print('M:locRank:',params['local_rank'])
   blob=read_yaml( args.design+'.hpar.yaml',verb=params['verb'])
   params.update(blob)
   params['design']=args.design
@@ -111,11 +93,16 @@ if __name__ == '__main__':
 
   # capture other args values
   params['cell_name']=args.cellName
-  params['num_inp_chan']=args.numInpChan
+  params['probs_select']=args.probsSelect
+  params['stims_select']=args.stimsSelect
   params['data_path']=params['data_path'][args.facility]
   params['job_id']=args.jobId
   params['out_path']=args.outPath
+
   # overwrite default configuration
+  #.... update selected params based on runtime config
+  if args.numGlobSamp!=None:  # reduce num steps/epoch - code testing
+      params['max_glob_samples_per_epoch']=args.numGlobSamp
   if args.initLR!=None:
         params['train_conf']['optimizer'][1]= args.initLR
   if args.epochs!=None:

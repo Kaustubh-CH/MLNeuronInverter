@@ -13,6 +13,7 @@ class MyModel(nn.Module):
     def __init__(self,hpar,verb=0):
         super(MyModel, self).__init__()
         if verb: print('CNNandFC_Model hpar=',hpar)
+        
         timeBins,inp_chan=hpar['inputShape']
         self.inp_shape=(inp_chan,timeBins) # swap order
         

@@ -1,0 +1,70 @@
+BBP3 simu use common
+'One Network to Rule them all' (aka ONTRA)
+Revised in 2022-11 after Kaustubh produces 13 exitatory cells x 5 clones
+
+3800565_1 : L4
+3800564_1 : L6
+
+A) === each cell needs to be agregated into one h5
+~/neuronInverter/packBBP3> ./aggregate_Kaustubh.py --jid 3800564_1
+
+                     ( alternative      ....simNorm.h5 )
+
+
+closed  hdf5: /pscratch/sd/b/balewski/tmp_bbp3/L6_TPC_L1cADpyr4.simRaw.h5  size=58707.12 MB, elaT=45.1 sec
+ /pscratch/sd/b/balewski/tmp_bbp3/L4_SScADpyr4.simRaw.h5  size=58707.12 MB, elaT=43.3 sec
+
+cell_name: L4_SScADpyr4
+linearParIdx: [12, 17, 18]
+num_phys_par: 19
+num_stim_par: 2
+num_time_bins: 4000
+parName: [gNaTs2_tbar_NaTs2_t_apical, gSKv3_1bar_SKv3_1_apical, gImbar_Im_apical,
+  gIhbar_Ih_dend, gNaTa_tbar_NaTa_t_axonal, gK_Tstbar_K_Tst_axonal, gNap_Et2bar_Nap_Et2_axonal,
+  gSK_E2bar_SK_E2_axonal, gCa_HVAbar_Ca_HVA_axonal, gK_Pstbar_K_Pst_axonal, gCa_LVAstbar_Ca_LVAst_axonal,
+  g_pas_axonal, cm_axonal, gSKv3_1bar_SKv3_1_somatic, gNaTs2_tbar_NaTs2_t_somatic,
+  gCa_LVAstbar_Ca_LVAst_somatic, g_pas_somatic, cm_somatic, e_pas_all]
+physParRange:
+- [0.0752281731284902, 1.5]
+- [0.0414845305067233, 1.5]
+- [0.0016126792170322, 1.5]
+- [0.0002529822128134, 1.5]
+- [10.759237932364195, 1.5]
+- [0.1241264189989599, 1.5]
+- [0.0030020618679191, 1.5]
+- [0.1140400896879346, 1.5]
+- [0.0024018251593263, 1.5]
+- [2.5285100128127267, 1.5]
+- [0.0008106716127196, 1.5]
+- [9.486832980505132e-05, 1.5]
+- [1.55, 1.45]
+- [0.5023031161316343, 1.5]
+- [3.100061867731139, 1.5]
+- [0.0066882745543336, 1.5]
+- [9.486832980505132e-05, 1.5]
+- [1.55, 1.45]
+- [-75.0, 50]
+simu:
+  NEURON_ver: 8.0.0
+  bbp_name_clone: L4_SS_cADpyr230_5
+  full_prob_names: [soma, axon_2, dend_12]
+  job_id: '3800565'
+  num_probs: 3
+  num_sim_files: 1024
+  num_stims: 5
+  probe_names: [soma, axon, dend]
+  sim_path: /pscratch/sd/k/ktub1999/BBP_TEST2/runs2/3800565_1/L4_SScADpyr4
+  stim_names: [5k0chaotic4, 5k0step_200, 5k0ramp, 5k0chirp, 5k0step_500]
+stimParName: [stim_mult, stim_offset]
+stimParRange:
+- [1, 0.3]
+- [0, 0.3]
+timeAxis: {step: 0.1, unit: (ms)}
+
+xxxxx
+
+*) Quicker method to recover phys conductances from u:
+ontra4_excite.conf.yaml  contains:  centP_k,  delP_k
+for [idx, name, centP,delP] in ['conductName']:
+    p_k= 10^( u*/delP_k +centP_k)
+    p_k=np.exp(( u*/delP_k +centP_k)*np.log(10))

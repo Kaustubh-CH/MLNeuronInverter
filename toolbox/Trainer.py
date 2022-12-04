@@ -11,6 +11,23 @@ from toolbox.Model import  MyModel
 from toolbox.Dataloader_H5 import get_data_loader
 from toolbox.Util_IOfunc import read_yaml
 
+#...!...!..................
+def patch_h5meta(ds,params):
+    md=ds.metaData
+    # tmp move records
+    #for xN in [ 'num_probs','num_stims','probe_names', 'stim_names']:
+    #    md['simu'][xN]=md.pop(xN)
+
+    # record what portion of data is used during training
+    #pprint(params)
+ 
+    prSel=params['probs_select']
+    stSel=params['stims_select']
+    
+    md['num_probs']=len(prSel)
+    md['probe_names']=[ md['simu']['probe_names'][i] for i in prSel ]  
+    md['num_stims']=len(stSel)
+    md['stim_names']=[ md['simu']['stim_names'][i] for i in stSel ]  
     
 #...!...!..................
 def average_gradients(model):
@@ -31,7 +48,7 @@ class Trainer():
     self.isRank0=params['world_rank']==0
     self.valPeriod=params['validation_period']
     self.device = torch.cuda.current_device()      
-    logging.info('T:ini world rank %d of %d, local rank %d, host=%s  see device=%d'%(params['world_rank'],params['world_size'],params['local_rank'],socket.gethostname(),self.device))
+    logging.info('T:ini world rank %d of %d, host=%s  see device=%d'%(params['world_rank'],params['world_size'],socket.gethostname(),self.device))
 
     expDir=params['out_path']
     expDir2=os.path.join(expDir, 'checkpoints/')
@@ -50,33 +67,25 @@ class Trainer():
     # AMP: Construct GradScaler for loss scaling
     # AUTOMATIC MIXED PRECISION PACKAGE
     self.grad_scaler = torch.cuda.amp.GradScaler(enabled=optTorch['amp'])
-
-    metaF='%s/meta.cellSpike_%s.yaml'%(params['data_path'],params['probe_type'])
-    bulk=read_yaml(metaF,verb=self.verb)
-    inpMD=bulk['dataInfo']
-    self.inpMD=inpMD
-
-    '''
-    try:  # handle practice or witness
-      params['numLocalSamples']=params['globalTrainSamples']//params['world_size']  # hack to make 1-cell dataloader to work
-      params['cell_name']=inpMD['cellSplit'][ params['cell_name'][0] ]
-    except:
-      pass
-    '''
     
     if self.verb:
-      logging.info('T:params %s'%pformat(params))
+        logging.info('T:params %s'%pformat(params))
 
     # ...... END OF CONFIGURATION .........    
     if self.verb:
-      logging.info('T:imported PyTorch ver:%s'%torch.__version__)
-      logging.info('T:rank %d of %d, prime data loaders'%(params['world_rank'],params['world_size']))
+        logging.info('T:imported PyTorch ver:%s'%torch.__version__)
+        logging.info('T:rank %d of %d, prime data loaders'%(params['world_rank'],params['world_size']))
 
     params['shuffle']=True
-    self.train_loader = get_data_loader(params, inpMD,'train', verb=self.verb)    
+    self.train_loader = get_data_loader(params, 'train', verb=self.verb)
     params['shuffle']=True # use False for reproducibility
-    self.valid_loader = get_data_loader(params,  inpMD,'val', verb=self.verb)
+    self.valid_loader = get_data_loader(params, 'valid', verb=self.verb)
     
+    if self.isRank0:
+        inpMD=self.train_loader.dataset.metaData
+        patch_h5meta(self.train_loader.dataset,self.params)  # move to summary record, l:172
+        pprint(inpMD);# a67
+        
     if self.verb:
       logging.info('T:rank %d of %d, data loader initialized'%(params['world_rank'],params['world_size']))
       logging.info('T:train-data: %d steps, localBS=%d, globalBS=%d'%(len(self.train_loader),self.train_loader.batch_size,self.params['global_batch_size']))
@@ -129,7 +138,7 @@ class Trainer():
     optName, initLR=tcf['optimizer']
     lrcf=tcf['LRsched']
  
-    if optTorch['apex']: # EXTRA: use Apex FusedXXX optimizer
+    if optTorch['apex']: # EXTRA: use Apex 
       import apex
       if optName=='adam' :
         self.optimizer = apex.optimizers.FusedAdam(self.model.parameters(), lr=initLR) # note, default is adam_w_mode=True
@@ -151,7 +160,8 @@ class Trainer():
 
     if params['world_size']>1:
       self.model = DDP(self.model,
-               device_ids=[params['local_rank']],output_device=[params['local_rank']])
+                       device_ids=[0],output_device=[0])
+               #device_ids=[params['local_rank']],output_device=[params['local_rank']])
       # note, using DDP assures the same as average_gradients(self.model), no need to do it manually 
     self.iters = 0
     self.startEpoch = 0
@@ -167,7 +177,7 @@ class Trainer():
                    'host_name' : socket.gethostname(),
                    'num_ranks': params['world_size'],
                    'state': 'model_build',
-                   'input_meta':inpMD,
+                   'input_meta':self.train_loader.dataset.metaData,
                    'trainTime_sec':-1,
                    'loss_valid':-1,
                    'epoch_start': int(self.startEpoch),
@@ -210,7 +220,7 @@ class Trainer():
           #checkpoint at the end of every epoch  if loss improved
           self.save_checkpoint(self.params['checkpoint_path'])
           bestLoss= valid_logs['loss']
-          logging.info('save_checkpoint for epoch %d , val-loss=%.3g'%(epoch + 1, bestLoss) )
+          logging.info('save_checkpoint for epoch %d , val-loss=%.3g'%(epoch , bestLoss) )
 
       # . . . .   only logging and histogramming below . . . . .    
       if self.isRank0:
@@ -362,7 +372,8 @@ class Trainer():
   def restore_checkpoint(self, checkpoint_path):
     """ We intentionally require a checkpoint_dir to be passed
         in order to allow Ray Tune to use this function """
-    checkpoint = torch.load(checkpoint_path, map_location='cuda:{}'.format(self.params['local_rank']))
+    local_rank=0
+    checkpoint = torch.load(checkpoint_path, map_location='cuda:{}'.format(local_rank))
     self.model.load_state_dict(checkpoint['model_state'])
     self.iters = checkpoint['iters']
     self.startEpoch = checkpoint['epoch'] + 1

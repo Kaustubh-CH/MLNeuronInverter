@@ -1,33 +1,19 @@
 #!/bin/bash -l
-# common job script for CoriGpu and Perlmutter using Shifter
-#SBATCH --time=30:00  -J ni_h5
-#-SBATCH -C gpu -A m2043_g  -q debug # Kris
-#SBATCH -C gpu  
-#-SBATCH -C gpu -A nstaff_g  -q early_science # for early_science
+#SBATCH   -N4 --time=29:00  -J ni_h5 -q debug
 #SBATCH --image=nersc/pytorch:ngc-21.08-v2
 #SBATCH -o out/slurm-%j.out
-#-SBATCH  -x cgpu08 # block sick nodes
-#---CORI_GPU---
-#SBATCH  -N1 --ntasks-per-node=4  --gpus-per-task=1  --cpus-per-task=10
-#-SBATCH -N8 --ntasks-per-node=8 --gpus-per-task=1 --cpus-per-task=10 --exclusive
-#---PERLMUTTER---
-#-SBATCH -N16 --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive
+#SBATCH  --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive  -C gpu -A m2043_g   # Kris,
+#SBATCH  -x  nid001016,nid002685,nid002688,nid002689 # block sick nodes
 # - - - E N D    O F    SLURM    C O M M A N D S
 nprocspn=${SLURM_NTASKS_PER_NODE}
 #nprocspn=2  # special case for partial use of full node
 
-#cellName=practice140c  # has 21M training samples, inhibitory
-#cellName=witness17c # has 2.5M training samples, inhibitory
-#cellName=october12c # has 5.8M training samples, inhibitory
-#cellName=practice10c  # has 4.8M training samples, excitatory
-#cellName=practice50c  # has 29M training samples, excitatory2
-#cellName=witness2c # has 1M training samples, excitatory
-cellName=bbp2052  # has 0.5M training samples, inhibitory
+cellName=L6_TPC_L1cADpyr4  # has 0.5M training samples,  excitatory
+cellName=L4_SScADpyr4
 design=expF2us  # 'expF2us' is optimal for experiment
-numProbe=4
-epochs=211 # 50 cells
-epochs=121 # 1 cells
-
+probsSelect=" 0 1 2 "  # index from  list: ['soma', 'axon', 'dend']
+stimsSelect=" 0   "  #  list: ['5k0chaotic4', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500']
+epochs=130 
 
 N=${SLURM_NNODES}
 G=$[ $N * $nprocspn ]
@@ -45,27 +31,18 @@ env |grep NEUINV
 
 #wrkSufix=lrScan/$jobId
 
-if [[  $NERSC_HOST == cori ]]   ; then
-    echo "S:on Cori-GPU"
-    facility=corigpu
-
-elif [[  $NERSC_HOST == perlmutter ]]   ; then
+if [[  $NERSC_HOST == perlmutter ]]   ; then
     echo "S:on Perlmutter"
     facility=perlmutter
-    # bash -c 'printf "#include <stdio.h>\nint main() {  cudaFree(0);printf(\"cudaFree-done\"); }" > dummy.cu && nvcc -o dummy.exe dummy.cu'
-    #  opening and closing a GPU context on each node to reset GPUs
-    time srun -n$N -l --ntasks-per-node=1 toolbox/dummy.exe
 fi
 
-#wrkDir0=$SCRATCH/tmp_digitalMind/neuInv/september/
-wrkDir0=/global/cfs/cdirs/mpccc/balewski/tmp_neurInv2/${cellName}_${numProbe}pr/
-
+wrkDir0=$SCRATCH/tmp_neuInv/bbp3//${cellName}/
 wrkDir=$wrkDir0/$wrkSufix
 
 echo "S:cellName=$cellName  initLRstr=$initLRstr jobId=$jobId  wrkSufix=$wrkSufix wrkDir=$wrkDir" 
 date
 
-export CMD=" python -u   train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --numInpChan $numProbe --epochs $epochs "
+export CMD=" python -u   train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --probsSelect $probsSelect  --stimsSelect $stimsSelect --epochs $epochs "
 
 echo CMD=$CMD
 
@@ -83,6 +60,6 @@ time srun -n $G  shifter  bash  toolbox/driveOneTrain.sh  >& log.train
 sleep 3
 
 echo S:done train
-time srun -n1 shifter   ./predict.py --numSamples 500000 --modelPath out/ --cellName $cellName -X  >& log.predict
+time srun -n1 shifter  python -u ./predict.py --numSamples 500000 --modelPath out/ --cellName $cellName -X  >& log.predict
 echo S:done predict
 date

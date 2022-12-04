@@ -9,8 +9,9 @@ from pprint import pprint
 
 #...!...!..................
 def get_arm_color(parName):
-    armCol={'api':'C2', 'axn':'C3','som':'C4','den':'C5'}
-    arm=parName.split('.')[-1]
+    armCol={'apical':'C2', 'axonal':'C3','somatic':'C4','dend':'C5','all':'C6'}
+    arm=parName.split('_')[-1]
+    #print('ccc',parName, arm)
     hcol=armCol[arm]
     return hcol
 
@@ -82,11 +83,11 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         colMap=cmap.GnBu
 
         parName=self.inpMD['parName']
-        nPar=self.inpMD['numPar']
+        nPar=self.inpMD['num_phys_par']
 
         sumRec=self.sumRec
-        nrow,ncol=4,5 # match to pitchfork layout 
-        nrow,ncol=4,4  # for proposal update, 2022-01
+        nrow,ncol=4,5 # BBP3
+        #nrow,ncol=4,4  # for proposal update, 2022-01
 
         if  self.formatVenue=='poster':
             # grant August-2020
@@ -179,7 +180,7 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         
         metaD=self.inpMD
         parName=metaD['parName']
-        nPar=metaD['numPar']
+        nPar=self.inpMD['num_phys_par']
         nrow,ncol=4,5
         
         figId=self.smart_append(figId)

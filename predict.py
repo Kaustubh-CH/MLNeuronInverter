@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """ 
 read trained net : model+weights
 read test data from HD5
@@ -25,6 +25,7 @@ logging.basicConfig(format='%(levelname)s - %(message)s', level=logging.INFO)
 from toolbox.Util_IOfunc import read_yaml, write_yaml
 from toolbox.Plotter import Plotter_NeuronInverter
 from toolbox.Dataloader_H5 import get_data_loader
+from pprint import pprint
 import argparse
 
 #...!...!..................
@@ -120,7 +121,7 @@ if __name__ == '__main__':
   trainMD = read_yaml( sumF)
   parMD=trainMD['train_params']
   inpMD=trainMD['input_meta']
-  
+  #pprint(inpMD)
   assert torch.cuda.is_available() 
   model=load_model(trainMD,args.modelPath)
   #1print(model)
@@ -134,7 +135,7 @@ if __name__ == '__main__':
 
   parMD['world_size']=1
 
-  data_loader = get_data_loader(parMD,  inpMD,domain, verb=1)
+  data_loader = get_data_loader(parMD, domain, verb=1)
 
   startT=time.time()
   loss,U,Z=model_infer(model,data_loader,trainMD)
@@ -177,5 +178,5 @@ if __name__ == '__main__':
     plot.frames_vsTime(xx,yy,9)
    
   
-  plot.display_all(domain+'_'+args.cellName, png=0)  
+  plot.display_all(domain+'_'+args.cellName, png=1)  
 
