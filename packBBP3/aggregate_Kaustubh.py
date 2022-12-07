@@ -10,10 +10,11 @@
 __author__ = "Jan Balewski"
 __email__ = "janstar1122@gmail.com"
 
-import os,sys
+import os,sys,time
 from toolbox.Util_H5io3 import   read3_data_hdf5, write3_data_hdf5
 from pprint import pprint
 import numpy as np
+
 
 import argparse
 def get_parser():
@@ -29,7 +30,45 @@ def get_parser():
     for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
     return args
 
+#...!...!..................
+def normalize_volts(volts,name='',verb=1):  # slows down the code a lot
+    Ta = time.time()
+    #print('WW1',volts.shape,volts.dtype)
 
+    #... for breadcasting to work the 1st dim (=timeBins) must be skipped
+    X=np.swapaxes(volts,0,1).astype(np.float32) # important for correct result
+    #print('WW2',X.shape)
+        
+    xm=np.mean(X,axis=0) # average over time bins
+    xs=np.std(X,axis=0)
+    elaTm=(time.time()-Ta)/60.
+    print('Volts norm, xm:',xm.shape,'Xswap:',X.shape,'elaT=%.2f min'%elaTm)
+
+    nZer=np.sum(xs==0)
+    zerA=xs==0
+    print('   nZer=%d %s  : name=%s'%(nZer,xs.shape,name))
+    
+    #... to see indices of frames w/ volts==const
+    result = np.where(xs==0)  
+    xs[xs==0]=1  #hack:  for zero-value samples use mu=1 to allow scaling
+    X=(X-xm)/xs
+
+    #... revert indices and reduce bit-size
+    volts_norm=np.swapaxes(X,0,1).astype(np.float16)
+    del X
+    #print('WW3',volts_norm.shape,volts_norm.dtype)
+
+    if verb>1: # report flat volts for each sample
+        na,nb,nc=zerA.shape    
+        for i,A in enumerate(zerA):
+            if np.sum(A)==0: continue
+            zSt=np.sum(A,axis=0)
+            zBo=np.sum(A,axis=1)
+            print('zer', i,np.sum(A),'stims:',zSt,' body:',zBo)
+            #assert nZer==0  # to stop at 1st case
+ 
+    return volts_norm,nZer
+            
 #...!...!..................
 def get_h5_list(path):
     allL=os.listdir(path)
@@ -52,14 +91,15 @@ def get_h5_list(path):
 
 
 #...!...!..................
-def assemble_MD():
+def assemble_MD(nh5):
     _,nppar=oneD['phys_par'].shape
     _,nspar,_=oneD['phys_stim_adjust'].shape
-    _,ntbin,nprob,nstim=oneD['volts'].shape
+    nSamp,ntbin,nprob,nstim=oneD['volts'].shape
     prnmL=oneMD.pop('probeName')
  
     #... append info to MD
     smd={}
+    smd['num_total_samples']=nh5*nSamp
     smd['num_sim_files']=nh5
     smd['sim_path']=pathH5
     smd['full_prob_names']=prnmL
@@ -71,13 +111,26 @@ def assemble_MD():
     smd['probe_names']=[x.split('_')[0] for x in prnmL]
           
     md=oneMD
-    md['simu']=smd
+    md['simu_info']=smd
     md['num_time_bins']=ntbin
     md['num_phys_par']=nppar
     md['num_stim_par']=nspar
     md['cell_name']=cellName
-            
+
+    #... add units to ranges
+    pparRange=md.pop('physParRange')
+    for i in range(nppar):
+        u=['S/cm2']
+        if 'cm_' in md['parName'][i]: u=['uF/cm2']
+        if 'e_' in md['parName'][i]: u=['mV']
+        pparRange[i]+=u
+    md['phys_par_range']=pparRange
     
+    sparRange=md.pop('stimParRange')
+    for i in range(nspar):
+        sparRange[i]+=['nA']
+    md['stim_par_range']=sparRange
+        
 #...!...!..................
 def import_stims_from_CVS():
     nameL2=[]
@@ -97,37 +150,36 @@ def import_stims_from_CVS():
         assert bigD[name2].shape[0]==oneMD['num_time_bins']
         
     # ... store results in containers
-    oneMD['simu']['stim_names']=nameL2
+    oneMD['simu_info']['stim_names']=nameL2
 
 
 #...!...!..................
-def read_all_h5(inpL,dom):
-
+def read_all_h5(inpL):
     nfile=len(inpL)
     oneSamp=oneD['volts'].shape[0]
     #print('aa',inpL); oko9
-    a2a={}
+
     #... create containers
-    for x in oneD:
-        one=oneD[x]
+    for xN in oneD:
+        one=oneD[xN]
         sh1=list(one.shape)
         sh1[0]=nfile*oneSamp
-        print(dom,x,sh1)
-        domN='%s_%s'%(x,dom)
-        bigD[domN]=np.zeros(tuple(sh1),dtype=one.dtype)
-        a2a[x]=bigD[domN]  # shortuct for accumulating output
+        bigD[xN]=np.zeros(tuple(sh1),dtype=one.dtype)       
 
     #.... main loop over data
-    print('RA5:read h5...',dom,nfile)
+    print('RA5:read h5...',nfile)
     for j,name in enumerate(inpL):
         inpF=os.path.join(pathH5,name)
-        if j<10: print('read',j,name)
+        if j<10:  print('read',j,name)
+        else: print('.',end='',flush=True)
         simD,_=read3_data_hdf5(inpF,verb=0)
         ioff=j*oneSamp
         for x in simD:
-            a2a[x][ioff:ioff+oneSamp]=simD[x]
+            bigD[x][ioff:ioff+oneSamp]=simD[x]
+        # test for volts=0
+        #tag_zeros(simD['volts'],name=name)
             
-                
+                 
 #=================================
 #=================================
 #  M A I N 
@@ -138,19 +190,13 @@ if __name__=="__main__":
     
     simPath=os.path.join(args.simPath,args.jid)
     h5L,pathH5,oneD,oneMD,cellName=get_h5_list(simPath)
-    #h5L=h5L[:20]
+    #h5L=h5L[:20]  # shorten input for testing
     nh5=len(h5L)
-    
-    #bigD,splitL=assemble_containers()
-    assemble_MD()
+      
+    assemble_MD(nh5)
     bigD={}
+    read_all_h5(h5L)
     import_stims_from_CVS()
-
-    # ... split data into domains
-    nval=int(nh5/10)
-    read_all_h5(h5L[:nval],'valid')
-    read_all_h5(h5L[nval:2*nval],'test')
-    read_all_h5(h5L[2*nval:],'train')
 
     print('M:sim meta-data');   pprint(oneMD)
     print('M:big',list(bigD))
@@ -158,6 +204,7 @@ if __name__=="__main__":
     outF=os.path.join(args.outPath,oneMD['cell_name']+'.simRaw.h5')
     write3_data_hdf5(bigD,outF,metaD=oneMD)
     print('M:done')
-    
-    from toolbox.Util_IOfunc import write_yaml # for testing only
-    write_yaml(oneMD,'aa.yaml')
+
+    if 1:
+        from toolbox.Util_IOfunc import write_yaml # for testing only
+        write_yaml(oneMD,'aa.yaml')

@@ -23,7 +23,6 @@ import copy
 from torch.utils.data import Dataset, DataLoader
 import torch 
 import logging
-#from toolbox.Util_IOfunc import read_yaml
 from pprint import pprint
 
 
@@ -34,7 +33,7 @@ def get_data_loader(params,domain, verb=1):
   conf=copy.deepcopy(params)  # the input is reused later in the upper level code
   
   conf['domain']=domain
-  conf['h5name']=os.path.join(params['data_path'],params['cell_name']+'.simRaw.h5')
+  conf['h5name']=os.path.join(params['data_path'],params['cell_name']+'.mlPack1.h5')
   shuffle=conf['shuffle']
 
   dataset=  Dataset_h5_neuronInverter(conf,verb)
@@ -51,8 +50,8 @@ def get_data_loader(params,domain, verb=1):
                           shuffle=shuffle,
                           drop_last=True,
                           pin_memory=torch.cuda.is_available())
-
   return dataloader
+
 
 #-------------------
 #-------------------
@@ -100,7 +99,7 @@ class Dataset_h5_neuronInverter(object):
         # = = = READING HD5  start
         h5f = h5py.File(inpF, 'r')
             
-        Xshape=h5f['volts_'+dom].shape
+        Xshape=h5f[dom+'_volts_norm'].shape
         totSamp,timeBins,mxProb,mxStim=Xshape
 
         assert max( cf['probs_select']) <mxProb 
@@ -134,10 +133,10 @@ class Dataset_h5_neuronInverter(object):
          
         #********* data reading starts .... is compact to save CPU RAM
         # TypeError: Only one indexing vector or array is currently allowed for fancy indexing
-        volts=h5f['volts_'+dom][sampIdxOff:sampIdxOff+locSamp,:,:,cf['stims_select']].astype(np.float32)
+        volts=h5f[dom+'_volts_norm'][sampIdxOff:sampIdxOff+locSamp,:,:,cf['stims_select']] .astype(np.float32)  # fp16 is not working for Model - fix it one day
         self.data_frames=volts[:,:,cf['probs_select']].reshape(locSamp,timeBins,-1)
         #print('AA2',volts.shape,self.data_frames.shape,dom) ; ok9
-        self.data_parU=h5f['unit_par_'+dom][sampIdxOff:sampIdxOff+locSamp]
+        self.data_parU=h5f[dom+'_unit_par'][sampIdxOff:sampIdxOff+locSamp]
 
         if cf['world_rank']==0:
             blob=h5f['meta.JSON'][0]
@@ -153,22 +152,24 @@ class Dataset_h5_neuronInverter(object):
         # .......................................................
         #.... data embeddings, transformation should go here ....
         
-        if self.verb:  # WARN: it double RAM for a brief time
+        if self.verb:  # careful: it double RAM for a brief time           
            logging.info('DLI:per_waveform_norm=%r dom=%s'%(cf['data_conf']['per_wavform_norm'],cf['domain']))
         if cf['data_conf']['per_wavform_norm']:
+            remove_me
             Ta = time.time()
             #print('WW1',self.data_frames.shape,self.data_frames.dtype)
             
             # for breadcasting to work the 1st dim must be skipped
-            X=np.swapaxes(self.data_frames,0,1)# returns view, no data duplication           #print('WW2',X.shape)
-            xm=np.mean(X,axis=0) # average over 1600 time bins
+            X=np.swapaxes(self.data_frames,0,1) # returns view, no data duplication
+            #print('WW2',X.shape)
+            xm=np.mean(X,axis=0) # average over  time bins
             xs=np.std(X,axis=0)
             elaTm=(time.time()-Ta)/60.
             if self.verb>1: print('DLI:PWN xm:',xm.shape,'Xswap:',X.shape,'dom=',cf['domain'],'elaT=%.2f min'%elaTm)
 
             
             nZer=np.sum(xs==0)
-            if nZer>0: logging.warning('DLI: nZer=%d %s rank=%d : corrected  mu'%(nZer,xs.shape, self.conf['world_rank']))
+            if nZer>0: logging.warning('DLI: nZer=%d %s rank=%d dom=%s: corrected  mu'%(nZer,xs.shape, self.conf['world_rank'],cf['domain']))
             # to see indices of frames w/ 0s:   result = np.where(xs==0)  
             xs[xs==0]=1  # hack - for zero-value samples use mu=1
             X=(X-xm)/xs
@@ -181,7 +182,7 @@ class Dataset_h5_neuronInverter(object):
             X=self.data_frames
             xm=np.mean(X,axis=1)  # average over 1600 time bins
             xs=np.std(X,axis=1)
-            print('DLI:X',X[0,::500,0],X.shape,xm.shape)
+            print('DLI:X=volts_norm',X[0,::500,0],X.shape,xm.shape)
 
             print('DLI:Xm',xm[:10],'\nXs:',xs[:10],myShard,'dom=',cf['domain'],'X:',X.shape)
             

@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 '''
-plot BBP3 simulation: soma volts
+plot BBP3 simulation data
+
+./plotBaseVolts.py --dataPath  /pscratch/sd/k/ktub1999/BBP_TEST2/runs2/3800565_1/L4_SScADpyr4/ --dataName L4_SS_cADpyr_4-v3-304-c4.h5  -i 161
 
 '''
 
 from pprint import pprint
 from toolbox.Util_H5io3 import   read3_data_hdf5
 from toolbox.Plotter_Backbone import Plotter_Backbone
-import sys,os
+import sys,os,time
+from vet_volts import tag_zeros
 
 import numpy as np
 import argparse
@@ -18,10 +21,10 @@ def get_parser():
     parser.add_argument( "-X","--noXterm", dest='noXterm',
         action='store_true', default=False,help="disable X-term for batch mode")
 
-    parser.add_argument("-d", "--dataPath",  default='data5/',help="scored data location")
+    parser.add_argument("-d", "--dataPath",  default='/pscratch/sd/k/ktub1999/BBP_TEST2/runs2/3800564_1/L6_TPC_L1cADpyr4/',help="scored data location")
 
-    parser.add_argument("--dataName",  default='L4_SS_cADpyr230_1-v3-1-1-c1.h5', help="BBP3 simu file")
-    #parser.add_argument("--metaData",  default='data1/bbp3_simu_feb9.meta.h5', help="meta-data for BBP3 simu")
+    parser.add_argument("--dataName",  default='L6_TPC_L1_cADpyr_4-v3-206-c4.h5', help="BBP3 simu file")
+   
     parser.add_argument("-p", "--showPlots",  default='a', nargs='+',help="abcd-string listing shown plots")
 
     parser.add_argument("-o","--outPath", default='out/',help="output path for plots and tables")
@@ -46,7 +49,61 @@ class Plotter(Plotter_Backbone):
         self.mL7=['*','^','x','h','o','x','D']
 
 #...!...!..................
-    def overaly_volts(self,simD,simMD,plDD,jSamp,figId=7):
+    def overlay_50Kstims(self,simD,simMD,plDD,jSamp,figId=7):
+        figId=self.smart_append(figId)
+        nrow,ncol=5,1
+        fig=self.plt.figure(figId,facecolor='white', figsize=(10,13))
+
+        stimHRN=simMD['stimName50k']
+        numTbinHR=25000
+        timeHR =np.arange(numTbinHR,dtype=np.float32)*simMD['timeAxis']['step'] /5. 
+        
+        stimLRN=simMD['stimName']
+        stimLR=simD['stims'][stimLRN[0]] # to generate x-axis
+        numTbinLR=stimLR.shape[0]
+        timeLR =np.arange(numTbinLR,dtype=np.float32)*simMD['timeAxis']['step']
+        Nst=len(stimLRN)
+        
+        #print('zzzm',timeHR.shape,stimLR.shape)
+
+        def export_stim(name,data,fact):
+            outF=name+'_kevin.csv'
+            fd = open(outF, 'w')
+            for line in data:
+                fd.write('%.4e\n'%(line*fact))
+            fd.close()
+            print('saved', outF)
+        
+        for j in range(Nst):
+            ax = self.plt.subplot(nrow,ncol,1+j)
+            nameHR=stimHRN[j]
+            stimHR=np.zeros(numTbinHR)
+            stimHR[5000:]=simD['stims50k'][nameHR]
+            if 'step' in nameHR or 'ramp' in nameHR: stimHR/=1000.
+            ax.plot(timeHR,stimHR, linewidth=0.7,label=nameHR)
+
+            stimDHR=np.interp(timeLR,timeHR,stimHR)
+            #1ax.plot(timeLR,stimDHR, linewidth=0.7,label='down-sampl',ls='--')
+                    
+            nameLR=stimLRN[j]
+            stimLR=simD['stims'][nameLR]
+            ax.plot(timeLR,stimLR, linewidth=0.7,label=nameLR)    
+            export_stim(nameLR,stimDHR,0.3)
+            ax.set_xlim(-5.,505.)
+                
+            ax.legend(loc='best')
+            ax.set_xlabel('time (ms) ')
+            ax.set_ylabel('stim (nA) ')
+
+            if i==0:
+                ax.text(0.2,0.02,simMD['bbpName'],transform=ax.transAxes,color='g')
+            if i==1:
+                txt='sample=%d'%jSamp
+                ax.text(0.2,0.02,txt,transform=ax.transAxes,color='g')
+            
+
+#...!...!..................
+    def overlay_volts(self,simD,simMD,plDD,jSamp,figId=7):
         figId=self.smart_append(figId)
         nrow,ncol=3,1
         fig=self.plt.figure(figId,facecolor='white', figsize=(10,13))
@@ -81,7 +138,7 @@ class Plotter(Plotter_Backbone):
     def waveArray(self,simD,simMD,plDD,jSamp,figId=5):
         figId=self.smart_append(figId)
         nrow,ncol=3+1,5
-        fig=self.plt.figure(figId,facecolor='white', figsize=(16,10))
+        fig=self.plt.figure(figId,facecolor='white', figsize=(20,10))
                 
         waveA=simD['volts'][jSamp]#- simD['volts'][1]
         stimNL=simMD['stimName']
@@ -172,8 +229,6 @@ class Plotter(Plotter_Backbone):
 
             zsum,xbins,ybins,img = ax.hist2d(u,p,bins=binsX, cmin=0., cmap = colMap) #norm=mpl.colors.LogNorm(),
 
-            #ax.plot([0, 1], [0,1], color='magenta', linestyle='--',linewidth=0.5,transform=ax.transAxes) #diagonal
-            # 
             ax.set_title('%d:%s'%(iPar,parName[iPar]), size=10)
             
 
@@ -230,30 +285,49 @@ class Plotter(Plotter_Backbone):
 
 
 #...!...!..................
-def import_stims_from_CVS():
+def import_stims_from_CVS(do50k=False):
+    name50k={'5k0chaotic4.csv':'chaotic_50khz.csv',
+             '5k0step_200.csv':'step_200_50khz.csv',
+             '5k0ramp.csv':'ramp_50khz.csv',
+             '5k0chirp.csv':'chirp_50khz.csv',
+             '5k0step_500.csv':'step_500_50khz.csv'
+    }
+    
     nameL2=[]
     outD={}
     for name in  simMD['stimName']:
+        name2=name[:-4]
+        if do50k:
+            name=name50k[name]
+            name2=name2.replace('5k','50k')
         inpF=os.path.join('data5',name)
-        print('import ', inpF)
+        print('import  stim', inpF)
         fd = open(inpF, 'r')
         lines = fd.readlines()
-        #print('aaa', len(lines), type(lines[0]))
+        #print('aaa',name, len(lines), type(lines[0]))
         vals=[float(x) for x in lines ]
         data=np.array( vals, dtype=np.float32)
         #print('ddd',data.shape, data[::100],data.dtype)
-        name2=name[:-4]
+        
         nameL2.append(name2)
-        outD[name2]=data[1000:]
-        #ok22
-
+        if do50k:
+            outD[name2]=data # no pre 0s
+        else:
+            outD[name2]=data[1000:]
+        #break
     # ... store results in containers
-    simMD['stimName']=nameL2
-    simD['stims']=outD
+    
+    if do50k:
+        simD['stims50k']=outD
+        simMD['stimName50k']=nameL2
+    else:
+        simD['stims']=outD
+        simMD['stimName']=nameL2
+        
+    print('rrr',sorted(outD),simMD['stimName'])
     #print('zzz',sorted(simD['stims']),type(data), type(simD['stims']['5k0chaotic4']))
     
 
-    
 
 #=================================
 #=================================
@@ -267,12 +341,16 @@ if __name__=="__main__":
     simD,simMD=read3_data_hdf5(inpF)
     print('M:sim meta-data');   pprint(simMD)
 
+    if 1: # also import 50k stims for comparison
+        import_stims_from_CVS(do50k=True)
     import_stims_from_CVS()
     
     if 1:  # patch 2
         simMD['stimParName']= ['Mult','Offset']
 
-        
+    if 1:
+         tag_zeros(simD['volts'],args.dataName)
+         
     # print selected data
     j=args.sampleIdx
     print('jSamp=%d'%j)
@@ -311,7 +389,10 @@ if __name__=="__main__":
         plot.paramStimCorr(simD,simMD,plDD)
         
     if 'd' in args.showPlots:
-        plot.overaly_volts(simD,simMD,plDD,j)
+        plot.overlay_volts(simD,simMD,plDD,j)
+        
+    if 'e' in args.showPlots:
+        plot.overlay_50Kstims(simD,simMD,plDD,j)
         
 
     plot.display_all(args.dataName)

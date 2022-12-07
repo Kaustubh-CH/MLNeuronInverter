@@ -1,9 +1,11 @@
 #!/bin/bash -l
-#SBATCH   -N4 --time=29:00  -J ni_h5 -q debug
+#SBATCH  -N4 --time=29:00  -J ni_h5  -q debug
+#-SBATCH -q regular
 #SBATCH --image=nersc/pytorch:ngc-21.08-v2
+#-SBATCH --image=nersc/pytorch:ngc-22.09-v0  # runs 1/4 x slower
 #SBATCH -o out/slurm-%j.out
 #SBATCH  --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive  -C gpu -A m2043_g   # Kris,
-#SBATCH  -x  nid001016,nid002685,nid002688,nid002689 # block sick nodes
+#-SBATCH  -x  nid001016,nid002685,nid002688,nid002689 # block sick nodes
 # - - - E N D    O F    SLURM    C O M M A N D S
 nprocspn=${SLURM_NTASKS_PER_NODE}
 #nprocspn=2  # special case for partial use of full node

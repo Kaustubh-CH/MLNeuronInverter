@@ -14,20 +14,13 @@ from toolbox.Util_IOfunc import read_yaml
 #...!...!..................
 def patch_h5meta(ds,params):
     md=ds.metaData
-    # tmp move records
-    #for xN in [ 'num_probs','num_stims','probe_names', 'stim_names']:
-    #    md['simu'][xN]=md.pop(xN)
-
-    # record what portion of data is used during training
-    #pprint(params)
- 
     prSel=params['probs_select']
     stSel=params['stims_select']
     
     md['num_probs']=len(prSel)
-    md['probe_names']=[ md['simu']['probe_names'][i] for i in prSel ]  
+    md['probe_names']=[ md['simu_info']['probe_names'][i] for i in prSel ]  
     md['num_stims']=len(stSel)
-    md['stim_names']=[ md['simu']['stim_names'][i] for i in stSel ]  
+    md['stim_names']=[ md['simu_info']['stim_names'][i] for i in stSel ]  
     
 #...!...!..................
 def average_gradients(model):

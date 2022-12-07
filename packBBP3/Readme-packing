@@ -2,18 +2,27 @@ BBP3 simu use common
 'One Network to Rule them all' (aka ONTRA)
 Revised in 2022-11 after Kaustubh produces 13 exitatory cells x 5 clones
 
-3800565_1 : L4
-3800564_1 : L6
+3800565_1 : L4_SScADpyr4
+3800564_1:  L6_TPC_L1cADpyr4
 
-A) === each cell needs to be agregated into one h5
-~/neuronInverter/packBBP3> ./aggregate_Kaustubh.py --jid 3800564_1
+A) === each cell needs to be agregated into one h5, takes 90 sec/cell
+time  ./aggregate_Kaustubh.py --jid 3800565_1
+time  ./aggregate_Kaustubh.py --jid 3800564_1
 
-                     ( alternative      ....simNorm.h5 )
+saving data as hdf5: /pscratch/sd/b/balewski/tmp_bbp3/L4_SScADpyr4.simRaw.h5
+h5-write : phys_par (512000, 19) float32
+h5-write : phys_stim_adjust (512000, 2, 5) float32
+h5-write : unit_par (512000, 19) float32
+h5-write : unit_stim_adjust (512000, 2, 5) float32
+h5-write : volts (512000, 4000, 3, 5) float16
+h5-write : 5k0chaotic4 (4000,) float32
+h5-write : 5k0step_200 (4000,) float32
+h5-write : 5k0ramp (4000,) float32
+h5-write : 5k0chirp (4000,) float32
+h5-write : 5k0step_500 (4000,) float32
+h5-write : meta.JSON as string (1,) object
 
-
-closed  hdf5: /pscratch/sd/b/balewski/tmp_bbp3/L6_TPC_L1cADpyr4.simRaw.h5  size=58707.12 MB, elaT=45.1 sec
- /pscratch/sd/b/balewski/tmp_bbp3/L4_SScADpyr4.simRaw.h5  size=58707.12 MB, elaT=43.3 sec
-
+ cat aa.yaml 
 cell_name: L4_SScADpyr4
 linearParIdx: [12, 17, 18]
 num_phys_par: 19
@@ -24,27 +33,27 @@ parName: [gNaTs2_tbar_NaTs2_t_apical, gSKv3_1bar_SKv3_1_apical, gImbar_Im_apical
   gSK_E2bar_SK_E2_axonal, gCa_HVAbar_Ca_HVA_axonal, gK_Pstbar_K_Pst_axonal, gCa_LVAstbar_Ca_LVAst_axonal,
   g_pas_axonal, cm_axonal, gSKv3_1bar_SKv3_1_somatic, gNaTs2_tbar_NaTs2_t_somatic,
   gCa_LVAstbar_Ca_LVAst_somatic, g_pas_somatic, cm_somatic, e_pas_all]
-physParRange:
-- [0.0752281731284902, 1.5]
-- [0.0414845305067233, 1.5]
-- [0.0016126792170322, 1.5]
-- [0.0002529822128134, 1.5]
-- [10.759237932364195, 1.5]
-- [0.1241264189989599, 1.5]
-- [0.0030020618679191, 1.5]
-- [0.1140400896879346, 1.5]
-- [0.0024018251593263, 1.5]
-- [2.5285100128127267, 1.5]
-- [0.0008106716127196, 1.5]
-- [9.486832980505132e-05, 1.5]
-- [1.55, 1.45]
-- [0.5023031161316343, 1.5]
-- [3.100061867731139, 1.5]
-- [0.0066882745543336, 1.5]
-- [9.486832980505132e-05, 1.5]
-- [1.55, 1.45]
-- [-75.0, 50]
-simu:
+phys_par_range:
+- [0.0752281731284902, 1.5, S/cm2]
+- [0.0414845305067233, 1.5, S/cm2]
+- [0.0016126792170322, 1.5, S/cm2]
+- [0.0002529822128134, 1.5, S/cm2]
+- [10.759237932364195, 1.5, S/cm2]
+- [0.1241264189989599, 1.5, S/cm2]
+- [0.0030020618679191, 1.5, S/cm2]
+- [0.1140400896879346, 1.5, S/cm2]
+- [0.0024018251593263, 1.5, S/cm2]
+- [2.5285100128127267, 1.5, S/cm2]
+- [0.0008106716127196, 1.5, S/cm2]
+- [9.486832980505132e-05, 1.5, S/cm2]
+- [1.55, 1.45, uF/cm2]
+- [0.5023031161316343, 1.5, S/cm2]
+- [3.100061867731139, 1.5, S/cm2]
+- [0.0066882745543336, 1.5, S/cm2]
+- [9.486832980505132e-05, 1.5, S/cm2]
+- [1.55, 1.45, uF/cm2]
+- [-75.0, 50, mV]
+simu_info:
   NEURON_ver: 8.0.0
   bbp_name_clone: L4_SS_cADpyr230_5
   full_prob_names: [soma, axon_2, dend_12]
@@ -52,17 +61,57 @@ simu:
   num_probs: 3
   num_sim_files: 1024
   num_stims: 5
+  num_total_samples: 512000
   probe_names: [soma, axon, dend]
   sim_path: /pscratch/sd/k/ktub1999/BBP_TEST2/runs2/3800565_1/L4_SScADpyr4
   stim_names: [5k0chaotic4, 5k0step_200, 5k0ramp, 5k0chirp, 5k0step_500]
 stimParName: [stim_mult, stim_offset]
-stimParRange:
-- [1, 0.3]
-- [0, 0.3]
+stim_par_range:
+- [1, 0.3, nA]
+- [0, 0.3, nA]
 timeAxis: {step: 0.1, unit: (ms)}
 
-xxxxx
+B===========   format samples for ML training, it needs >100GB RAM , takes 8 min/cell
 
+salloc  -C cpu -q interactive  -t4:00:00  -A  m2043  -N 1
+time  ./format_bbp3_for_ML.py --cellName L4_SScADpyr4
+time  ./format_bbp3_for_ML.py --cellName L6_TPC_L1cADpyr4
+
+M:pack_info
+{'full_input_h5': 'L6_TPC_L1cADpyr4.simRaw.h5',
+ 'num_flat_volts': 2062,
+ 'pack_conf': 1,
+ 'split_index': {'test': [51200, 102400],
+                 'train': [102400, 409600],
+                 'valid': [0, 51200]}}
+
+
+h5ls L4_SScADpyr4.mlPack1.h5
+5k0chaotic4              Dataset {4000}
+5k0chirp                 Dataset {4000}
+5k0ramp                  Dataset {4000}
+5k0step_200              Dataset {4000}
+5k0step_500              Dataset {4000}
+meta.JSON                Dataset {1}
+test_phys_par            Dataset {102400, 19}
+test_phys_stim_adjust    Dataset {102400, 2, 5}
+test_unit_par            Dataset {102400, 19}
+test_unit_stim_adjust    Dataset {102400, 2, 5}
+test_volts_norm          Dataset {102400, 4000, 3, 5}
+train_phys_par           Dataset {409600, 19}
+train_phys_stim_adjust   Dataset {409600, 2, 5}
+train_unit_par           Dataset {409600, 19}
+train_unit_stim_adjust   Dataset {409600, 2, 5}
+train_volts_norm         Dataset {409600, 4000, 3, 5}
+valid_phys_par           Dataset {51200, 19}
+valid_phys_stim_adjust   Dataset {51200, 2, 5}
+valid_unit_par           Dataset {51200, 19}
+valid_unit_stim_adjust   Dataset {51200, 2, 5}
+valid_volts_norm         Dataset {51200, 4000, 3, 5}
+
+
+
+XXXXXXX
 *) Quicker method to recover phys conductances from u:
 ontra4_excite.conf.yaml  contains:  centP_k,  delP_k
 for [idx, name, centP,delP] in ['conductName']:

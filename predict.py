@@ -148,7 +148,7 @@ if __name__ == '__main__':
   sumRec[domain+'LossMSE']=float(loss)
   sumRec['predTime']=predTime
   sumRec['numSamples']=U.shape[0]
-  sumRec['lossThrHi']=0.50  # for tagging plots
+  sumRec['lossThrHi']=0.40  # for tagging plots
   sumRec['inpShape']=trainMD['train_params']['model']['inputShape']
   sumRec['short_name']=trainMD['train_params']['cell_name']
   sumRec['modelDesign']=trainMD['train_params']['model']['myId']
@@ -156,7 +156,7 @@ if __name__ == '__main__':
   sumRec['trainTime']=trainMD['trainTime_sec']
   sumRec['loss_valid']= trainMD['loss_valid']
 
-  #
+
   #  - - - -  only plotting code is below - - - - -
   
   plot=Plotter_NeuronInverter(args,inpMD ,sumRec )
