@@ -133,9 +133,20 @@ class Dataset_h5_neuronInverter(object):
          
         #********* data reading starts .... is compact to save CPU RAM
         # TypeError: Only one indexing vector or array is currently allowed for fancy indexing
-        volts=h5f[dom+'_volts_norm'][sampIdxOff:sampIdxOff+locSamp,:,:,cf['stims_select']] .astype(np.float32)  # fp16 is not working for Model - fix it one day
-        self.data_frames=volts[:,:,cf['probs_select']].reshape(locSamp,timeBins,-1)
-        #print('AA2',volts.shape,self.data_frames.shape,dom) ; ok9
+        volts=h5f[dom+'_volts_norm'][sampIdxOff:sampIdxOff+locSamp,:,:,cf['stims_select']] .astype(np.float32)  # input=fp16 is not working for Model - fix it one day
+        #... chose how to shape the input
+       
+        if 1: # probs*stims--> channel
+            self.data_frames=volts[:,:,cf['probs_select']].reshape(locSamp,timeBins,-1)
+        if 0: # probs*1stm--> M*timeBins
+            self.data_frames=volts[:,:,cf['probs_select']].reshape(locSamp,-1,1)
+        if 0: # probs*2stm--> 2*timeBins
+            volts=volts[:,:,cf['probs_select']]
+            volts=np.swapaxes(volts,2,3)
+            print('WW2',volts.shape)        
+            self.data_frames=volts.reshape(locSamp,-1,len(cf['probs_select']))
+            
+        #print('AA2',volts.shape,self.data_frames.shape,dom) 
         self.data_parU=h5f[dom+'_unit_par'][sampIdxOff:sampIdxOff+locSamp]
 
         if cf['world_rank']==0:
@@ -151,29 +162,8 @@ class Dataset_h5_neuronInverter(object):
             
         # .......................................................
         #.... data embeddings, transformation should go here ....
-        
-        if self.verb:  # careful: it double RAM for a brief time           
-           logging.info('DLI:per_waveform_norm=%r dom=%s'%(cf['data_conf']['per_wavform_norm'],cf['domain']))
-        if cf['data_conf']['per_wavform_norm']:
-            remove_me
-            Ta = time.time()
-            #print('WW1',self.data_frames.shape,self.data_frames.dtype)
-            
-            # for breadcasting to work the 1st dim must be skipped
-            X=np.swapaxes(self.data_frames,0,1) # returns view, no data duplication
-            #print('WW2',X.shape)
-            xm=np.mean(X,axis=0) # average over  time bins
-            xs=np.std(X,axis=0)
-            elaTm=(time.time()-Ta)/60.
-            if self.verb>1: print('DLI:PWN xm:',xm.shape,'Xswap:',X.shape,'dom=',cf['domain'],'elaT=%.2f min'%elaTm)
 
-            
-            nZer=np.sum(xs==0)
-            if nZer>0: logging.warning('DLI: nZer=%d %s rank=%d dom=%s: corrected  mu'%(nZer,xs.shape, self.conf['world_rank'],cf['domain']))
-            # to see indices of frames w/ 0s:   result = np.where(xs==0)  
-            xs[xs==0]=1  # hack - for zero-value samples use mu=1
-            X=(X-xm)/xs
-            self.data_frames=np.swapaxes(X ,0,1)# returns the initial view
+        # none
             
         #.... end of embeddings ........
         # .......................................................

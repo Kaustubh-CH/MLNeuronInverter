@@ -11,14 +11,14 @@ import os,sys
 from toolbox.Util_H5io3 import   read3_data_hdf5, write3_data_hdf5
 from pprint import pprint
 import numpy as np
-from vet_volts import tag_zeros
+#from vet_volts import tag_zeros
 from aggregate_Kaustubh import normalize_volts
 
 import argparse
 def get_parser():
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--dataPath",help="input/output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3')
+    parser.add_argument("--dataPath",help="input/output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3_dec26')
     parser.add_argument("--cellName", type=str, default='L4_SScADpyr4', help="cell name list, blanks separated")
     parser.add_argument("--conf", type=int, default=1, help="output configuration")
     

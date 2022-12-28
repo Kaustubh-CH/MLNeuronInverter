@@ -110,10 +110,12 @@ valid_unit_stim_adjust   Dataset {51200, 2, 5}
 valid_volts_norm         Dataset {51200, 4000, 3, 5}
 
 
+=======  helper scripts for packing
+bigDom.sh  bigPacker.sh
 
-XXXXXXX
-*) Quicker method to recover phys conductances from u:
-ontra4_excite.conf.yaml  contains:  centP_k,  delP_k
-for [idx, name, centP,delP] in ['conductName']:
-    p_k= 10^( u*/delP_k +centP_k)
-    p_k=np.exp(( u*/delP_k +centP_k)*np.log(10))
+/pscratch/sd/b/balewski/tmp_bbp3_dec26>
+ ll -h *0.simRaw.h5|nl
+ ll -h *0.*Pack1.h5|nl
+
+C =======  run training on data
+See readme.perlmutter

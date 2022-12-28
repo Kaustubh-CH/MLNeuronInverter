@@ -10,7 +10,7 @@ from pprint import pprint
 from toolbox.Util_H5io3 import   read3_data_hdf5
 from toolbox.Plotter_Backbone import Plotter_Backbone
 import sys,os,time
-from vet_volts import tag_zeros
+from aggregate_Kaustubh import normalize_volts
 
 import numpy as np
 import argparse
@@ -33,7 +33,7 @@ def get_parser():
     args = parser.parse_args()
     args.formatVenue='prod'
     args.prjName='baseBBP3'
-
+    args.showPlots=''.join(args.showPlots)
     for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
     if not os.path.exists(args.outPath):  os.mkdir(args.outPath) 
     return args
@@ -67,7 +67,7 @@ class Plotter(Plotter_Backbone):
         #print('zzzm',timeHR.shape,stimLR.shape)
 
         def export_stim(name,data,fact):
-            outF=name+'_kevin.csv'
+            outF='out/'+name+'_kevin.csv'
             fd = open(outF, 'w')
             for line in data:
                 fd.write('%.4e\n'%(line*fact))
@@ -83,7 +83,7 @@ class Plotter(Plotter_Backbone):
             ax.plot(timeHR,stimHR, linewidth=0.7,label=nameHR)
 
             stimDHR=np.interp(timeLR,timeHR,stimHR)
-            #1ax.plot(timeLR,stimDHR, linewidth=0.7,label='down-sampl',ls='--')
+            ax.plot(timeLR,stimDHR, linewidth=0.7,label='down-sampl',ls='--')
                     
             nameLR=stimLRN[j]
             stimLR=simD['stims'][nameLR]
@@ -100,6 +100,8 @@ class Plotter(Plotter_Backbone):
             if i==1:
                 txt='sample=%d'%jSamp
                 ax.text(0.2,0.02,txt,transform=ax.transAxes,color='g')
+            if i==2:
+                ax.text(0.2,0.02,args.dataName,transform=ax.transAxes,color='g')
             
 
 #...!...!..................
@@ -137,7 +139,7 @@ class Plotter(Plotter_Backbone):
 #...!...!..................
     def waveArray(self,simD,simMD,plDD,jSamp,figId=5):
         figId=self.smart_append(figId)
-        nrow,ncol=3+1,5
+        nrow,ncol=3+1,6
         fig=self.plt.figure(figId,facecolor='white', figsize=(20,10))
                 
         waveA=simD['volts'][jSamp]#- simD['volts'][1]
@@ -187,6 +189,9 @@ class Plotter(Plotter_Backbone):
                     if j==1:
                         txt='sample=%d'%jSamp
                         ax.text(0.2,0.02,txt,transform=ax.transAxes,color='g')
+                    if j==2:
+                        ax.text(0.2,0.02,args.dataName,transform=ax.transAxes,color='g')
+ 
             
             ax.set_xlabel('time (ms) ')
 
@@ -250,28 +255,24 @@ class Plotter(Plotter_Backbone):
         parName=simMD['stimParName']
         parU=simD['unit_stim_adjust']
         parP=simD['phys_stim_adjust']
-        nrow,ncol=1,5
+        nrow,ncol=1,2
         
-        fig=self.plt.figure(figId,facecolor='white', figsize=(16,3))
+        fig=self.plt.figure(figId,facecolor='white', figsize=(7.,3))
         
         npar=parP.shape[1]
-        #binsX=np.linspace(mm1,mm2,30)
         binsX=30
         
         colMap='GnBu'
         for iPar in range(npar):
-
             ax = self.plt.subplot(nrow,ncol,1+iPar)
             # plot stim(j)
-            print(iPar,npar)
+            print('\nstimpar:',iPar,parName[iPar],parU.shape)
+            print('parU',parU[:30,iPar])
             u=parU[:,iPar].reshape(-1)  # needed only for stim-adj
             p=parP[:,iPar].reshape(-1)
             zsum,xbins,ybins,img = ax.hist2d(u,p,bins=binsX, cmin=0., cmap = colMap) #norm=mpl.colors.LogNorm(),
-
-            #ax.plot([0, 1], [0,1], color='magenta', linestyle='--',linewidth=0.5,transform=ax1.transAxes) #diagonal
-            # 
-            ax.set_title('%d:%s'%(iPar,parName[iPar]), size=10)
-            
+           
+            ax.set_title('%d:%s'%(iPar,parName[iPar]), size=10)            
 
             # more details  will make plot more crowded
             self.plt.colorbar(img, ax=ax)
@@ -292,7 +293,11 @@ def import_stims_from_CVS(do50k=False):
              '5k0chirp.csv':'chirp_50khz.csv',
              '5k0step_500.csv':'step_500_50khz.csv'
     }
-    
+    #name50k['5k0chaotic4.csv']='chaotic_50khz.csv'
+    name50k['5k0chaotic4.csv']='cahotic_50khz.csv'
+    if do50k: stimPath='Kevinl5pyr'
+    #else:    stimPath='/global/cscratch1/sd/ktub1999/stims/'
+    else:    stimPath='/global/homes/b/balewski/neuronInverter/packBBP3/stims_dec26'
     nameL2=[]
     outD={}
     for name in  simMD['stimName']:
@@ -300,18 +305,18 @@ def import_stims_from_CVS(do50k=False):
         if do50k:
             name=name50k[name]
             name2=name2.replace('5k','50k')
-        inpF=os.path.join('data5',name)
+        inpF=os.path.join(stimPath,name)
         print('import  stim', inpF)
         fd = open(inpF, 'r')
         lines = fd.readlines()
-        #print('aaa',name, len(lines), type(lines[0]))
+        print('  got',name, len(lines), type(lines[0]))
         vals=[float(x) for x in lines ]
         data=np.array( vals, dtype=np.float32)
         #print('ddd',data.shape, data[::100],data.dtype)
         
         nameL2.append(name2)
         if do50k:
-            outD[name2]=data # no pre 0s
+            outD[name2]=data*1.5 # no pre 0s
         else:
             outD[name2]=data[1000:]
         #break
@@ -341,15 +346,25 @@ if __name__=="__main__":
     simD,simMD=read3_data_hdf5(inpF)
     print('M:sim meta-data');   pprint(simMD)
 
-    if 1: # also import 50k stims for comparison
+    if 0:
+        print('all unit_stim_adjust[:,0]')
+        print(simD['unit_stim_adjust'][-30:,0])
+        ok99_jan
+    
+    if 0:
+        for i,x in enumerate(simMD[ 'parName']):
+            print(i,x)
+        ok0
+    
+    if 0: # also import 50k stims for comparison
         import_stims_from_CVS(do50k=True)
     import_stims_from_CVS()
     
     if 1:  # patch 2
         simMD['stimParName']= ['Mult','Offset']
 
-    if 1:
-         tag_zeros(simD['volts'],args.dataName)
+    if 0:
+         normalize_volts(simD['volts'],args.dataName,verb=1)
          
     # print selected data
     j=args.sampleIdx

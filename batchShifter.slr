@@ -1,6 +1,6 @@
 #!/bin/bash -l
-#SBATCH  -N4 --time=29:00  -J ni_h5  -q debug
-#-SBATCH -q regular
+#SBATCH  -N4 --time=29:00  -J ni_h5  # -q debug
+#SBATCH -q regular
 #SBATCH --image=nersc/pytorch:ngc-21.08-v2
 #-SBATCH --image=nersc/pytorch:ngc-22.09-v0  # runs 1/4 x slower
 #SBATCH -o out/slurm-%j.out
@@ -10,11 +10,13 @@
 nprocspn=${SLURM_NTASKS_PER_NODE}
 #nprocspn=2  # special case for partial use of full node
 
-cellName=L6_TPC_L1cADpyr4  # has 0.5M training samples,  excitatory
-cellName=L4_SScADpyr4
+#cellName=L6_TPC_L1cADpyr4  # has 0.5M training samples,  excitatory
+#cellName=L4_SScADpyr4
+#cellName=L5_UTPCcADpyr0
+cellName=L23_PCcADpyr2
 design=expF2us  # 'expF2us' is optimal for experiment
-probsSelect=" 0 1 2 "  # index from  list: ['soma', 'axon', 'dend']
-stimsSelect=" 0   "  #  list: ['5k0chaotic4', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500']
+probsSelect=" 0 1 2   "  # index from  list: ['soma', 'axon', 'dend']
+stimsSelect=" 5 "  #  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
 epochs=130 
 
 N=${SLURM_NNODES}
@@ -44,7 +46,8 @@ wrkDir=$wrkDir0/$wrkSufix
 echo "S:cellName=$cellName  initLRstr=$initLRstr jobId=$jobId  wrkSufix=$wrkSufix wrkDir=$wrkDir" 
 date
 
-export CMD=" python -u   train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --probsSelect $probsSelect  --stimsSelect $stimsSelect --epochs $epochs "
+export CMD=" python -u   train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --probsSelect $probsSelect  --stimsSelect $stimsSelect --epochs $epochs  "
+# spare  --numGlobSamp 101000 
 
 echo CMD=$CMD
 

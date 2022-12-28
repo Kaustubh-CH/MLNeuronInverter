@@ -21,7 +21,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
     
     parser.add_argument("-s","--simPath",help="simu raw path",  default='/pscratch/sd/k/ktub1999/BBP_TEST2/runs2/')
-    parser.add_argument("-o","--outPath",help="output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3')
+    parser.add_argument("-o","--outPath",help="output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3_dec26')
     parser.add_argument("--jid", type=str, default='3800565_1', help="cell shortName list, blanks separated")
     
     args = parser.parse_args()
@@ -135,8 +135,10 @@ def assemble_MD(nh5):
 def import_stims_from_CVS():
     nameL2=[]
     nameL1=oneMD.pop('stimName')
+    #stimPath='/global/cscratch1/sd/ktub1999/stims/'
+    stimPath='/global/homes/b/balewski/neuronInverter/packBBP3/stims_dec26'
     for name in  nameL1:
-        inpF=os.path.join('data5',name)
+        inpF=os.path.join(stimPath,name)
         print('import ', inpF)
         fd = open(inpF, 'r')
         lines = fd.readlines()
@@ -166,6 +168,7 @@ def read_all_h5(inpL):
         sh1[0]=nfile*oneSamp
         bigD[xN]=np.zeros(tuple(sh1),dtype=one.dtype)       
 
+    nBadSamp=0
     #.... main loop over data
     print('RA5:read h5...',nfile)
     for j,name in enumerate(inpL):
@@ -173,13 +176,37 @@ def read_all_h5(inpL):
         if j<10:  print('read',j,name)
         else: print('.',end='',flush=True)
         simD,_=read3_data_hdf5(inpF,verb=0)
+        #simD['volts'][1,1,1,1]=float("nan")  # code testing
+        nBadSamp+=clear_NaN_samples(simD)
+        
         ioff=j*oneSamp
         for x in simD:
             bigD[x][ioff:ioff+oneSamp]=simD[x]
-        # test for volts=0
-        #tag_zeros(simD['volts'],name=name)
+    oneMD['simu_info']['num_NaN_volts_cleared']=int(nBadSamp)
+        
+#...!...!..................
+def clear_NaN_samples(bigD):  # replace volts w/ 0s, only for volts
+    #bigD['volts'][1,1,1,1]=float("nan")  # code testing
+    #bigD['volts'][5,1,1,1]=float("nan")  # code testing
+    for x in bigD:
+        data=bigD[x]
+        nanA= np.isnan(data)
+        nBadS=0
+        if nanA.any():
+            nanS=np.sum(nanA,axis=(1,2,3))            
+            maskS=nanS>0
+            nBadS=np.sum(maskS)  # it is a tuple
+            badIdx=np.nonzero(maskS)
+            print('\nWARN see %d NaN bad samples in %s :'%(nBadS,x),badIdx)
+            assert x=='volts'
             
-                 
+    if nBadS!=0:
+        print('clear NaN volts in %d sample(s)'%len(badIdx))
+        zeroVolts=np.zeros_like( bigD['volts'][0])
+        for i in  badIdx:
+            bigD['volts'][i]=zeroVolts
+        #exit(1)  # activate it to abort on NaN
+    return nBadS
 #=================================
 #=================================
 #  M A I N 
@@ -201,10 +228,12 @@ if __name__=="__main__":
     print('M:sim meta-data');   pprint(oneMD)
     print('M:big',list(bigD))
 
+    if 1:
+        from toolbox.Util_IOfunc import write_yaml # for testing only
+        write_yaml(oneMD,'aa.yaml')
+
     outF=os.path.join(args.outPath,oneMD['cell_name']+'.simRaw.h5')
     write3_data_hdf5(bigD,outF,metaD=oneMD)
     print('M:done')
 
-    if 1:
-        from toolbox.Util_IOfunc import write_yaml # for testing only
-        write_yaml(oneMD,'aa.yaml')
+ 

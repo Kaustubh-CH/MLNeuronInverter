@@ -1,0 +1,56 @@
+# Neur-inver  config for  BBP3 training
+#
+# choose data path depending on facility
+
+
+data_path:
+  #perlmutter: /global/cfs/cdirs/m2043/balewski/neuronBBP3-10kHz_3pr/try3  # ontra5
+  perlmutter: /pscratch/sd/b/balewski/tmp_bbp3_dec26/  # tmp storage for BBP3 prod
+  summit: /gpfs/alpine/nro106/proj-shared/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # ontra3
+
+max_epochs: 12  
+batch_size: 128
+const_local_batch: True   # True is faster  but LR changes w/ num GPUs
+validation_period: [1, 1] # [ period, len] (epochs)
+#>>> validation is computed if  epoch%period<len
+#max_local_samples_per_epoch: 400000  # optional, 600k/task is probably still OK on PM
+
+num_data_workers: 4  
+log_freq_per_epoch: 3
+tb_show_graph: True
+
+save_checkpoint: False  # only when loss improves
+resume_checkpoint: False  # False: always start over 
+# warning: for multi-gpu & resume --> val_loss explodes - no loop over GPUs
+  
+# APEX: Nvidia streamlined data-parallel  training
+# AMP: Automatic Mixed Precision package
+# autotune: # activates cudnn.benchmark
+
+opt_pytorch:  
+    amp: False
+    apex:  False
+    autotune:  False
+    zerograd: False
+
+train_conf:
+    warmup_epochs: 10
+    optimizer: [adam, 0.01] # initLR  Ontra5 - BBP3
+    LRsched: { plateau_patience: 8, reduceFactor: 0.11  }
+    
+model:
+    myId:  roy-expF2us
+    comment: very optimized ML model
+
+    conv_block: # CNN params
+        filter: [30, 90, 180]
+        kernel: [ 4,  4,  4]
+        pool:   [ 4,  4,  4]
+
+    layer_norm: True
+    batch_norm: True
+    instance_norm: True
+
+    fc_block: # FC params w/o last layer
+        dims: [ 512, 512, 512, 256, 128 ]
+        dropFrac: 0.05
