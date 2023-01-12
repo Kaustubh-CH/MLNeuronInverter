@@ -1,5 +1,14 @@
 To display TensorBoard on the laptop 
 
+module load cgpu
+salloc  -C gpu --ntasks-per-node=8 -c 10  --gres=gpu:8  --exclusive -t4:00:00 --image=nersc/pytorch:ngc-21.08-v2 -N 1
+
+export MASTER_ADDR=`hostname`
+export MASTER_PORT=8881
+
+srun -n1 shifter  python -u ./train_dist.py --facility corigpu --cellName L6_TPC_L1cADpyr1 --numGlobSamp 5120   --probsSelect 0 1 2  --stimsSelect 0 3
+
+
 To see TB on laptop use port forwarding:
 
 NERSC: from your laptop  in a new Xterm

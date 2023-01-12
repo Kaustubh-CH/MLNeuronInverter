@@ -81,11 +81,11 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         #colMap=cmap.rainbow
         assert U.shape[1]==Z.shape[1]
         colMap=cmap.GnBu
-
+        sumRec=self.sumRec
         parName=self.inpMD['parName']
         nPar=self.inpMD['num_phys_par']
+        residualL=sumRec['residual_mean_std']
 
-        sumRec=self.sumRec
         nrow,ncol=4,5 # BBP3
         #nrow,ncol=4,4  # for proposal update, 2022-01
 
@@ -127,11 +127,8 @@ class Plotter_NeuronInverter(Plotter_Backbone):
 
             # more details  will make plot more crowded
             self.plt.colorbar(img, ax=ax1)
-
-            # .... compute residua per parameter
-            umz=u-z
-            resM=umz.mean()
-            resS=umz.std()
+            
+            [ _,resM, resS]=residualL[iPar]
 
             # additional info Roy+Kris did not wanted to see for nicer look
             if j>(nrow-1)*ncol: ax1.set_xlabel('pred (a.u.)')
@@ -162,16 +159,19 @@ class Plotter_NeuronInverter(Plotter_Backbone):
             if j==6: ax1.text(0.2,yy,tit3,transform=ax1.transAxes)
             if j==7: ax1.text(0.2,yy,tit4,transform=ax1.transAxes)
             
-        # more info in not used pannel
+        #.....  more info in not used pannel last pane;
         dataTxt='data:'+sumRec['short_name'][:20]
         txt3='\ndesign:%s\n'%(sumRec['modelDesign'])+dataTxt
+        txt3+='\n'+tit4
+        txt3+='\n train time/min=%.1f '%(sumRec['trainTime']/60.)
+        txt3+='\ntrain.stims %s \n samples: %d'%(sumRec['train_stims_select'],sumRec['train_glob_sampl'])
         txt3+='\ntrain.loss valid %.3g'%(sumRec['loss_valid'])
         txt3+='\npred.loss %s %.3g'%(sumRec['domain'],sumRec[sumRec['domain']+'LossMSE'])
-        txt3+='\ninp:'+str(sumRec['inpShape'])+',  nSampl=%d'%(u.shape[0])
-        txt3+='\n train ranks=%d  time/min=%.1f '%(sumRec['trainRanks'],sumRec['trainTime']/60.)
-        txt3+='\n'+tit4
+        txt3+='\ninp:'+str(sumRec['inpShape'])
+        txt3+='\npred.stims %s\n samples: %d'%(sumRec['pred_stims_select'],u.shape[0])
         ax1=axs[j]
-        ax1.text(0.02,0.2,txt3,transform=ax1.transAxes)
+        ax1.axis('off')
+        ax1.text(-0.15,0.02,txt3,transform=ax1.transAxes)
 
 
 

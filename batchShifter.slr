@@ -1,23 +1,27 @@
 #!/bin/bash -l
-#SBATCH  -N4 --time=29:00  -J ni_h5  # -q debug
+#SBATCH  -N4 --time=49:00  -J ni_h5  # -q debug
 #SBATCH -q regular
 #SBATCH --image=nersc/pytorch:ngc-21.08-v2
 #-SBATCH --image=nersc/pytorch:ngc-22.09-v0  # runs 1/4 x slower
 #SBATCH -o out/slurm-%j.out
-#SBATCH  --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive  -C gpu -A m2043_g   # Kris,
+#SBATCH  --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive  -C gpu -A  nstaff # m3513_g  # Kris ML:m2043_g, simu:m3513_g
 #-SBATCH  -x  nid001016,nid002685,nid002688,nid002689 # block sick nodes
 # - - - E N D    O F    SLURM    C O M M A N D S
 nprocspn=${SLURM_NTASKS_PER_NODE}
-#nprocspn=2  # special case for partial use of full node
+#nprocspn=2  # special case for partial use of a full node
 
-#cellName=L6_TPC_L1cADpyr4  # has 0.5M training samples,  excitatory
-#cellName=L4_SScADpyr4
-#cellName=L5_UTPCcADpyr0
-cellName=L23_PCcADpyr2
-design=expF2us  # 'expF2us' is optimal for experiment
+#cellName=L23_PCcADpyr2
+cellName=L5_TTPC1cADpyr0  # most complex
+#cellName=L4_SPcADpyr0     # the simplest
+
+design=stimSer1
+epochs=100
+
+# can use mutiple stims serially, as independent samples
 probsSelect=" 0 1 2   "  # index from  list: ['soma', 'axon', 'dend']
-stimsSelect=" 5 "  #  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
-epochs=130 
+#stimsSelect=" 0 1 2 3 4 5 "  #  index from  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
+stimsSelect=" 0  3  5 "  # chaosA+B+chirp
+#stimsSelect="  5 "  # chaosB
 
 N=${SLURM_NNODES}
 G=$[ $N * $nprocspn ]
@@ -38,6 +42,9 @@ env |grep NEUINV
 if [[  $NERSC_HOST == perlmutter ]]   ; then
     echo "S:on Perlmutter"
     facility=perlmutter
+elif [[  $NERSC_HOST == cori ]]   ; then
+    echo "S:on CoriGpu"
+    facility=corigpu  
 fi
 
 wrkDir0=$SCRATCH/tmp_neuInv/bbp3//${cellName}/
@@ -59,12 +66,17 @@ cp -rp $codeList  $wrkDir
 cd  $wrkDir
 echo lsfPWD=`pwd`
 
-echo "starting  jobId=$jobId neurInv 2021-08 " `date` " outPath= $outPath"
+echo "starting  jobId=$jobId neurInv  " `date` " outPath= $outPath"
 time srun -n $G  shifter  bash  toolbox/driveOneTrain.sh  >& log.train
 
-sleep 3
+sleep 2
 
 echo S:done train
-time srun -n1 shifter  python -u ./predict.py --numSamples 500000 --modelPath out/ --cellName $cellName -X  >& log.predict
-echo S:done predict
+time srun -n1 shifter  python -u ./predict.py  --modelPath out  -X  >& log.predictAll
+echo S:done predict all, 2 more for stim 0 and 5
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS5
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 0 --showPlots a -X  >& log.predictS0
 date
+
+# spare: --numSamples 500000  --cellName $cellName
+# manual: ~/neuronInverter/predict.py --modelPath out --numSamples 5000 --stimsSelect 5 --showPlots a  --venue poster

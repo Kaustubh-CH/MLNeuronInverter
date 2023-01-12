@@ -33,7 +33,7 @@ def get_data_loader(params,domain, verb=1):
   conf=copy.deepcopy(params)  # the input is reused later in the upper level code
   
   conf['domain']=domain
-  conf['h5name']=os.path.join(params['data_path'],params['cell_name']+'.mlPack1.h5')
+  conf['h5name']=os.path.join(params['data_conf']['data_path'],params['cell_name']+'.mlPack1.h5')
   shuffle=conf['shuffle']
 
   dataset=  Dataset_h5_neuronInverter(conf,verb)
@@ -46,7 +46,7 @@ def get_data_loader(params,domain, verb=1):
 
   dataloader = DataLoader(dataset,
                           batch_size=dataset.conf['local_batch_size'],
-                          num_workers=params['num_data_workers'],
+                          num_workers=params['data_conf']['num_data_workers'],
                           shuffle=shuffle,
                           drop_last=True,
                           pin_memory=torch.cuda.is_available())
@@ -86,6 +86,7 @@ class Dataset_h5_neuronInverter(object):
 #...!...!..................
     def openH5(self):
         cf=self.conf
+        dcf=cf['data_conf']
         inpF=cf['h5name']        
         dom=cf['domain']
         if self.verb>0 : logging.info('DS:fileH5 %s  rank %d of %d '%(inpF,cf['world_rank'],cf['world_size']))
@@ -102,12 +103,14 @@ class Dataset_h5_neuronInverter(object):
         Xshape=h5f[dom+'_volts_norm'].shape
         totSamp,timeBins,mxProb,mxStim=Xshape
 
-        assert max( cf['probs_select']) <mxProb 
-        assert max( cf['stims_select']) <mxStim
+        assert max( dcf['probs_select']) <mxProb 
+        assert max( dcf['stims_select']) <mxStim
         # TypeError: Only one indexing vector or array is currently allowed for fancy indexing
+        numProb=len( dcf['probs_select'])
+        numStim=len( dcf['stims_select'])
         
-        if 'max_glob_samples_per_epoch' in cf:            
-            max_samp= cf['max_glob_samples_per_epoch']
+        if 'max_glob_samples_per_epoch' in cf['data_conf']:            
+            max_samp= dcf['max_glob_samples_per_epoch']
             if dom=='valid': max_samp//=4
             totSamp,oldN=min(totSamp,max_samp),totSamp
             if totSamp<oldN and  self.verb>0 :
@@ -119,7 +122,7 @@ class Dataset_h5_neuronInverter(object):
 
         locStep=int(totSamp/cf['world_size']/cf['local_batch_size'])
         locSamp=locStep*cf['local_batch_size']
-        logging.info('DLI:locSamp=%d locStep=%d BS=%d rank=%d'%(locSamp,locStep,cf['local_batch_size'],self.conf['world_rank']))
+        logging.info('DLI:locSamp=%d numStim=%d locStep=%d BS=%d rank=%d dom=%s'%(locSamp,numStim,locStep,cf['local_batch_size'],self.conf['world_rank'],dom))
         assert locStep>0
         maxShard= totSamp// locSamp
         assert maxShard>=cf['world_size']
@@ -128,26 +131,40 @@ class Dataset_h5_neuronInverter(object):
         myShard=self.conf['world_rank'] %maxShard
         sampIdxOff=myShard*locSamp
         
-        if self.verb : logging.info('DS:file dom=%s myShard=%d, maxShard=%d, sampIdxOff=%d allXshape=%s  probs=%s stims=%s'%(cf['domain'],myShard,maxShard,sampIdxOff,str(Xshape), cf['probs_select'],cf['stims_select']))
+        if self.verb : logging.info('DS:file dom=%s myShard=%d, maxShard=%d, sampIdxOff=%d allXshape=%s  probs=%s stims=%s'%(cf['domain'],myShard,maxShard,sampIdxOff,str(Xshape), dcf['probs_select'],dcf['stims_select']))
 
-         
+        serializedStim=dcf['serialize_stims']
+        
         #********* data reading starts .... is compact to save CPU RAM
         # TypeError: Only one indexing vector or array is currently allowed for fancy indexing
-        volts=h5f[dom+'_volts_norm'][sampIdxOff:sampIdxOff+locSamp,:,:,cf['stims_select']] .astype(np.float32)  # input=fp16 is not working for Model - fix it one day
-        #... chose how to shape the input
+        volts=h5f[dom+'_volts_norm'][sampIdxOff:sampIdxOff+locSamp,:,:,dcf['stims_select']] .astype(np.float32)  # input=fp16 is not working for Model - fix it one day
+        parU=h5f[dom+'_unit_par'][sampIdxOff:sampIdxOff+locSamp]
+        #... chose how to re-shape the ML input
        
-        if 1: # probs*stims--> channel
-            self.data_frames=volts[:,:,cf['probs_select']].reshape(locSamp,timeBins,-1)
-        if 0: # probs*1stm--> M*timeBins
-            self.data_frames=volts[:,:,cf['probs_select']].reshape(locSamp,-1,1)
-        if 0: # probs*2stm--> 2*timeBins
-            volts=volts[:,:,cf['probs_select']]
-            volts=np.swapaxes(volts,2,3)
-            print('WW2',volts.shape)        
-            self.data_frames=volts.reshape(locSamp,-1,len(cf['probs_select']))
+        if not  serializedStim: # probs*1stm--> M*timeBins
+            volts=volts[:,:,dcf['probs_select']]
+            if self.verb : print('WT1 numStim=%d volts:'%(numStim),volts.shape)
+            volts=np.swapaxes(volts,2,3).reshape(locSamp,numStim*timeBins,-1)
+            if self.verb : print('WT2 locSamp=%d, volts:'%locSamp,volts.shape,' dom=',dom)
+        if 0: # probs*stims--> M*channel
+            assert not serializedStim
+            volts=volts[:,:,cf['probs_select']].reshape(locSamp,timeBins,-1)
+        
+
+        if serializedStim: # stacking stims as independent samples requires clonning of parU as well
+            shp=parU.shape+(numStim,)
+            parU2=np.zeros(shp,dtype=np.float32)  # WARN: slightly increases RAM usage
+            for i in range(numStim): parU2[...,i]=parU.copy()
+            if self.verb : print('WS1 numStim=%d volts:'%(numStim),volts.shape,', parU2:',parU2.shape)
+            locSamp*=numStim
+            volts=np.moveaxis(volts,-1,0).reshape(locSamp,timeBins,-1)
+            parU=np.moveaxis(parU2,-1,0).reshape(locSamp,-1)
+            if self.verb : print('WS2 locSamp=%d, volts:'%locSamp,volts.shape,', parU:',parU.shape,', dom=',dom)
             
-        #print('AA2',volts.shape,self.data_frames.shape,dom) 
-        self.data_parU=h5f[dom+'_unit_par'][sampIdxOff:sampIdxOff+locSamp]
+        self.data_frames=volts
+        self.data_parU=parU
+
+        #print('AA2 volts:',self.data_frames.shape,dom,self.data_parU.shape) ; okok11
 
         if cf['world_rank']==0:
             blob=h5f['meta.JSON'][0]

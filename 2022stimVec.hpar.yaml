@@ -1,12 +1,12 @@
-# Neur-inver  config for  BBP3 training
+# Neur-inver  config for  BBP3 training, vectorized stims  (all used as one sample)
 #
 # choose data path depending on facility
 
 
 data_path:
-  #perlmutter: /global/cfs/cdirs/m2043/balewski/neuronBBP3-10kHz_3pr/try3  # ontra5
+  #perlmutter: /global/cfs/cdirs/m2043/balewski/neuronBBP3-10kHz_3pr_6stim/dec26_mlPack1  # ontra5
   perlmutter: /pscratch/sd/b/balewski/tmp_bbp3_dec26/  # tmp storage for BBP3 prod
-  summit: /gpfs/alpine/nro106/proj-shared/neuronBBP-pack8kHzRam/probe_4prB8kHz/ontra4/etype_excite_v1/ # ontra3
+  summit: /gpfs/alpine/nro106/proj-shared/neuronBBP-pxxx / # ontra3
 
 max_epochs: 12  
 batch_size: 128
@@ -35,7 +35,7 @@ opt_pytorch:
 
 train_conf:
     warmup_epochs: 10
-    optimizer: [adam, 0.01] # initLR  Ontra5 - BBP3
+    optimizer: [adam, 0.005] # initLR  Ontra5 - BBP3
     LRsched: { plateau_patience: 8, reduceFactor: 0.11  }
     
 model:

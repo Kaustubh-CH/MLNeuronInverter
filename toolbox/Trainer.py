@@ -14,8 +14,8 @@ from toolbox.Util_IOfunc import read_yaml
 #...!...!..................
 def patch_h5meta(ds,params):
     md=ds.metaData
-    prSel=params['probs_select']
-    stSel=params['stims_select']
+    prSel=params['data_conf']['probs_select']
+    stSel=params['data_conf']['stims_select']
     
     md['num_probs']=len(prSel)
     md['probe_names']=[ md['simu_info']['probe_names'][i] for i in prSel ]  
@@ -171,10 +171,12 @@ class Trainer():
                    'num_ranks': params['world_size'],
                    'state': 'model_build',
                    'input_meta':self.train_loader.dataset.metaData,
-                   'trainTime_sec':-1,
-                   'loss_valid':-1,
+                   'trainTime_sec':-11,
+                   'loss_valid':-12,
                    'epoch_start': int(self.startEpoch),
                    'job_id': params['job_id'],
+                   'train_stims_select' : params['data_conf']['stims_select' ],
+                   'train_glob_sampl': len(self.train_loader) * params['global_batch_size']
       }
 
       
@@ -223,13 +225,14 @@ class Trainer():
           rec1={'train':train_logs['loss']}
           rec2={'train':trainT,'tot':totT,'val':valT}  # time per epoch
           locTotTrainSamp=len(self.train_loader)*self.train_loader.batch_size
+         
           kfac=1000/self.params['world_size']
           rec3={'train':locTotTrainSamp/trainT/kfac}  # train samp/sec
           if epoch>self.startEpoch : TperEpoch.append(totT)
           if doVal:
               rec1['val']=float(valid_logs['loss'])
               locTotValSamp=len(self.valid_loader)*self.valid_loader.batch_size
-              rec3.update({'val':float(locTotValSamp/valT/kfac)})  # val samp/sec
+              rec3.update({'val10':float(locTotValSamp/valT/kfac)/10.})  # val samp/sec
 
           lrTit='LR'
           if self.params['job_id']!=None: lrTit='LR %s'%self.params['job_id']
@@ -238,6 +241,7 @@ class Trainer():
 
           self.TBSwriter.add_scalars('epoch time (sec) ',rec2 , epoch)
           self.TBSwriter.add_scalars('glob_speed (k samp:sec) ',rec3 , epoch)
+          #if self.verb: print('rrr',len(self.train_loader), self.train_loader.batch_size,trainT,rec3,epoch)
           tV=np.array(TperEpoch)
           if len(tV)>1:
             tAvr=np.mean(tV); tStd=np.std(tV)/np.sqrt(tV.shape[0])
@@ -254,8 +258,7 @@ class Trainer():
     #. . . . . . .  epoch loop end . . . . . . . .
     
     if self.isRank0:  
-      self.TBSwriter.add_histogram('time per epoch (sec)', np.array(TperEpoch),epoch)
-     
+      self.TBSwriter.add_histogram('time per epoch (sec)', np.array(TperEpoch),epoch)     
          
       # add info to summary
       try:

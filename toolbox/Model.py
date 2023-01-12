@@ -3,8 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-
-
 #-------------------
 #-------------------
 #-------------------
@@ -20,7 +18,7 @@ class MyModel(nn.Module):
         self.verb=verb
         if verb: print('CNNandFC_Model inp_shape=',self.inp_shape,', verb=%d'%(self.verb))
         
-        # .....  CNN layersg
+        # .....  CNN layers
         hpar1=hpar['conv_block']
         self.cnn_block = nn.ModuleList()
         cnn_stride=1
@@ -30,6 +28,8 @@ class MyModel(nn.Module):
             self.cnn_block.append( nn.Conv1d(inp_chan, out_chan, cnnker, cnn_stride))
             self.cnn_block.append( nn.MaxPool1d(plker))
             self.cnn_block.append( nn.ReLU())
+            if len(self.cnn_block)==hpar['instance_norm_slot']:
+                self.cnn_block.append( nn.InstanceNorm1d(out_chan))
             inp_chan=out_chan
 
         ''' Automatically compute the size of the output of CNN+Pool block,  
@@ -45,8 +45,6 @@ class MyModel(nn.Module):
 
         # here are all the preexisting normalization layers: https://pytorch.org/docs/stable/nn.html#normalization-layers
 
-        if hpar['instance_norm']:
-            self.cnn_block.append( nn.InstanceNorm1d(out_chan))
         if hpar['layer_norm']:
             self.cnn_block.append( nn.LayerNorm(y1.shape[1:]))
 

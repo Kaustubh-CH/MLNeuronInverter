@@ -1,6 +1,6 @@
 To run training:
 Run on 4 A100 on PM:
-salloc  -C gpu -q interactive  -t4:00:00  --gpus-per-task=1 --image=nersc/pytorch:ngc-21.08-v2 -A  m2043_g  --ntasks-per-node=4   -N 1
+salloc  -C gpu -q interactive  -t4:00:00  --gpus-per-task=1 --image=nersc/pytorch:ngc-21.08-v2 -A  m3513_g  --ntasks-per-node=4   -N 1
 
 # new image is slower
 salloc  -C gpu -q interactive  -t4:00:00  --gpus-per-task=1 --image=nersc/pytorch:ngc-22.09-v0 -A  m2043_g  --ntasks-per-node=4   -N 1
@@ -9,7 +9,7 @@ salloc  -C gpu -q interactive  -t4:00:00  --gpus-per-task=1 --image=nersc/pytorc
 export MASTER_ADDR=`hostname`
 export MASTER_PORT=8881
 
-srun -n1 shifter  python -u ./train_dist.py --cellName L6_TPC_L1cADpyr1 --numGlobSamp 5120   --probsSelect 0 1 2  --stimsSelect 0 3
+srun -n1 shifter  python -u ./train_dist.py --cellName L6_TPC_L1cADpyr1 --numGlobSamp 5120   --probsSelect 0 1 2  --stimsSelect 0 3 --design stimSer2
 
 
 If you run 

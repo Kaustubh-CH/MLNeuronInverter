@@ -28,7 +28,7 @@ def get_parser():
     parser.add_argument("-p", "--showPlots",  default='a', nargs='+',help="abcd-string listing shown plots")
 
     parser.add_argument("-o","--outPath", default='out/',help="output path for plots and tables")
-    parser.add_argument("-i","--sampleIdx",  default=6,type=int, help="sample index")
+    parser.add_argument("-i","--sampleIdx",  default=4,type=int, help="sample index")
 
     args = parser.parse_args()
     args.formatVenue='prod'
@@ -345,7 +345,6 @@ if __name__=="__main__":
     inpF=os.path.join(args.dataPath,args.dataName)
     simD,simMD=read3_data_hdf5(inpF)
     print('M:sim meta-data');   pprint(simMD)
-
     if 0:
         print('all unit_stim_adjust[:,0]')
         print(simD['unit_stim_adjust'][-30:,0])
@@ -369,13 +368,14 @@ if __name__=="__main__":
     # print selected data
     j=args.sampleIdx
     print('jSamp=%d'%j)
+    assert j < simD['volts'].shape[0] , 'not enouh samples in the input, reduce idx'
     
     nStim=len(simMD['stimName'])
     print('stim adjust:',      simMD['stimParName'])
     for i in range(nStim):
         stN=simMD['stimName'][i]
         print(i,stN,'phys:',simD['phys_stim_adjust'][j,:,i],'unit:',simD['unit_stim_adjust'][j,:,i])
-    
+        
 
     print('phys_par:',simD['phys_par'][j])
     print('unit_par:',simD['unit_par'][j])

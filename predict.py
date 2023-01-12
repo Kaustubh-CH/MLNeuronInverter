@@ -42,11 +42,13 @@ def get_parser():
     parser.add_argument( "-X","--noXterm", dest='noXterm', action='store_true', default=False, help="disable X-term for batch mode")
 
     parser.add_argument("-n", "--numSamples", type=int, default=None, help="limit samples to predict")
+    parser.add_argument("--stimsSelect",default=None, type=int, nargs='+', help="list of stims, space separated")
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
+    parser.add_argument("-p", "--showPlots",  default='ab', nargs='+',help="abcd-string listing shown plots")
 
     parser.add_argument("--cellName", type=str, default=None, help="alternative data file name ")
     args = parser.parse_args()
-    args.prjName='neurInfer'
+    args.prjName='nif'
     args.outPath+'/'
     for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
     return args
@@ -107,7 +109,22 @@ def model_infer(model,test_loader,trainMD):
     print('infere done, nEve=%d nStep=%d loss=%.4f'%(nEve,nStep,test_loss),flush=True)
     return test_loss,Uall,Zall
 
-  
+
+#...!...!..................
+def compute_residual(trueU,recoU,md):
+    parName=md['parName']
+    nPar=len(parName)
+    outL=[]
+    for iPar in range(0,nPar):
+        D=trueU[:,iPar] - recoU[:,iPar]
+        resM=D.mean()
+        resS=D.std()
+        outL.append( [ parName[iPar], float(resM),float(resS) ] )
+        print('#res,%d,%.4f'%(iPar,resS))
+        #print('#res,%d,%s'%(iPar,parName[iPar]))
+    #pprint(outL)
+    return outL
+
 #=================================
 #=================================
 #  M A I N 
@@ -130,53 +147,70 @@ if __name__ == '__main__':
       parMD['cell_name']=args.cellName
       
   if args.numSamples!=None:
-      parMD['max_local_samples_per_epoch' ] = args.numSamples
+      parMD['data_conf']['max_glob_samples_per_epoch' ] = args.numSamples
+
+  if args.stimsSelect!=None:
+      assert  parMD['data_conf']['serialize_stims']==True 
+      parMD['data_conf']['stims_select' ] = args.stimsSelect
+      args.prjName='nistim'+''.join(['%d'%i for i in args.stimsSelect] )
+      print('M: prjName',args.prjName)
+    
   domain=args.dom
 
   parMD['world_size']=1
-
+  #pprint(parMD); ok6
+  
   data_loader = get_data_loader(parMD, domain, verb=1)
 
   startT=time.time()
-  loss,U,Z=model_infer(model,data_loader,trainMD)
+  loss,trueU,recoU=model_infer(model,data_loader,trainMD)
   predTime=time.time()-startT
-  print('M: infer : Average loss: %.4f  dom=%s samples=%d , elaT=%.2f min\n'% (loss, domain, Z.shape[0],predTime/60.))
+  print('M: infer : Average loss: %.4f  dom=%s samples=%d , elaT=%.2f min\n'% (loss, domain, trueU.shape[0],predTime/60.))
 
+  residualL=compute_residual(trueU,recoU,inpMD)
+  print('#res,job,%s'%trainMD['job_id'])
+  print('#res,MSEloss,%.4f\n'%loss)
+    
   sumRec={}
   sumRec['domain']=domain
   sumRec['jobId']=trainMD['job_id']
   sumRec[domain+'LossMSE']=float(loss)
   sumRec['predTime']=predTime
-  sumRec['numSamples']=U.shape[0]
+  sumRec['numSamples']=trueU.shape[0]
   sumRec['lossThrHi']=0.40  # for tagging plots
   sumRec['inpShape']=trainMD['train_params']['model']['inputShape']
   sumRec['short_name']=trainMD['train_params']['cell_name']
   sumRec['modelDesign']=trainMD['train_params']['model']['myId']
-  sumRec['trainRanks']=trainMD['train_params']['world_size']
   sumRec['trainTime']=trainMD['trainTime_sec']
   sumRec['loss_valid']= trainMD['loss_valid']
+  sumRec['train_stims_select']= trainMD['train_stims_select']
+  sumRec['train_glob_sampl']= trainMD['train_glob_sampl']
+  sumRec['pred_stims_select']= trainMD['train_params']['data_conf']['stims_select']
+  sumRec['residual_mean_std']=residualL
 
-
-  #  - - - -  only plotting code is below - - - - -
-  
+  outN='sum_pred_%s.yaml'%args.prjName
+  write_yaml(sumRec, os.path.join(args.outPath,outN))
+    
+  #  - - - -  only plotting code is below - - - - -  
   plot=Plotter_NeuronInverter(args,inpMD ,sumRec )
-
-  plot.param_residua2D(U,Z)
-
-  write_yaml(sumRec, args.outPath+'/sum_pred.yaml')
-
-  #1plot.params1D(U,'true U',figId=7)
-  plot.params1D(Z,'pred Z',figId=8)
+  
+  if 'a' in args.showPlots:
+      plot.param_residua2D(trueU,recoU)
+  if 'b' in args.showPlots:
+      plot.params1D(recoU,'pred U',figId=8)
+  if 'c' in args.showPlots:
+      plot.params1D(trueU,'true U',figId=7)
 
   if 0: 
-    print('input data example, it will plot waveforms')
-    dlit=iter(data_loader)
-    xx, yy = next(dlit)
-    #1xx, yy = next(dlit) #another sample
-    print('batch, X,Y;',xx.shape,xx.dtype,yy.shape,yy.dtype)
-    print('Y[:2]',yy[:2])
-    plot.frames_vsTime(xx,yy,9)
+      print('input data example, it will plot waveforms')
+      dlit=iter(data_loader)
+      xx, yy = next(dlit)
+      #1xx, yy = next(dlit) #another sample
+      print('batch, X,Y;',xx.shape,xx.dtype,yy.shape,yy.dtype)
+      print('Y[:2]',yy[:2])
+      plot.frames_vsTime(xx,yy,9)
    
-  
-  plot.display_all(domain+'_'+args.cellName, png=1)  
+  figN=domain+'_'+ parMD['cell_name']
+
+  plot.display_all(figN, png=1)  
 

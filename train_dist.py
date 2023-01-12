@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 '''
 Not running on CPUs !
-
 See Readmee.perlmutter
-
 
 '''
 
@@ -20,10 +18,10 @@ import torch.distributed as dist
 
 def get_parser():  
   parser = argparse.ArgumentParser()
-  parser.add_argument("--design", default='expF2us', help='[.hpar.yaml] configuration of model and training')
+  parser.add_argument("--design", default='2023stimSer', help='[.hpar.yaml] configuration of model and training')
   parser.add_argument("-o","--outPath", default='/global/homes/b/balewski/prjs/tmp_neuInv/manual/', type=str)
   parser.add_argument("--facility", default='perlmutter', help='data location differes')
-  parser.add_argument("--cellName", type=str, default='bbp153', help="cell shortName ")
+  parser.add_argument("--cellName", type=str, default='L23_PCcADpyr2', help="cell shortName ")
   parser.add_argument("--probsSelect",default=[0,1,2], type=int, nargs='+', help="list of probes, space separated")
   parser.add_argument("--stimsSelect",default=[0], type=int, nargs='+', help="list of stims, space separated")
   parser.add_argument("--initLR",default=None, type=float, help="if defined, replaces learning rate from hpar")
@@ -93,16 +91,16 @@ if __name__ == '__main__':
 
   # capture other args values
   params['cell_name']=args.cellName
-  params['probs_select']=args.probsSelect
-  params['stims_select']=args.stimsSelect
-  params['data_path']=params['data_path'][args.facility]
+  params['data_conf']['probs_select']=args.probsSelect
+  params['data_conf']['stims_select']=args.stimsSelect
+  params['data_conf']['data_path']=params['data_path'][args.facility]
   params['job_id']=args.jobId
   params['out_path']=args.outPath
 
   # overwrite default configuration
   #.... update selected params based on runtime config
   if args.numGlobSamp!=None:  # reduce num steps/epoch - code testing
-      params['max_glob_samples_per_epoch']=args.numGlobSamp
+      params['data_conf']['max_glob_samples_per_epoch']=args.numGlobSamp
   if args.initLR!=None:
         params['train_conf']['optimizer'][1]= args.initLR
   if args.epochs!=None:
