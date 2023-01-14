@@ -9,17 +9,19 @@ There are 2 steps of packing:
 I typically write all files to pscratch, and after all works fine I archive both h5 in CFS
 
 Execution:
-(A)  can run on PM login node, takes ~2 min,  e.g:
+(A)  can run on PM login node, it takes ~2 min,  e.g:
  module load pytorch
  ./aggregate_Kaustubh.py  --simPath  /pscratch/sd/k/ktub1999/Jan12Wide/runs2  --outPath /pscratch/sd/b/balewski/tmp_bbp3 --jid 4636479_1
 
-(B) needs too much RAM, so it must be executed on dedicated PM-CPu node, takes ~15 min, it reads and writes to the same location but needs cellName instead of job-id
+input: L4_SP_cADpyr_0-v3-*-c0.h5, output: L4_SPcADpyr0.simRaw.h5
 
-salloc  -C cpu -q interactive  -t4:00:00  -N1
+(B) needs  too  much RAM (peak  385GB)  for login node execution, so it must be executed on dedicated PM-CPU node, it takes ~10 min, it reads and writes to the same location but needs cellName instead of job-id
+
+ salloc  -C cpu -q interactive  -t4:00:00  -N1
  module load pytorch
+ time ./format_bbp3_for_ML.py  --dataPath /pscratch/sd/b/balewski/tmp_bbp3 --cellName  L4_SPcADpyr0
 
-time ./format_bbp3_for_ML.py  --dataPath /pscratch/sd/b/balewski/tmp_bbp3 --cellName  L4_SPcADpyr0
-
+input:  L4_SPcADpyr0.simRaw.h5, output: L4_SPcADpyr0.mlPack1.h5
 
 = = = =  speciffic example = = = = = = 
 

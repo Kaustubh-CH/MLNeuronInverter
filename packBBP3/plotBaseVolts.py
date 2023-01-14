@@ -116,16 +116,17 @@ class Plotter(Plotter_Backbone):
         # prep time axis
         numTbin,Nbo,Nst=waveA.shape
         timeV =np.arange(numTbin,dtype=np.float32)*simMD['timeAxis']['step']
+        jj=Nst-1  # index of the last stim
         
         bodyL=simMD['probeName']
         for i in range(Nbo):
             ax = self.plt.subplot(nrow,ncol,1+i)
             for j in range(Nst-1):
-                dwave=waveA[:,i,j]-waveA[:,i,4]
+                dwave=waveA[:,i,j]-waveA[:,i,jj]
                 ax.plot(timeV,dwave, linewidth=0.7,label=stimNL[j])
                 #ax.set_xlim(100.,120.)
                 
-            ax.legend(loc='best', title='DIFF vs. '+stimNL[4])
+            ax.legend(loc='best', title='DIFF vs. '+stimNL[jj])
             ax.set_xlabel('time (ms) ')
             ax.set_ylabel( bodyL[i])
 

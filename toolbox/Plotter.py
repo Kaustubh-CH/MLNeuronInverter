@@ -171,7 +171,7 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         txt3+='\npred.stims %s\n samples: %d'%(sumRec['pred_stims_select'],u.shape[0])
         ax1=axs[j]
         ax1.axis('off')
-        ax1.text(-0.15,0.02,txt3,transform=ax1.transAxes)
+        ax1.text(-0.15,-0.10,txt3,transform=ax1.transAxes)
 
 
 

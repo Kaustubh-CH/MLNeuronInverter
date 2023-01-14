@@ -11,10 +11,10 @@ nprocspn=${SLURM_NTASKS_PER_NODE}
 #nprocspn=2  # special case for partial use of a full node
 
 #cellName=L23_PCcADpyr2
-cellName=L5_TTPC1cADpyr0  # most complex
-#cellName=L4_SPcADpyr0     # the simplest
+#cellName=L5_TTPC1cADpyr0  # most complex
+cellName=L4_SPcADpyr0     # the simplest
 
-design=stimSer1
+design=m16lay
 epochs=100
 
 # can use mutiple stims serially, as independent samples

@@ -43,18 +43,18 @@ train_conf:
     LRsched: { plateau_patience: 8, reduceFactor: 0.11  }
 
 model:
-    myId:  6-stims 2023-01
-    comment: not optimized ML model
+    myId:  m8lay_v1
+    comment: 1-stim 2021-10 not optimized ML model
 
     conv_block: # CNN params
-        filter: [30, 60, 90, 120, 180, 240]
-        kernel: [ 4, 4, 4, 4,  4,  4]
-        pool:   [ 2, 2, 2, 2, 2, 2, ]
+        filter: [30, 90, 180]
+        kernel: [ 4,  4,  4]
+        pool:   [ 4,  4,  4]
 
     instance_norm_slot: 9
     layer_norm: True
     batch_norm: True
 
     fc_block: # FC params w/o last layer
-        dims: [ 700, 700, 700, 600, 500, 400, 300, 200, 100, 100 ]
-        dropFrac: 0.01
+       dims: [ 512, 512, 512, 256, 128 ]
+       dropFrac: 0.02

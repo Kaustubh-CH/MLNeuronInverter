@@ -18,7 +18,7 @@ import torch.distributed as dist
 
 def get_parser():  
   parser = argparse.ArgumentParser()
-  parser.add_argument("--design", default='2023stimSer', help='[.hpar.yaml] configuration of model and training')
+  parser.add_argument("--design", default='m16lay', help='[.hpar.yaml] configuration of model and training')
   parser.add_argument("-o","--outPath", default='/global/homes/b/balewski/prjs/tmp_neuInv/manual/', type=str)
   parser.add_argument("--facility", default='perlmutter', help='data location differes')
   parser.add_argument("--cellName", type=str, default='L23_PCcADpyr2', help="cell shortName ")

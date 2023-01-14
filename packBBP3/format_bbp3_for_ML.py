@@ -32,7 +32,7 @@ def get_parser():
 #...!...!..................
 def format_raw(dom,off_len):
     [ioff,myLen]=off_len
-    print('format:', dom,[ioff,myLen])
+    print('\nformat:', dom,[ioff,myLen])
 
     for xN in simD:
         yN='%s_%s'%(dom,xN)
@@ -71,7 +71,9 @@ if __name__=="__main__":
     print('M:split_index',split_index)
     bigD={}  # this will be output
     totFlat=0
-    for dom in split_index:
+
+    # keep this order to deal with bigest record first - it may not matter
+    for dom in ['train','valid','test']: 
         totFlat+=format_raw(dom,split_index[dom])
         
     #.... update meta data
