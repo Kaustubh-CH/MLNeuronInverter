@@ -21,13 +21,15 @@ def get_parser():
     parser = argparse.ArgumentParser()
     
     parser.add_argument("-s","--simPath",help="simu raw path",  default='/pscratch/sd/k/ktub1999/BBP_TEST2/runs2/')
-    parser.add_argument("-o","--outPath",help="output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3_dec26')
+    parser.add_argument("-o","--outPath",help="output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3_jan12')
     parser.add_argument("--jid", type=str, default='3800565_1', help="cell shortName list, blanks separated")
     
     args = parser.parse_args()
     args.verb=1
     
     for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
+    assert os.path.exists(args.outPath)
+
     return args
 
 #...!...!..................

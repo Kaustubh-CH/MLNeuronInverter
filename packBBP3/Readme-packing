@@ -2,6 +2,27 @@ BBP3 simu use common
 'One Network to Rule them all' (aka ONTRA)
 Revised in 2022-11 after Kaustubh produces 13 exitatory cells x 5 clones
 
+===== Short summary ======
+There are 2 steps of packing:
+(A) only agregates 1000 raw h5 from simu into 1 h5 + makes some changes in meta-data
+(B) splits 512k samples from (A) into train/val/test 8/1/1,  normalizes  volts for each sample and each probe  to have mean=0, std=1 and cast them back to fp16
+I typically write all files to pscratch, and after all works fine I archive both h5 in CFS
+
+Execution:
+(A)  can run on PM login node, takes ~2 min,  e.g:
+ module load pytorch
+ ./aggregate_Kaustubh.py  --simPath  /pscratch/sd/k/ktub1999/Jan12Wide/runs2  --outPath /pscratch/sd/b/balewski/tmp_bbp3 --jid 4636479_1
+
+(B) needs too much RAM, so it must be executed on dedicated PM-CPu node, takes ~15 min, it reads and writes to the same location but needs cellName instead of job-id
+
+salloc  -C cpu -q interactive  -t4:00:00  -N1
+ module load pytorch
+
+time ./format_bbp3_for_ML.py  --dataPath /pscratch/sd/b/balewski/tmp_bbp3 --cellName  L4_SPcADpyr0
+
+
+= = = =  speciffic example = = = = = = 
+
 3800565_1 : L4_SScADpyr4
 3800564_1:  L6_TPC_L1cADpyr4
 
