@@ -118,6 +118,7 @@ class Plotter_NeuronInverter(Plotter_Backbone):
             zsum,xbins,ybins,img = ax1.hist2d(z,u,bins=binsX,#norm=mpl.colors.LogNorm(),
                                                cmin=1, cmap = colMap)
 
+            
             ax1.plot([0, 1], [0,1], color='magenta', linestyle='--',linewidth=0.5,transform=ax1.transAxes) #diagonal
             # 
             ax1.set_title('%d:%s'%(iPar,parName[iPar]), size=10)

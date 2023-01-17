@@ -4,7 +4,8 @@ set -e ;  #  bash exits if any statement returns a non-true return value
 #set -o errexit ;  # exit if any statement returns a non-true return value
 k=0
 
-#
+#  salloc  -C cpu -q interactive  -t4:00:00  -A  m2043  -N 1
+#   module load pytorch
 
 cellL="
 L4_SScADpyr
@@ -21,13 +22,14 @@ L5_UTPCcADpyr
 L5_STPCcADpyr
 L6_IPCcADpyr
 "
-cellL="
-L5_STPCcADpyr
-L6_IPCcADpyr
-"
+
+
+
+dataPath=/global/cfs/cdirs/m2043/balewski/neuronBBP3-10kHz_3pr_6stim/dec26_simRaw
+
 for cell in $cellL ; do
     echo cell=$cell
-    time  ./format_bbp3_for_ML.py --cellName ${cell}3
+    time  ./format_bbp3_for_ML.py --cellName ${cell}4   --dataPath $dataPath
     k=$[ ${k} + 1 ]
 done
 

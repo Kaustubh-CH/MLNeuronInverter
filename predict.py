@@ -169,7 +169,8 @@ if __name__ == '__main__':
 
   residualL=compute_residual(trueU,recoU,inpMD)
   print('#res,job,%s'%trainMD['job_id'])
-  print('#res,MSEloss,%.4f\n'%loss)
+  print('#res,MSEloss,%.4f'%loss)
+  print('#res,samples,%d\n'%trueU.shape[0])
     
   sumRec={}
   sumRec['domain']=domain

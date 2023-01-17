@@ -67,7 +67,7 @@ if __name__=="__main__":
     totSamp=simMD['simu_info']['num_total_samples']
     nval=int(totSamp/10)
     # compute offest and length per domain
-    split_index={'valid':[0,nval], 'test':[nval,2*nval],'train':[2*nval, totSamp-2*nval]}
+    split_index={'valid':[0,nval], 'test':[nval,nval],'train':[2*nval, totSamp-2*nval]}
     print('M:split_index',split_index)
     bigD={}  # this will be output
     totFlat=0
