@@ -17,6 +17,7 @@ class MyModel(nn.Module):
         
         self.verb=verb
         if verb: print('CNNandFC_Model inp_shape=',self.inp_shape,', verb=%d'%(self.verb))
+        bn_cnn_slot=hpar['batch_norm_cnn_slot']
         
         # .....  CNN layers
         hpar1=hpar['conv_block']
@@ -28,6 +29,8 @@ class MyModel(nn.Module):
             self.cnn_block.append( nn.Conv1d(inp_chan, out_chan, cnnker, cnn_stride))
             self.cnn_block.append( nn.MaxPool1d(plker))
             self.cnn_block.append( nn.ReLU())
+            if len(self.cnn_block)==bn_cnn_slot:
+                self.cnn_block.append( torch.nn.BatchNorm1d( out_chan))
             if len(self.cnn_block)==hpar['instance_norm_slot']:
                 self.cnn_block.append( nn.InstanceNorm1d(out_chan))
             inp_chan=out_chan
@@ -49,7 +52,7 @@ class MyModel(nn.Module):
             self.cnn_block.append( nn.LayerNorm(y1.shape[1:]))
 
         self.flat_bn=None
-        if hpar['batch_norm']:
+        if hpar['batch_norm_flat']:
                 self.flat_bn=torch.nn.BatchNorm1d(self.flat_dim)
     
         # .... add FC  layers

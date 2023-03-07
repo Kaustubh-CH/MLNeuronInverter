@@ -33,32 +33,50 @@ def get_parser():
     return args
 
 #...!...!..................
-def normalize_volts(volts,name='',verb=1):  # slows down the code a lot
+def normalize_volts(volts,name='',perProbe=True,verb=1):  # slows down the code a lot
+    ''' 2020-Vyassa version:  perprobe=False <-- 1 common norm per all probes
+    2023-Kaustubh version: perProbe=True <-- each probe is normalized to 1
+    '''
+    
     Ta = time.time()
-    #print('WW1',volts.shape,volts.dtype)
+    print('WW1',volts.shape,volts.dtype)  # last dim is stim-ID
+
+    if not perProbe:
+        shp=volts.shape
+        volts=volts.reshape( shp[0], shp[1]*shp[2],-1)
+        print('WW1 common',volts.shape)
 
     #... for breadcasting to work the 1st dim (=timeBins) must be skipped
+    
     X=np.swapaxes(volts,0,1).astype(np.float32) # important for correct result
-    #print('WW2',X.shape)
-        
+    print('WW2 perProbe=%r'%perProbe,X.shape)
+                
     xm=np.mean(X,axis=0) # average over time bins
     xs=np.std(X,axis=0)
-    elaTm=(time.time()-Ta)/60.
-    print('Volts norm, xm:',xm.shape,'Xswap:',X.shape,'elaT=%.2f min'%elaTm)
 
-    nZer=np.sum(xs==0)
-    zerA=xs==0
-    print('   nZer=%d %s  : name=%s'%(nZer,xs.shape,name))
     
     #... to see indices of frames w/ volts==const
     result = np.where(xs==0)  
     xs[xs==0]=1  #hack:  for zero-value samples use mu=1 to allow scaling
-    X=(X-xm)/xs
 
+    #..... RENORMALIZE INPUT HERE 
+    X=(X-xm)/xs   
+    
     #... revert indices and reduce bit-size
     volts_norm=np.swapaxes(X,0,1).astype(np.float16)
+    if not perProbe:
+        volts_norm=volts_norm.reshape( shp[0], shp[1],shp[2],-1)
+        print('restore',volts_norm.shape)
+    
+    elaTm=(time.time()-Ta)/60.
+    print('norm, xm:',xm.shape,'X:',X.shape,'elaT=%.2f min'%elaTm)
+    
+    nZer=np.sum(xs==0)
+    zerA=xs==0
+    print('   nZer=%d %s  : name=%s'%(nZer,xs.shape,name))
+        
     del X
-    #print('WW3',volts_norm.shape,volts_norm.dtype)
+    print('WW3',volts_norm.shape,volts_norm.dtype)
 
     if verb>1: # report flat volts for each sample
         na,nb,nc=zerA.shape    

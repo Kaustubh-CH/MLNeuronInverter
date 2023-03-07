@@ -18,8 +18,8 @@ import argparse
 def get_parser():
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--dataPath",help="input/output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3_dec26')
-    parser.add_argument("--cellName", type=str, default='L4_SScADpyr4', help="cell name list, blanks separated")
+    parser.add_argument("--dataPath",help="input/output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3_march06')
+    parser.add_argument("--cellName", type=str, default='L5_TTPC1cADpyr0', help="cell name list, blanks separated")
     parser.add_argument("--conf", type=int, default=1, help="output configuration")
     
     args = parser.parse_args()
@@ -43,7 +43,7 @@ def format_raw(dom,off_len):
     volts=bigD.pop(dom+'_volts')
     print('normalize and QA:',volts.shape,dom)
     assert args.conf==1 # change here for different packing & normalization schemes
-    volts_norm,nFlat=normalize_volts(volts,dom)
+    volts_norm,nFlat=normalize_volts(volts,dom, perProbe=False)
     bigD[dom+'_volts_norm']=volts_norm
     return int(nFlat)
                  
@@ -58,7 +58,9 @@ if __name__=="__main__":
     inpF0=args.cellName+'.simRaw.h5'
     inpF=os.path.join(args.dataPath,inpF0)
     simD,simMD=read3_data_hdf5(inpF)
-
+    if 0:
+        pprint(simMD); exit(9)
+    
     #... isolate stims to be not split
     stimNL=simMD['simu_info']['stim_names']
     tmpD={xN:simD.pop(xN) for xN in stimNL}
