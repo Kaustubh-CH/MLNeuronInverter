@@ -41,7 +41,7 @@ train_conf:
     LRsched: { plateau_patience: 8, reduceFactor: 0.11  }
 
 model:
-    myId:  m8lay_v1
+    myId:  m8lay_vassa
     comment: 1-stim 2021-10 not optimized ML model
 
     conv_block: # CNN params
