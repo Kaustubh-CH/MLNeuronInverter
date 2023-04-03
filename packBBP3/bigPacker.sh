@@ -4,24 +4,14 @@ set -e ;  #  bash exits if any statement returns a non-true return value
 #set -o errexit ;  # exit if any statement returns a non-true return value
 k=0
 
-jidL="4077401
-4077404
-4077407
-4077410
-4077414
-4077418
-4077422
-4077425
-4077428
-4077431
-4077434
-4077438
-4077441
+jidL="6712138
 "
+Path="/pscratch/sd/k/ktub1999/Feb24Nrow/runs2/" 
+outPath="/pscratch/sd/k/ktub1999/bbp_Mar30"
 
 for jid in $jidL ; do
     echo jid=$jid
-    time  ./aggregate_Kaustubh.py --jid ${jid}_1
+    time  ./aggregate_Kaustubh.py --jid ${jid}_1 --simPath $Path --outPath $outPath
     k=$[ ${k} + 1 ]
 done
 

@@ -113,6 +113,8 @@ def model_infer(model,test_loader,trainMD):
 #...!...!..................
 def compute_residual(trueU,recoU,md):
     parName=md['parName']
+    idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+    parName=[parName[id] for id in idx]
     nPar=len(parName)
     outL=[]
     for iPar in range(0,nPar):

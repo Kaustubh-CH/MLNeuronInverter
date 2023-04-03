@@ -8,28 +8,16 @@ k=0
 #   module load pytorch
 
 cellL="
-L4_SScADpyr
-L4_SPcADpyr
 L5_TTPC1cADpyr
-L5_TTPC2cADpyr
-L4_PCcADpyr
-L6_BPCcADpyr
-L6_TPC_L4cADpyr
-L6_TPC_L1cADpyr
-L6_UTPCcADpyr
-L23_PCcADpyr
-L5_UTPCcADpyr
-L5_STPCcADpyr
-L6_IPCcADpyr
 "
 
 
 
-dataPath=/global/cfs/cdirs/m2043/balewski/neuronBBP3-10kHz_3pr_6stim/dec26_simRaw
+dataPath=/pscratch/sd/k/ktub1999/bbp_Mar29
 
 for cell in $cellL ; do
     echo cell=$cell
-    time  ./format_bbp3_for_ML.py --cellName ${cell}4   --dataPath $dataPath
+    time  ./format_bbp3_for_ML.py --cellName ${cell}0   --dataPath $dataPath
     k=$[ ${k} + 1 ]
 done
 

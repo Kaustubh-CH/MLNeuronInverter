@@ -83,7 +83,10 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         colMap=cmap.GnBu
         sumRec=self.sumRec
         parName=self.inpMD['parName']
+        idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+        parName=[parName[id] for id in idx]
         nPar=self.inpMD['num_phys_par']
+        nPar-=5
         residualL=sumRec['residual_mean_std']
 
         nrow,ncol=4,5 # BBP3
@@ -181,7 +184,10 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         
         metaD=self.inpMD
         parName=metaD['parName']
+        idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+        parName=[parName[id] for id in idx]
         nPar=self.inpMD['num_phys_par']
+        nPar-=5
         nrow,ncol=4,5
         
         figId=self.smart_append(figId)

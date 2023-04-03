@@ -24,6 +24,7 @@ def get_parser():
     parser.add_argument("-o","--outPath",help="output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3_jan12')
     parser.add_argument("--jid", type=str, default='3800565_1', help="cell shortName list, blanks separated")
     
+
     args = parser.parse_args()
     args.verb=1
     
@@ -156,7 +157,7 @@ def import_stims_from_CVS():
     nameL2=[]
     nameL1=oneMD.pop('stimName')
     #stimPath='/global/cscratch1/sd/ktub1999/stims/'
-    stimPath='/global/homes/b/balewski/neuronInverter/packBBP3/stims_dec26'
+    stimPath='/pscratch/sd/k/ktub1999/main/DL4neurons2/stims/'
     for name in  nameL1:
         inpF=os.path.join(stimPath,name)
         print('import ', inpF)
@@ -186,9 +187,13 @@ def read_all_h5(inpL):
         one=oneD[xN]
         sh1=list(one.shape)
         sh1[0]=nfile*oneSamp
+        
+        if(xN=="unit_par" or xN=="phys_par"):
+            sh1[1]-=5
         bigD[xN]=np.zeros(tuple(sh1),dtype=one.dtype)       
 
     nBadSamp=0
+    idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
     #.... main loop over data
     print('RA5:read h5...',nfile)
     for j,name in enumerate(inpL):
@@ -201,7 +206,10 @@ def read_all_h5(inpL):
         
         ioff=j*oneSamp
         for x in simD:
-            bigD[x][ioff:ioff+oneSamp]=simD[x]
+            if(x=="unit_par" or x=="phys_par"):
+                bigD[x][ioff:ioff+oneSamp]=simD[x][:,idx]
+            else:
+                bigD[x][ioff:ioff+oneSamp]=simD[x]
     oneMD['simu_info']['num_NaN_volts_cleared']=int(nBadSamp)
         
 #...!...!..................

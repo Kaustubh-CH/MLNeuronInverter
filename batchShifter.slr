@@ -15,14 +15,14 @@ cellName=L5_TTPC1cADpyr0  # most complex aka bbp153-vyassa
 #cellName=L4_SPcADpyr0     # the simplest
 
 #design=m8lay
-design=vyassa
+design=m8lay_vs
 epochs=100
 
 # can use mutiple stims serially, as independent samples
-probsSelect=" 0 1 2   "  # index from  list: ['soma', 'axon', 'dend']
+probsSelect=" 0 1 2 3  "  # index from  list: ['soma', 'axon', apic,'dend']
 #stimsSelect=" 0 1 2 3 4 5 "  #  index from  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
 #stimsSelect=" 0  3  5 "  # chaosA+B+chirp
-stimsSelect="  3 "  # chaosB
+stimsSelect="  0 "  # chaosB
 #stimsSelect="  0 "  # chaosA
 
 N=${SLURM_NNODES}
