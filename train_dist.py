@@ -15,6 +15,8 @@ import  logging
 logging.basicConfig(format='%(levelname)s - %(message)s', level=logging.INFO)
 import torch
 import torch.distributed as dist
+from RayTune import Raytune
+
 
 def get_parser():  
   parser = argparse.ArgumentParser()
@@ -106,14 +108,15 @@ if __name__ == '__main__':
   if args.epochs!=None:
         params['max_epochs']= args.epochs
 
-  trainer = Trainer(params)
+  # trainer = Trainer(params)
 
-  trainer.train()
+  # trainer.train()
+  rayTune = Raytune(params)
 
-  if params['world_rank'] == 0:
-    sumF=args.outPath+'/sum_train.yaml'
-    write_yaml(trainer.sumRec, sumF) # to be able to predict while training continus
+  # if params['world_rank'] == 0:
+  #   sumF=args.outPath+'/sum_train.yaml'
+  #   write_yaml(trainer.sumRec, sumF) # to be able to predict while training continus
 
-    print("M:done world_size=",params['world_size'])
-    tp=trainer.sumRec['train_params']
-    print("M:sum design=%s iniLR=%.1e  epochs=%d  val-loss=%.4f"%(tp['design'],tp['train_conf']['optimizer'][1],tp['max_epochs'],trainer.sumRec['loss_valid']))
+  #   print("M:done world_size=",params['world_size'])
+  #   tp=trainer.sumRec['train_params']
+  #   print("M:sum design=%s iniLR=%.1e  epochs=%d  val-loss=%.4f"%(tp['design'],tp['train_conf']['optimizer'][1],tp['max_epochs'],trainer.sumRec['loss_valid']))

@@ -47,6 +47,7 @@ def get_parser():
     parser.add_argument("-p", "--showPlots",  default='ab', nargs='+',help="abcd-string listing shown plots")
 
     parser.add_argument("--cellName", type=str, default=None, help="alternative data file name ")
+    parser.add_argument("--idx", nargs='*' ,required=False,type=str, default=None, help="Included parameters")
     args = parser.parse_args()
     args.prjName='nif'
     args.outPath+'/'
@@ -111,9 +112,9 @@ def model_infer(model,test_loader,trainMD):
 
 
 #...!...!..................
-def compute_residual(trueU,recoU,md):
+def compute_residual(trueU,recoU,md,idx):
     parName=md['parName']
-    idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+    # idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
     parName=[parName[id] for id in idx]
     nPar=len(parName)
     outL=[]
@@ -158,7 +159,10 @@ if __name__ == '__main__':
       print('M: prjName',args.prjName)
     
   domain=args.dom
-
+  idx=range(len(inpMD['parName']))
+  if(args.idx is not None):
+      idx= args.idx
+      idx =[int(i) for i in idx]
   parMD['world_size']=1
   #pprint(parMD); ok6
   
@@ -169,7 +173,7 @@ if __name__ == '__main__':
   predTime=time.time()-startT
   print('M: infer : Average loss: %.4f  dom=%s samples=%d , elaT=%.2f min\n'% (loss, domain, trueU.shape[0],predTime/60.))
 
-  residualL=compute_residual(trueU,recoU,inpMD)
+  residualL=compute_residual(trueU,recoU,inpMD,idx)
   print('#res,job,%s'%trainMD['job_id'])
   print('#res,MSEloss,%.4f'%loss)
   print('#res,samples,%d\n'%trueU.shape[0])

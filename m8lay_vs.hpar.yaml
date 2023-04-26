@@ -4,7 +4,7 @@
 
 data_path:
   #perlmutter:  /pscratch/sd/b/balewski/tmp_bbp3_feb22/
-  perlmutter:  /pscratch/sd/k/ktub1999/bbp_Mar29/
+  perlmutter: /pscratch/sd/k/ktub1999/bbp_Aprl_24/
 
 data_conf:
     serialize_stims :  True  # False= append  timeBins
@@ -28,6 +28,7 @@ resume_checkpoint: False  # False: always start over
 # APEX: Nvidia streamlined data-parallel  training
 # AMP: Automatic Mixed Precision package
 # autotune: # activates cudnn.benchmark
+do_ray: True
 
 opt_pytorch:  
     amp: False

@@ -11,6 +11,9 @@ from toolbox.Model import  MyModel
 from toolbox.Dataloader_H5 import get_data_loader
 from toolbox.Util_IOfunc import read_yaml
 
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
+
 #...!...!..................
 def patch_h5meta(ds,params):
     md=ds.metaData
@@ -42,7 +45,7 @@ class Trainer():
     self.valPeriod=params['validation_period']
     self.device = torch.cuda.current_device()      
     logging.info('T:ini world rank %d of %d, host=%s  see device=%d'%(params['world_rank'],params['world_size'],socket.gethostname(),self.device))
-
+    self.doRay=params['do_ray']
     expDir=params['out_path']
     expDir2=os.path.join(expDir, 'checkpoints/')
     if self.isRank0:
@@ -206,7 +209,15 @@ class Trainer():
       if doVal:  valid_logs = self.validate_one_epoch()
       t3 = time.time()
       tend = time.time()
-      
+
+      if self.doRay:
+        if doVal:
+          os.makedirs("my_model", exist_ok=True)
+          torch.save(
+            (self.model.state_dict(), self.optimizer.state_dict()), "my_model/checkpoint.pt")
+          checkpoint = Checkpoint.from_directory("my_model")
+          session.report({"loss": valid_logs['loss']}, checkpoint=checkpoint)
+
       if epoch >= warmup_epochs and  doVal :
         self.scheduler.step(valid_logs['loss'])
              

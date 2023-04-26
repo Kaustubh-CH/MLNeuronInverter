@@ -13,7 +13,7 @@ L5_TTPC1cADpyr
 
 
 
-dataPath=/pscratch/sd/k/ktub1999/bbp_Mar29
+dataPath=/pscratch/sd/k/ktub1999/bbp_Aprl_24
 
 for cell in $cellL ; do
     echo cell=$cell

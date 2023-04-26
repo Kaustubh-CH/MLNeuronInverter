@@ -25,6 +25,10 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         self.inpMD=inpMD
         self.sumRec=sumRec
         self.formatVenue=args.formatVenue
+        self.idx=range(len(inpMD['parName']))
+        if(args.idx is not None):
+            self.idx=args.idx
+            self.idx=[int(i) for i in self.idx]
         
 #...!...!..................
     def frames_vsTime(self,X,Y,nFr,figId=7,metaD=None, stim=[]):
@@ -83,10 +87,11 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         colMap=cmap.GnBu
         sumRec=self.sumRec
         parName=self.inpMD['parName']
-        idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+        # idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+        idx=self.idx
         parName=[parName[id] for id in idx]
-        nPar=self.inpMD['num_phys_par']
-        nPar-=5
+        # nPar=self.inpMD['num_phys_par']
+        nPar=len(parName)
         residualL=sumRec['residual_mean_std']
 
         nrow,ncol=4,5 # BBP3
@@ -184,7 +189,8 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         
         metaD=self.inpMD
         parName=metaD['parName']
-        idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+        # idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+        idx=self.idx
         parName=[parName[id] for id in idx]
         nPar=self.inpMD['num_phys_par']
         nPar-=5

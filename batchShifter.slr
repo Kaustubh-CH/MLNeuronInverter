@@ -60,7 +60,7 @@ export CMD=" python -u   train_dist.py --cellName $cellName   --facility $facili
 
 echo CMD=$CMD
 
-codeList="  train_dist.py  predict.py  toolbox/ batchShifter.slr  $design.hpar.yaml  "
+codeList="  train_dist.py  predict.py RayTune.py toolbox/ batchShifter.slr  $design.hpar.yaml  "
 
 outPath=$wrkDir/out
 mkdir -p $outPath
@@ -76,9 +76,10 @@ sleep 2
 echo S:done train
 time srun -n1 shifter  python -u ./predict.py  --modelPath out  -X  >& log.predictAll
 echo S:done predict all, 2 more for stim 0 and 5
-time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS5
-time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 0 --showPlots a -X  >& log.predictS0
+# time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS5
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 0 --showPlots a -X --idx 0 1 2 3 4 5 6 7 8 9 10 13 14 15 18 >& log.predictS0  
 date
 
+# --idx 0 1 2 3 4 5 6 7 8 9 10 13 14 15
 # spare: --numSamples 500000  --cellName $cellName
 # manual: ~/neuronInverter/predict.py --modelPath out --numSamples 5000 --stimsSelect 5 --showPlots a  --venue poster

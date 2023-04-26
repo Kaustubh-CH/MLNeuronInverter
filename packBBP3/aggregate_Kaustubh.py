@@ -23,8 +23,9 @@ def get_parser():
     parser.add_argument("-s","--simPath",help="simu raw path",  default='/pscratch/sd/k/ktub1999/BBP_TEST2/runs2/')
     parser.add_argument("-o","--outPath",help="output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3_jan12')
     parser.add_argument("--jid", type=str, default='3800565_1', help="cell shortName list, blanks separated")
+    parser.add_argument("--idx", type=str,nargs='+',required=False, default=None, help="id of parameters to include")
+    parser.add_argument("--numExclude", type=str,required=False, default='0', help="No of parameters to exclude")
     
-
     args = parser.parse_args()
     args.verb=1
     
@@ -177,23 +178,30 @@ def import_stims_from_CVS():
 
 
 #...!...!..................
-def read_all_h5(inpL):
+def read_all_h5(inpL,args):
     nfile=len(inpL)
     oneSamp=oneD['volts'].shape[0]
     #print('aa',inpL); oko9
 
     #... create containers
+    siz=0
     for xN in oneD:
         one=oneD[xN]
         sh1=list(one.shape)
         sh1[0]=nfile*oneSamp
         
         if(xN=="unit_par" or xN=="phys_par"):
-            sh1[1]-=5
+            siz=sh1[1]
+            sh1[1]-=int(args.numExclude)
         bigD[xN]=np.zeros(tuple(sh1),dtype=one.dtype)       
 
     nBadSamp=0
-    idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+     # idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+    idx=range(siz)
+    if(args.idx is not None):
+        idx=args.idx
+        idx=[int(i) for i in idx]
+    # idx=[0,1,2,3,4,5,6,7,8,9,10,12,13,14,15]
     #.... main loop over data
     print('RA5:read h5...',nfile)
     for j,name in enumerate(inpL):
@@ -250,7 +258,7 @@ if __name__=="__main__":
       
     assemble_MD(nh5)
     bigD={}
-    read_all_h5(h5L)
+    read_all_h5(h5L,args)
     import_stims_from_CVS()
 
     print('M:sim meta-data');   pprint(oneMD)
