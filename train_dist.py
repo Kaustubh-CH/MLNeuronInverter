@@ -21,13 +21,15 @@ from RayTune import Raytune
 def get_parser():  
   parser = argparse.ArgumentParser()
   parser.add_argument("--design", default='m16lay', help='[.hpar.yaml] configuration of model and training')
-  parser.add_argument("-o","--outPath", default='/global/homes/b/balewski/prjs/tmp_neuInv/manual/', type=str)
+  parser.add_argument("-o","--outPath", default='/pscratch/sd/k/ktub1999/tmp_neuInv/TB_logs/', type=str)
   parser.add_argument("--facility", default='perlmutter', help='data location differes')
   parser.add_argument("--cellName", type=str, default='L23_PCcADpyr2', help="cell shortName ")
   parser.add_argument("--probsSelect",default=[0,1,2], type=int, nargs='+', help="list of probes, space separated")
   parser.add_argument("--stimsSelect",default=[0], type=int, nargs='+', help="list of stims, space separated")
   parser.add_argument("--initLR",default=None, type=float, help="if defined, replaces learning rate from hpar")
   parser.add_argument("--epochs",default=None, type=int, help="if defined, replaces max_epochs from hpar")
+  parser.add_argument("--data_path_temp",default="/pscratch/sd/k/ktub1999/bbp_May_10_8623428/", type=str, help="if defined, replaces max_epochs from hpar")
+
    
 
   parser.add_argument("-j","--jobId", default=None, help="optional, aux info to be stored w/ summary")
@@ -65,8 +67,9 @@ if __name__ == '__main__':
     os.environ['WORLD_SIZE'] = os.environ['SLURM_NTASKS']
 
   params['world_size'] = int(os.environ['WORLD_SIZE'])
-    
+  # params['world_size']=1
   params['world_rank'] = 0
+  # print("WORDL SIZEEEEEEEEEEEEEEEEEEEEEEee",params['world_size'])
   if params['world_size'] > 1:  # multi-GPU training
     torch.cuda.set_device(0)
     dist.init_process_group(backend='nccl', init_method='env://')
@@ -98,6 +101,7 @@ if __name__ == '__main__':
   params['data_conf']['data_path']=params['data_path'][args.facility]
   params['job_id']=args.jobId
   params['out_path']=args.outPath
+  params['data_path_temp']=args.data_path_temp
 
   # overwrite default configuration
   #.... update selected params based on runtime config
@@ -111,12 +115,17 @@ if __name__ == '__main__':
   # trainer = Trainer(params)
 
   # trainer.train()
-  rayTune = Raytune(params)
+  if(params['do_ray']):
+    rayTune = Raytune(params)
+  else:
+    trainer = Trainer(params)
+    trainer.train()
+    
 
-  # if params['world_rank'] == 0:
-  #   sumF=args.outPath+'/sum_train.yaml'
-  #   write_yaml(trainer.sumRec, sumF) # to be able to predict while training continus
+  if params['world_rank'] == 0:
+    sumF=args.outPath+'/sum_train.yaml'
+    write_yaml(trainer.sumRec, sumF) # to be able to predict while training continus
 
-  #   print("M:done world_size=",params['world_size'])
-  #   tp=trainer.sumRec['train_params']
-  #   print("M:sum design=%s iniLR=%.1e  epochs=%d  val-loss=%.4f"%(tp['design'],tp['train_conf']['optimizer'][1],tp['max_epochs'],trainer.sumRec['loss_valid']))
+    print("M:done world_size=",params['world_size'])
+    tp=trainer.sumRec['train_params']
+    print("M:sum design=%s iniLR=%.1e  epochs=%d  val-loss=%.4f"%(tp['design'],tp['train_conf']['optimizer'][1],tp['max_epochs'],trainer.sumRec['loss_valid']))

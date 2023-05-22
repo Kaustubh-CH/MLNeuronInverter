@@ -3,7 +3,7 @@
 #-SBATCH -q regular
 #SBATCH --image=nersc/pytorch:ngc-21.08-v2
 #-SBATCH --image=nersc/pytorch:ngc-22.09-v0  # runs 1/4 x slower
-#SBATCH -o out/slurm-%j.out
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
 #SBATCH  --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive  -C gpu -A  m2043   # Kris ML:m2043_g, simu:m3513_g
 #-SBATCH  -x  nid001016,nid002685,nid002688,nid002689 # block sick nodes
 # - - - E N D    O F    SLURM    C O M M A N D S
@@ -15,12 +15,12 @@ cellName=L5_TTPC1cADpyr0  # most complex aka bbp153-vyassa
 #cellName=L4_SPcADpyr0     # the simplest
 
 #design=m8lay
-design=m8lay_vs
+design=m8lay_vs2
 epochs=100
-
+data_temp=$1
 # can use mutiple stims serially, as independent samples
-probsSelect=" 0 1 2 3  "  # index from  list: ['soma', 'axon', apic,'dend']
-#stimsSelect=" 0 1 2 3 4 5 "  #  index from  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
+probsSelect=" 0 1 2 3"  # index from  list: ['soma', 'axon', apic,'dend']
+# stimsSelect=" 0 1 2 3 4 5 "  #  index from  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
 #stimsSelect=" 0  3  5 "  # chaosA+B+chirp
 stimsSelect="  0 "  # chaosB
 #stimsSelect="  0 "  # chaosA
@@ -55,12 +55,12 @@ wrkDir=$wrkDir0/$wrkSufix
 echo "S:cellName=$cellName  initLRstr=$initLRstr jobId=$jobId  wrkSufix=$wrkSufix wrkDir=$wrkDir" 
 date
 
-export CMD=" python -u   train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --probsSelect $probsSelect  --stimsSelect $stimsSelect --epochs $epochs  "
+export CMD="python -u   train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --probsSelect $probsSelect  --stimsSelect $stimsSelect --epochs $epochs --data_path_temp $data_temp "
 # spare  --numGlobSamp 101000 
 
 echo CMD=$CMD
 
-codeList="  train_dist.py  predict.py RayTune.py toolbox/ batchShifter.slr  $design.hpar.yaml  "
+codeList="  train_dist.py  predict.py predictExp.py RayTune.py toolbox/ batchShifter.slr  $design.hpar.yaml  "
 
 outPath=$wrkDir/out
 mkdir -p $outPath
@@ -77,9 +77,10 @@ echo S:done train
 time srun -n1 shifter  python -u ./predict.py  --modelPath out  -X  >& log.predictAll
 echo S:done predict all, 2 more for stim 0 and 5
 # time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS5
-time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 0 --showPlots a -X --idx 0 1 2 3 4 5 6 7 8 9 10 13 14 15 18 >& log.predictS0  
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS0  
 date
 
-# --idx 0 1 2 3 4 5 6 7 8 9 10 13 14 15
+time srun -n1 shifter  python -u ./predictExp.py  --modelPath out  -X  >& log.Exp  
+#--idx 0 1 2 3 4 5 6 7 8 9 10 13 14 15 18
 # spare: --numSamples 500000  --cellName $cellName
 # manual: ~/neuronInverter/predict.py --modelPath out --numSamples 5000 --stimsSelect 5 --showPlots a  --venue poster

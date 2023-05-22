@@ -12,10 +12,15 @@ from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.tuner import Tuner
+from ray import air
+from ray.tune.search.bayesopt import BayesOptSearch
 
 from toolbox.Trainer import Trainer
 
 def trainable(params):
+    cnn_dept=params['model']['conv_block']['cnn_dept']
+    params['model']['conv_block']['filter']=params['model']['conv_block']['filter'][:cnn_dept]
+    
     trainer = Trainer(params)
     trainer.train()
 
@@ -23,7 +28,7 @@ class Raytune:
 
 
     def __init__(self,params):
-        trainer = Trainer(params)
+        # trainer = Trainer(params)
         max_num_epochs=10
         gpus_per_trial=1
         num_samples=5
@@ -31,22 +36,39 @@ class Raytune:
         scheduler = ASHAScheduler(
             metric="loss",
             mode="min",
-            max_t=max_num_epochs,
-            grace_period=1,
-            reduction_factor=2)
-        
+            # max_t=max_num_epochs,
+            # grace_period=1,
+            # reduction_factor=2
+            )
+        algo = BayesOptSearch(random_search_steps=4)
         reporter = CLIReporter(
             # ``parameter_columns=["l1", "l2", "lr", "batch_size"]``,
             metric_columns=["loss", "accuracy", "training_iteration"])
+        
+        
+        params['model']['conv_block']['cnn_dept']=tune.randint(2, 8)
+        params['model']['conv_block']['filter']=[tune.choice([30,60,90,120])]*8
+        params['model']['conv_block']['kernel']=[tune.randint(3, 6)]*8
+        params['model']['conv_block']['pool']=[tune.randint(3, 6)]*8
+        # tune.choice([[30, 120, 240], [30, 90, 180]])
+        # params['model']['conv_block']['filter']=tune.choice([[30, 120, 240], [30, 90, 180]])
+
+
+
+        
         tuner = Tuner(tune.with_resources(
                         tune.with_parameters(trainable),
                         resources={"cpu": 2, "gpu": gpus_per_trial}
                         ),
                       tune_config=tune.TuneConfig(
-                        metric="loss",
-                        mode="min",
+                        # metric="loss",
+                        # mode="min",
                         scheduler=scheduler,
+                        search_alg=algo,
                         num_samples=num_samples,
+                        ),
+                      run_config = air.RunConfig(
+                        local_dir="./out"
                         ),
                       param_space = params
                       
@@ -91,6 +113,4 @@ class Raytune:
         # print("Best trial test set accuracy: {}".format(test_acc))
 
 
-    if __name__ == "__main__":
-        # You can change the number of GPUs per trial here:
-        main()
+    

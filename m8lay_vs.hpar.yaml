@@ -4,7 +4,7 @@
 
 data_path:
   #perlmutter:  /pscratch/sd/b/balewski/tmp_bbp3_feb22/
-  perlmutter: /pscratch/sd/k/ktub1999/bbp_Aprl_24/
+  perlmutter: /pscratch/sd/k/ktub1999/bbp_May_02/
 
 data_conf:
     serialize_stims :  True  # False= append  timeBins
@@ -46,7 +46,9 @@ model:
     comment: 1-stim 2021-10 not optimized ML model
 
     conv_block: # CNN params
-        filter: [30, 90, 180]
+        # filter: tune.choice([[30, 120, 240], [30, 90, 180]])
+        #CNN Depth
+        #
         kernel: [ 4,  4,  4]
         pool:   [ 4,  4,  4]
 

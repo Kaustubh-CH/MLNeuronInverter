@@ -96,11 +96,13 @@ class Trainer():
     
     # wait for all ranks to finish downloading the data - lets keep some order
     if params['world_size']>1:
-      import torch.distributed as dist
-      from torch.nn.parallel import DistributedDataParallel as DDP
-      assert dist.is_initialized()
-      dist.barrier()
-      self.dist=dist # nneded by this class member methods
+      # if(not self.doRay):
+      if True:
+        import torch.distributed as dist
+        from torch.nn.parallel import DistributedDataParallel as DDP
+        assert dist.is_initialized()
+        dist.barrier()
+        self.dist=dist # nneded by this class member methods
 
     # must know the number of steps to decided how often to print
     self.params['log_freq_step']=max(1,len(self.train_loader)//self.params['log_freq_per_epoch'])
@@ -155,7 +157,9 @@ class Trainer():
     self.criterion =torch.nn.MSELoss().to(self.device) # Mean Squared Loss
 
     if params['world_size']>1:
-      self.model = DDP(self.model,
+      # if(not self.doRay):
+      if True:
+        self.model = DDP(self.model,
                        device_ids=[0],output_device=[0])
                #device_ids=[params['local_rank']],output_device=[params['local_rank']])
       # note, using DDP assures the same as average_gradients(self.model), no need to do it manually 
@@ -212,11 +216,11 @@ class Trainer():
 
       if self.doRay:
         if doVal:
-          os.makedirs("my_model", exist_ok=True)
+          os.makedirs("./my_model", exist_ok=True)
           torch.save(
-            (self.model.state_dict(), self.optimizer.state_dict()), "my_model/checkpoint.pt")
-          checkpoint = Checkpoint.from_directory("my_model")
-          session.report({"loss": valid_logs['loss']}, checkpoint=checkpoint)
+            (self.model.state_dict(), self.optimizer.state_dict()), "./my_model/checkpoint.pt")
+          checkpoint = Checkpoint.from_directory("./my_model/")
+          session.report({"loss": valid_logs['loss'].cpu().detach().numpy()}, checkpoint=checkpoint)
 
       if epoch >= warmup_epochs and  doVal :
         self.scheduler.step(valid_logs['loss'])
@@ -335,10 +339,13 @@ class Trainer():
     if self.params['world_size']>1:
       for key in sorted(logs.keys()):
         logs[key] = torch.as_tensor(logs[key]).to(self.device)
-        self.dist.all_reduce(logs[key].detach())
-        logs[key] = float(logs[key]/self.dist.get_world_size())
+        # if(not self.doRay):
+        if True: 
+          self.dist.all_reduce(logs[key].detach())
+          logs[key] = float(logs[key]/self.dist.get_world_size())
 
     return logs
+    
 
   
 #...!...!..................
@@ -354,12 +361,14 @@ class Trainer():
         loss += self.criterion(outputs, labels)
         
     logs = {'loss': loss/len(self.valid_loader),}
-
+    print("VALID LLOSSSSSSSSSSSSSSSSSSSSSSSSSSSSSs",type(logs['loss']),logs['loss'].shape)
     if self.params['world_size']>1:
       for key in sorted(logs.keys()):
         logs[key] = torch.as_tensor(logs[key]).to(self.device)
-        self.dist.all_reduce(logs[key].detach())
-        logs[key] = float(logs[key]/self.dist.get_world_size())
+        # if(not self.doRay):
+        if True:
+          self.dist.all_reduce(logs[key].detach())
+          logs[key] = float(logs[key]/self.dist.get_world_size())
 
     return  logs
 

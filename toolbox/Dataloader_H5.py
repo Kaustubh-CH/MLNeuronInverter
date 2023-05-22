@@ -33,7 +33,8 @@ def get_data_loader(params,domain, verb=1):
   conf=copy.deepcopy(params)  # the input is reused later in the upper level code
   
   conf['domain']=domain
-  conf['h5name']=os.path.join(params['data_conf']['data_path'],params['cell_name']+'.mlPack1.h5')
+  #   conf['h5name']=os.path.join(params['data_conf']['data_path'],params['cell_name']+'.mlPack1.h5')
+  conf['h5name']=os.path.join(params['data_path_temp'],params['cell_name']+'.mlPack1.h5')
   shuffle=conf['shuffle']
 
   dataset=  Dataset_h5_neuronInverter(conf,verb)
@@ -157,6 +158,7 @@ class Dataset_h5_neuronInverter(object):
             for i in range(numStim): parU2[...,i]=parU.copy()
             if self.verb : print('WS1 numStim=%d volts:'%(numStim),volts.shape,', parU2:',parU2.shape)
             locSamp*=numStim
+            volts=volts[:,:,dcf['probs_select']]
             volts=np.moveaxis(volts,-1,0).reshape(locSamp,timeBins,-1)
             parU=np.moveaxis(parU2,-1,0).reshape(locSamp,-1)
             if self.verb : print('WS2 locSamp=%d, volts:'%locSamp,volts.shape,', parU:',parU.shape,', dom=',dom)

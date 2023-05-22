@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+# import tune
 
 #-------------------
 #-------------------
@@ -23,6 +24,7 @@ class MyModel(nn.Module):
         hpar1=hpar['conv_block']
         self.cnn_block = nn.ModuleList()
         cnn_stride=1
+        print("HEEEEEEEEEEEEEEEEEEEEEEEEERRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRREEEEEEEEEEEEEEEEEEEEEEEEEeeee",hpar1['filter'])
         for out_chan,cnnker,plker in zip(hpar1['filter'],hpar1['kernel'],hpar1['pool']):
             # class _ConvMd( in_channels, out_channels, kernel_size, stride,
             # CLASS torch.nn.MaxPoolMd(kernel_size, stride=None,                
