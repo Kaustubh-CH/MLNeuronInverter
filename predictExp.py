@@ -109,6 +109,7 @@ def model_infer(model,test_loader,trainMD):
     nEve=0
     nStep=0
     sweepId=65
+    os.mkdir("./unitParams")
     with torch.no_grad():
         for data, target in test_loader:
             sweepId+=1
@@ -118,7 +119,8 @@ def model_infer(model,test_loader,trainMD):
 
             dataframe={"unit_params":output_dev.squeeze().tolist(),"param_names":param_names}
             df = pd.DataFrame(dataframe)
-            df.to_csv("/global/homes/k/ktub1999/mainDL4/DL4neurons2/sensitivity_analysis/NewBaseOLD/unitParam"+str(sweepId)+".csv")
+            
+            df.to_csv("./unitParams/unitParam"+str(sweepId)+".csv")
             
             lossOp=criterion(output_dev, target_dev)
             #print('qq',lossOp,len(test_loader.dataset),len(test_loader)); ok55

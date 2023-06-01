@@ -13,13 +13,26 @@ from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.tuner import Tuner
 from ray import air
-from ray.tune.search.bayesopt import BayesOptSearch
-
+# from ray.tune.search.hyperopt import HyperOptSearch
+# from ray.tune.search.dragonfly import DragonflySearch
+from ray.tune.suggest.optuna import OptunaSearch
+# from ray.tune.suggest.ax import AxSearch
 from toolbox.Trainer import Trainer
+import ray
 
 def trainable(params):
-    cnn_dept=params['model']['conv_block']['cnn_dept']
-    params['model']['conv_block']['filter']=params['model']['conv_block']['filter'][:cnn_dept]
+    cnn_depth=params['model']['conv_block']['cnn_depth']
+    # print(params['model']['conv_block']['filter'])
+    params['model']['conv_block']['filter']=list(params['model']['conv_block']['filter'].values())[:cnn_depth]    
+    params['model']['conv_block']['kernel']=list(params['model']['conv_block']['kernel'].values())[:cnn_depth]
+    params['model']['conv_block']['pool']=list(params['model']['conv_block']['pool'].values())[:cnn_depth]
+    fc_depth=params['model']['fc_block']['fc_depth']
+    params['model']['fc_block']['dims']=list(params['model']['fc_block']['dims'].values())[:fc_depth]
+    params['model']['fc_block']['dims'].append(128)
+    print("Model Shape ",params['model']['conv_block']['filter'])
+    print("Model Kernel Shape ",params['model']['conv_block']['kernel'])
+    print("Model Pooling ",params['model']['conv_block']['pool'])
+
     
     trainer = Trainer(params)
     trainer.train()
@@ -31,25 +44,43 @@ class Raytune:
         # trainer = Trainer(params)
         max_num_epochs=10
         gpus_per_trial=1
-        num_samples=5
+        num_samples=10
+        cpus_per_trail=8
         # trainer.train()
         scheduler = ASHAScheduler(
-            metric="loss",
-            mode="min",
+            # metric="loss",
+            # mode="min"
             # max_t=max_num_epochs,
             # grace_period=1,
             # reduction_factor=2
             )
-        algo = BayesOptSearch(random_search_steps=4)
+        # algo  = AxSearch()
+        algo = OptunaSearch()
+        # algo = BayesOptSearch(random_search_steps=4)
+        # hyperopt_search = HyperOptSearch(
+        #           metric="loss", mode="min")
+        # algo = DragonflySearch()
         reporter = CLIReporter(
             # ``parameter_columns=["l1", "l2", "lr", "batch_size"]``,
             metric_columns=["loss", "accuracy", "training_iteration"])
         
-        
-        params['model']['conv_block']['cnn_dept']=tune.randint(2, 8)
-        params['model']['conv_block']['filter']=[tune.choice([30,60,90,120])]*8
-        params['model']['conv_block']['kernel']=[tune.randint(3, 6)]*8
-        params['model']['conv_block']['pool']=[tune.randint(3, 6)]*8
+        # print("Resources used by Ray",ray.cluster_resources())
+        # params['model']['conv_block']['cnn_depth']=tune.randint(2, 8)
+        params['model']['conv_block']['cnn_depth']=tune.choice([2,3,4,5,6,7,8])
+        params['model']['conv_block']['filter']={str(x):tune.choice([30, 60, 90, 120]) for x in range(8)}
+        params['model']['conv_block']['kernel']={str(x):tune.choice([3,4,5,6]) for x in range(8)}
+        params['model']['conv_block']['pool']={str(x):tune.choice([3,4,5,6]) for x in range(8)}
+        params['model']['fc_block']['fc_depth']=tune.choice([4,5,6,7,8])
+        params['model']['fc_block']['dims']={str(x):tune.choice([256,512,768]) for x in range(8)}
+       
+        # params['model']['conv_block']['filter']=[tune.choice([30, 60, 90, 120]) for _ in range(8)]
+        # params['model']['conv_block']['kernel']=[tune.choice([3,4,5,6]) for _ in range(8)]
+        # params['model']['conv_block']['pool']=[tune.choice([3,4,5,6]) for _ in range(8)]
+        # params['model']['conv_block']['filter']=[tune.choice([30, 60, 90, 120]) for _ in range(8)]
+        # params['model']['conv_block']['filter']=[tune.choice([30,60,90,120])]*8 #this is a blunder
+        # params['model']['conv_block']['filter']=[tune.randint(1, 4) for _ in range(8)]
+        # params['model']['conv_block']['kernel']=[tune.randint(3, 6) for _ in range(8)]
+        # params['model']['conv_block']['pool']=[tune.randint(3, 6) for _ in range(8)]
         # tune.choice([[30, 120, 240], [30, 90, 180]])
         # params['model']['conv_block']['filter']=tune.choice([[30, 120, 240], [30, 90, 180]])
 
@@ -58,14 +89,15 @@ class Raytune:
         
         tuner = Tuner(tune.with_resources(
                         tune.with_parameters(trainable),
-                        resources={"cpu": 2, "gpu": gpus_per_trial}
+                        resources={"cpu": cpus_per_trail, "gpu": gpus_per_trial}
                         ),
                       tune_config=tune.TuneConfig(
-                        # metric="loss",
-                        # mode="min",
+                        metric="loss",
+                        mode="min",
                         scheduler=scheduler,
+                        # search_alg=hyperopt_search,
                         search_alg=algo,
-                        num_samples=num_samples,
+                        num_samples=num_samples
                         ),
                       run_config = air.RunConfig(
                         local_dir="./out"
@@ -75,11 +107,13 @@ class Raytune:
                       )
         results = tuner.fit()
         best_result = results.get_best_result("loss", "min")
+        # best_result = results.get_best_result()
         print("Best trial config: {}".format(best_result.config))
         print("Best trial final validation loss: {}".format(
+        best_result.metrics.keys()))
+        print("Best trial final validation loss: {}".format(
         best_result.metrics["loss"]))
-        print("Best trial final validation accuracy: {}".format(
-        best_result.metrics["accuracy"]))
+        
 
         # result = tune.run(
         #     train_cifar,
