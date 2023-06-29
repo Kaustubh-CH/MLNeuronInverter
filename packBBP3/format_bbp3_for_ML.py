@@ -12,8 +12,8 @@ from toolbox.Util_H5io3 import   read3_data_hdf5, write3_data_hdf5
 from pprint import pprint
 import numpy as np
 #from vet_volts import tag_zeros
-from aggregate_Kaustubh import normalize_volts
-
+from aggregate_Kaustubh_feature import normalize_volts
+import h5py,json
 import argparse
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -47,17 +47,27 @@ def format_raw(dom,off_len):
     bigD[dom+'_volts_norm']=volts_norm
     return int(nFlat)
                  
+def read_meta_json(inpF):
+    h5f = h5py.File(inpF, 'r')
+    try:
+        inpMD=json.loads(h5f['meta.JSON'])
+    except:
+        inpMD=None
+    return inpMD
+
 #=================================
 #=================================
 #  M A I N 
 #=================================
 #=================================
+
 if __name__=="__main__":
     args=get_parser()
     
     inpF0=args.cellName+'.simRaw.h5'
     inpF=os.path.join(args.dataPath,inpF0)
     simD,simMD=read3_data_hdf5(inpF)
+    # simMD=read_meta_json(inpF)
     if 0:
         pprint(simMD); exit(9)
     
