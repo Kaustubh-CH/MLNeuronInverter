@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#SBATCH  -N1 --time=30:00  -J ni_h5   -q debug
+#SBATCH  -N1 --time=11:30:00  -J ni_h5   -q regular
 #-SBATCH -q regular
 #SBATCH --image=nersc/pytorch:ngc-21.08-v2
 #-SBATCH --image=nersc/pytorch:ngc-22.09-v0  # runs 1/4 x slower
@@ -16,14 +16,14 @@ cellName=L5_TTPC1cADpyr0  # most complex aka bbp153-vyassa
 
 #design=m8lay
 design=m8lay_vs
-epochs=10
+epochs=100
 data_temp=$1
 # can use mutiple stims serially, as independent samples
 probsSelect=" 0 1 2 3"  # index from  list: ['soma', 'axon', apic,'dend']
 # probsSelect=" 0 "
 # stimsSelect=" 0 1 2 3 4 5 "  #  index from  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
 #stimsSelect=" 0  3  5 "  # chaosA+B+chirp
-stimsSelect="  0 "  # chaosB
+stimsSelect=" 0 1 2 3 4 5 6 "  # chaosB
 #stimsSelect="  0 "  # chaosA
 
 N=${SLURM_NNODES}
