@@ -7,7 +7,9 @@ from torch.utils.tensorboard import SummaryWriter
 
 import logging
 
-from toolbox.Model import  MyModel
+#from toolbox.Model import  MyModel
+#from toolbox.Model2d import  MyModel
+from toolbox.Model_Multi import  MyModel
 from toolbox.Dataloader_H5 import get_data_loader
 from toolbox.Util_IOfunc import read_yaml
 
@@ -121,9 +123,10 @@ class Trainer():
     
     if self.verb:
       print('\n\nT: torchsummary.summary(model):',params['model']['inputShape']);
-      timeBins,inp_chan=params['model']['inputShape']
+      timeBins,inp_chan,stim_number=params['model']['inputShape']
+      # timeBins,inp_chan=params['model']['inputShape']
       from torchsummary import summary
-      summary(self.model,(1,timeBins,inp_chan))
+      summary(self.model,(timeBins,inp_chan,stim_number)) #Removed the (1,timeBins,inp_chan,stim_number)
       if self.verb>1: print(self.model)
 
       # save entirel model before training
@@ -216,11 +219,13 @@ class Trainer():
 
       if self.doRay:
         if doVal:
+          print("DOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
           os.makedirs("./my_model", exist_ok=True)
           torch.save(
             (self.model.state_dict(), self.optimizer.state_dict()), "./my_model/checkpoint.pt")
           checkpoint = Checkpoint.from_directory("./my_model/")
           session.report({"loss": valid_logs['loss'].cpu().detach().numpy()}, checkpoint=checkpoint)
+          # session.report({"loss": valid_logs['loss'].cpu().detach().numpy()})
 
       if epoch >= warmup_epochs and  doVal :
         self.scheduler.step(valid_logs['loss'])

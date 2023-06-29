@@ -39,6 +39,33 @@ def write3_data_hdf5(dataD,outF,metaD=None,verb=1):
     h5f.close()
     xx=os.path.getsize(outF)/1048576
     print('closed  hdf5:',outF,' size=%.2f MB, elaT=%.1f sec'%(xx,(time.time() - start)))
+
+def append_data_hdf5(dataD,outF,metaD=None,verb=1):
+    if metaD!=None:
+        metaJ=json.dumps(metaD)
+        #print('meta.JSON:',metaJ)
+        dataD['meta.JSON']=metaJ
+    
+    dtvs = h5py.special_dtype(vlen=str)
+    h5f = h5py.File(outF, 'a')
+    if verb>0:
+            print('saving data as hdf5:',outF)
+            start = time.time()
+    for item in dataD:
+        rec=dataD[item]
+        if verb>1: print('x=',item,type(rec))
+        if type(rec)==str: # special case
+            dset = h5f.create_dataset(item, (1,), dtype=dtvs)
+            dset[0]=rec
+            if verb>0:print('h5-write :',item, 'as string',dset.shape,dset.dtype)
+            continue
+        if type(rec)!=np.ndarray: # packs a single value in ot np-array
+            rec=np.array([rec])
+        h5f.create_dataset(item, data=rec)
+        if verb>0:print('h5-write :',item, rec.shape,rec.dtype)
+    h5f.close()
+    xx=os.path.getsize(outF)/1048576
+    print('closed  hdf5:',outF,' size=%.2f MB, elaT=%.1f sec'%(xx,(time.time() - start)))
     
 #...!...!..................
 def read3_data_hdf5(inpF,verb=1,skipKey=None):

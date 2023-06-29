@@ -68,7 +68,7 @@ if __name__ == '__main__':
 
   params['world_size'] = int(os.environ['WORLD_SIZE'])
   print("Wordl Size should be 1",params["world_size"])
-  params['world_size']=1
+  # params['world_size']=1
   params['world_rank'] = 0
   # print("WORDL SIZEEEEEEEEEEEEEEEEEEEEEEee",params['world_size'])
   if params['world_size'] > 1:  # multi-GPU training
