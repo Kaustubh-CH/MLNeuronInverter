@@ -24,6 +24,7 @@ class MyModel(nn.Module):
         hpar1=hpar['conv_block']
         self.cnn_block = nn.ModuleList()
         cnn_stride=1
+        
         for out_chan,cnnker,plker in zip(hpar1['filter'],hpar1['kernel'],hpar1['pool']):
             # class _ConvMd( in_channels, out_channels, kernel_size, stride,
             # CLASS torch.nn.MaxPoolMd(kernel_size, stride=None,                
@@ -35,6 +36,9 @@ class MyModel(nn.Module):
             if len(self.cnn_block)==hpar['instance_norm_slot']:
                 self.cnn_block.append( nn.InstanceNorm1d(out_chan))
             inp_chan=out_chan
+            
+            # if(tmp_stim_number!=1)
+            # tmp_stim_number-=2
 
         ''' Automatically compute the size of the output of CNN+Pool block,  
         needed as input to the first FC layer 

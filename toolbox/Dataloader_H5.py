@@ -33,7 +33,8 @@ def get_data_loader(params,domain, verb=1):
   conf=copy.deepcopy(params)  # the input is reused later in the upper level code
   
   conf['domain']=domain
-  conf['h5name']=os.path.join(params['data_conf']['data_path'],params['cell_name']+'.mlPack1.h5')
+  #   conf['h5name']=os.path.join(params['data_conf']['data_path'],params['cell_name']+'.mlPack1.h5')
+  conf['h5name']=os.path.join(params['data_path_temp'],params['cell_name']+'.mlPack1.h5')
   shuffle=conf['shuffle']
 
   dataset=  Dataset_h5_neuronInverter(conf,verb)
@@ -134,6 +135,8 @@ class Dataset_h5_neuronInverter(object):
         if self.verb : logging.info('DS:file dom=%s myShard=%d, maxShard=%d, sampIdxOff=%d allXshape=%s  probs=%s stims=%s'%(cf['domain'],myShard,maxShard,sampIdxOff,str(Xshape), dcf['probs_select'],dcf['stims_select']))
 
         serializedStim=dcf['serialize_stims']
+        appendStim=dcf['append_stim']
+        parallelStim=dcf['parallel_stim']
         
         #********* data reading starts .... is compact to save CPU RAM
         # TypeError: Only one indexing vector or array is currently allowed for fancy indexing
@@ -141,7 +144,7 @@ class Dataset_h5_neuronInverter(object):
         parU=h5f[dom+'_unit_par'][sampIdxOff:sampIdxOff+locSamp]
         #... chose how to re-shape the ML input
        
-        if not  serializedStim: # probs*1stm--> M*timeBins
+        if appendStim: #not  serializedStim: # probs*1stm--> M*timeBins
             volts=volts[:,:,dcf['probs_select']]
             if self.verb : print('WT1 numStim=%d volts:'%(numStim),volts.shape)
             volts=np.swapaxes(volts,2,3).reshape(locSamp,numStim*timeBins,-1)
@@ -157,9 +160,16 @@ class Dataset_h5_neuronInverter(object):
             for i in range(numStim): parU2[...,i]=parU.copy()
             if self.verb : print('WS1 numStim=%d volts:'%(numStim),volts.shape,', parU2:',parU2.shape)
             locSamp*=numStim
+            volts=volts[:,:,dcf['probs_select']]
             volts=np.moveaxis(volts,-1,0).reshape(locSamp,timeBins,-1)
             parU=np.moveaxis(parU2,-1,0).reshape(locSamp,-1)
             if self.verb : print('WS2 locSamp=%d, volts:'%locSamp,volts.shape,', parU:',parU.shape,', dom=',dom)
+        
+        if parallelStim:
+            if self.verb : print('WT1 numStim=%d volts:'%(numStim),volts.shape)
+            volts=volts[:,:,dcf['probs_select']] #.reshape(locSamp,timeBins,-1)
+            # volts=volts[:,:,dcf['probs_select']].reshape(locSamp,numStim*numProb,timeBins)
+            if self.verb : print('WT2 locSamp=%d, volts:'%locSamp,volts.shape,' dom=',dom)
             
         self.data_frames=volts
         self.data_parU=parU

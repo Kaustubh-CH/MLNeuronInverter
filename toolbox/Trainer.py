@@ -7,9 +7,14 @@ from torch.utils.tensorboard import SummaryWriter
 
 import logging
 
-from toolbox.Model import  MyModel
+#from toolbox.Model import  MyModel
+#from toolbox.Model2d import  MyModel
+from toolbox.Model_Multi import  MyModel
 from toolbox.Dataloader_H5 import get_data_loader
 from toolbox.Util_IOfunc import read_yaml
+
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 
 #...!...!..................
 def patch_h5meta(ds,params):
@@ -42,7 +47,7 @@ class Trainer():
     self.valPeriod=params['validation_period']
     self.device = torch.cuda.current_device()      
     logging.info('T:ini world rank %d of %d, host=%s  see device=%d'%(params['world_rank'],params['world_size'],socket.gethostname(),self.device))
-
+    self.doRay=params['do_ray']
     expDir=params['out_path']
     expDir2=os.path.join(expDir, 'checkpoints/')
     if self.isRank0:
@@ -93,11 +98,13 @@ class Trainer():
     
     # wait for all ranks to finish downloading the data - lets keep some order
     if params['world_size']>1:
-      import torch.distributed as dist
-      from torch.nn.parallel import DistributedDataParallel as DDP
-      assert dist.is_initialized()
-      dist.barrier()
-      self.dist=dist # nneded by this class member methods
+      # if(not self.doRay):
+      if True:
+        import torch.distributed as dist
+        from torch.nn.parallel import DistributedDataParallel as DDP
+        assert dist.is_initialized()
+        dist.barrier()
+        self.dist=dist # nneded by this class member methods
 
     # must know the number of steps to decided how often to print
     self.params['log_freq_step']=max(1,len(self.train_loader)//self.params['log_freq_per_epoch'])
@@ -116,9 +123,10 @@ class Trainer():
     
     if self.verb:
       print('\n\nT: torchsummary.summary(model):',params['model']['inputShape']);
-      timeBins,inp_chan=params['model']['inputShape']
+      timeBins,inp_chan,stim_number=params['model']['inputShape']
+      # timeBins,inp_chan=params['model']['inputShape']
       from torchsummary import summary
-      summary(self.model,(1,timeBins,inp_chan))
+      summary(self.model,(timeBins,inp_chan,stim_number)) #Removed the (1,timeBins,inp_chan,stim_number)
       if self.verb>1: print(self.model)
 
       # save entirel model before training
@@ -152,7 +160,9 @@ class Trainer():
     self.criterion =torch.nn.MSELoss().to(self.device) # Mean Squared Loss
 
     if params['world_size']>1:
-      self.model = DDP(self.model,
+      # if(not self.doRay):
+      if True:
+        self.model = DDP(self.model,
                        device_ids=[0],output_device=[0])
                #device_ids=[params['local_rank']],output_device=[params['local_rank']])
       # note, using DDP assures the same as average_gradients(self.model), no need to do it manually 
@@ -206,7 +216,17 @@ class Trainer():
       if doVal:  valid_logs = self.validate_one_epoch()
       t3 = time.time()
       tend = time.time()
-      
+
+      if self.doRay:
+        if doVal:
+          print("DOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
+          os.makedirs("./my_model", exist_ok=True)
+          torch.save(
+            (self.model.state_dict(), self.optimizer.state_dict()), "./my_model/checkpoint.pt")
+          checkpoint = Checkpoint.from_directory("./my_model/")
+          session.report({"loss": valid_logs['loss'].cpu().detach().numpy()}, checkpoint=checkpoint)
+          # session.report({"loss": valid_logs['loss'].cpu().detach().numpy()})
+
       if epoch >= warmup_epochs and  doVal :
         self.scheduler.step(valid_logs['loss'])
              
@@ -324,10 +344,13 @@ class Trainer():
     if self.params['world_size']>1:
       for key in sorted(logs.keys()):
         logs[key] = torch.as_tensor(logs[key]).to(self.device)
-        self.dist.all_reduce(logs[key].detach())
-        logs[key] = float(logs[key]/self.dist.get_world_size())
+        # if(not self.doRay):
+        if True: 
+          self.dist.all_reduce(logs[key].detach())
+          logs[key] = float(logs[key]/self.dist.get_world_size())
 
     return logs
+    
 
   
 #...!...!..................
@@ -343,12 +366,14 @@ class Trainer():
         loss += self.criterion(outputs, labels)
         
     logs = {'loss': loss/len(self.valid_loader),}
-
+    print("VALID LLOSSSSSSSSSSSSSSSSSSSSSSSSSSSSSs",type(logs['loss']),logs['loss'].shape)
     if self.params['world_size']>1:
       for key in sorted(logs.keys()):
         logs[key] = torch.as_tensor(logs[key]).to(self.device)
-        self.dist.all_reduce(logs[key].detach())
-        logs[key] = float(logs[key]/self.dist.get_world_size())
+        # if(not self.doRay):
+        if True:
+          self.dist.all_reduce(logs[key].detach())
+          logs[key] = float(logs[key]/self.dist.get_world_size())
 
     return  logs
 

@@ -10,7 +10,7 @@ export MASTER_ADDR=`hostname`
 export MASTER_PORT=8881
 
 srun -n1 shifter  python -u ./train_dist.py --cellName L6_TPC_L1cADpyr1 --numGlobSamp 5120   --probsSelect 0 1 2  --stimsSelect 0 3 --design stimSer2
-
+srun -n1 shifter  python -u ./train_dist.py --cellName L6_TPC_L1cADpyr1 --numGlobSamp 5120   --probsSelect 0 1 2  --stimsSelect 0 --design m8lay_vs
 
 If you run : ./batchShifter.slr 
 no setup is needed.

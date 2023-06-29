@@ -5,7 +5,7 @@
 
 data_path:
   #perlmutter: /global/cfs/cdirs/m2043/balewski/neuronBBP3-10kHz_3pr_6stim/dec26_mlPack1  # ontra5
-  perlmutter: /pscratch/sd/b/balewski/tmp_bbp3_dec26/  # tmp storage for BBP3 prod
+  perlmutter: /pscratch/sd/k/ktub1999/bbp_Aprl_12_14_NoNoise/  # tmp storage for BBP3 prod
   summit: /gpfs/alpine/nro106/proj-shared/neuronBBP-pxxx / # ontra3
 
 max_epochs: 12  

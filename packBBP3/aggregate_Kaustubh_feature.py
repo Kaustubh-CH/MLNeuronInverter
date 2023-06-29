@@ -14,6 +14,7 @@ import os,sys,time
 from toolbox.Util_H5io3 import   read3_data_hdf5, write3_data_hdf5
 from pprint import pprint
 import numpy as np
+import pandas as pd
 
 
 import argparse
@@ -50,22 +51,33 @@ def normalize_volts(volts,name='',perProbe=True,verb=1):  # slows down the code 
 
     #... for breadcasting to work the 1st dim (=timeBins) must be skipped
     
-    X=np.swapaxes(volts,0,1).astype(np.float32) # important for correct result
+    # X=np.swapaxes(volts,0,1).astype(np.float32) # important for correct result
+    X=volts.astype(np.float64)
     print('WW2 perProbe=%r'%perProbe,X.shape)
-                
-    xm=np.mean(X,axis=0) # average over time bins
-    xs=np.std(X,axis=0)
-
     
+    if(name=="train"):              
+        # xm=np.mean(X,axis=0) # average over time bins
+        # xs=np.std(X,axis=0)
+        xm=np.mean(X) 
+        xs=np.std(X)
+        
+        np.savez('Stats.npz',Mean=xm,Std=xs)    
+    else:
+        load_sts=np.load('Stats.npz')
+        xm=load_sts['Mean']
+        xs=load_sts['Std']
+
+
     #... to see indices of frames w/ volts==const
     result = np.where(xs==0)  
-    xs[xs==0]=1  #hack:  for zero-value samples use mu=1 to allow scaling
+    # xs[xs==0]=1  #hack:  for zero-value samples use mu=1 to allow scaling
 
     #..... RENORMALIZE INPUT HERE 
     X=(X-xm)/xs   
     
     #... revert indices and reduce bit-size
-    volts_norm=np.swapaxes(X,0,1).astype(np.float16)
+    # volts_norm=np.swapaxes(X,0,1).astype(np.float16)
+    volts_norm=X.astype(np.float16)
     if not perProbe:
         volts_norm=volts_norm.reshape( shp[0], shp[1],shp[2],-1)
         print('restore',volts_norm.shape)

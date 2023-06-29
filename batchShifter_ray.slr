@@ -4,7 +4,7 @@
 #SBATCH --image=nersc/pytorch:ngc-21.08-v2
 #-SBATCH --image=nersc/pytorch:ngc-22.09-v0  # runs 1/4 x slower
 #SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
-#SBATCH  --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive  -C gpu -A  m2043   # Kris ML:m2043_g, simu:m3513_g
+#SBATCH  --ntasks-per-node=1 --gpus-per-task=4 --cpus-per-task=32 --exclusive  -C gpu -A  m2043   # Kris ML:m2043_g, simu:m3513_g
 #-SBATCH  -x  nid001016,nid002685,nid002688,nid002689 # block sick nodes
 # - - - E N D    O F    SLURM    C O M M A N D S
 nprocspn=${SLURM_NTASKS_PER_NODE}
@@ -15,11 +15,12 @@ cellName=L5_TTPC1cADpyr0  # most complex aka bbp153-vyassa
 #cellName=L4_SPcADpyr0     # the simplest
 
 #design=m8lay
-design=m8lay_vs2
-epochs=100
+design=m8lay_vs
+epochs=10
 data_temp=$1
 # can use mutiple stims serially, as independent samples
 probsSelect=" 0 1 2 3"  # index from  list: ['soma', 'axon', apic,'dend']
+# probsSelect=" 0 "
 # stimsSelect=" 0 1 2 3 4 5 "  #  index from  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
 #stimsSelect=" 0  3  5 "  # chaosA+B+chirp
 stimsSelect="  0 "  # chaosB
@@ -55,7 +56,7 @@ wrkDir=$wrkDir0/$wrkSufix
 echo "S:cellName=$cellName  initLRstr=$initLRstr jobId=$jobId  wrkSufix=$wrkSufix wrkDir=$wrkDir" 
 date
 
-export CMD="python -u   train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --probsSelect $probsSelect  --stimsSelect $stimsSelect --epochs $epochs --data_path_temp $data_temp "
+export CMD="python -u train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --probsSelect $probsSelect  --stimsSelect $stimsSelect --epochs $epochs --data_path_temp $data_temp "
 # spare  --numGlobSamp 101000 
 
 echo CMD=$CMD
@@ -67,9 +68,9 @@ mkdir -p $outPath
 cp -rp $codeList  $wrkDir
 cd  $wrkDir
 echo lsfPWD=`pwd`
-
+mkdir -p ./my_model
 echo "starting  jobId=$jobId neurInv  " `date` " outPath= $outPath"
-time srun -n $G  shifter  bash  toolbox/driveOneTrain.sh  >& log.train
+time srun -n $G  shifter  bash  toolbox/driveOneTrain.sh >& log.train
 
 sleep 2
 

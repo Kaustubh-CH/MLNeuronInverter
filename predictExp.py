@@ -16,6 +16,7 @@ __email__ = "janstar1122@gmail.com"
 
 import numpy as np
 import torch
+import pandas as pd
 
 import  time
 import sys,os
@@ -27,7 +28,25 @@ from toolbox.Plotter import Plotter_NeuronInverter
 from toolbox.Dataloader_H5 import get_data_loader
 from pprint import pprint
 import argparse
-
+param_names = ['gNaTs2_tbar_NaTs2_t_apical',
+'gSKv3_1bar_SKv3_1_apical',
+'gImbar_Im_apical',
+'gIhbar_Ih_dend',
+'gNaTa_tbar_NaTa_t_axonal',
+'gK_Tstbar_K_Tst_axonal',
+'gNap_Et2bar_Nap_Et2_axonal',
+'gSK_E2bar_SK_E2_axonal',
+'gCa_HVAbar_Ca_HVA_axonal',
+'gK_Pstbar_K_Pst_axonal',
+'gCa_LVAstbar_Ca_LVAst_axonal',
+'g_pas_axonal',
+'cm_axonal',
+'gSKv3_1bar_SKv3_1_somatic',
+'gNaTs2_tbar_NaTs2_t_somatic',
+'gCa_LVAstbar_Ca_LVAst_somatic',
+'g_pas_somatic',
+'cm_somatic',
+'e_pas_all',]
 #...!...!..................
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -42,14 +61,11 @@ def get_parser():
     parser.add_argument( "-X","--noXterm", dest='noXterm', action='store_true', default=False, help="disable X-term for batch mode")
 
     parser.add_argument("-n", "--numSamples", type=int, default=None, help="limit samples to predict")
-    parser.add_argument("--stimsSelect",default=None, type=int, nargs='+', help="list of stims, space separated")
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
-    parser.add_argument("-p", "--showPlots",  default='ab', nargs='+',help="abcd-string listing shown plots")
 
     parser.add_argument("--cellName", type=str, default=None, help="alternative data file name ")
-    parser.add_argument("--idx", nargs='*' ,required=False,type=str, default=None, help="Included parameters")
     args = parser.parse_args()
-    args.prjName='nif'
+    args.prjName='neurInfer'
     args.outPath+'/'
     for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
     return args
@@ -92,10 +108,20 @@ def model_infer(model,test_loader,trainMD):
     Zall=np.zeros([num_samp,outputSize],dtype=np.float32)
     nEve=0
     nStep=0
+    sweepId=65
+    os.mkdir("./unitParams")
     with torch.no_grad():
         for data, target in test_loader:
+            sweepId+=1
             data_dev, target_dev = data.to(device), target.to(device)
             output_dev = model(data_dev)
+            print(output_dev.size())
+
+            dataframe={"unit_params":output_dev.squeeze().tolist(),"param_names":param_names}
+            df = pd.DataFrame(dataframe)
+            
+            df.to_csv("./unitParams/unitParam"+str(sweepId)+".csv")
+            
             lossOp=criterion(output_dev, target_dev)
             #print('qq',lossOp,len(test_loader.dataset),len(test_loader)); ok55
             test_loss += lossOp.item()
@@ -110,24 +136,7 @@ def model_infer(model,test_loader,trainMD):
     print('infere done, nEve=%d nStep=%d loss=%.4f'%(nEve,nStep,test_loss),flush=True)
     return test_loss,Uall,Zall
 
-
-#...!...!..................
-def compute_residual(trueU,recoU,md,idx):
-    parName=md['parName']
-    # idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
-    parName=[parName[id] for id in idx]
-    nPar=len(parName)
-    outL=[]
-    for iPar in range(0,nPar):
-        D=trueU[:,iPar] - recoU[:,iPar]
-        resM=D.mean()
-        resS=D.std()
-        outL.append( [ parName[iPar], float(resM),float(resS) ] )
-        print('#res,%d,%.4f'%(iPar,resS))
-        #print('#res,%d,%s'%(iPar,parName[iPar]))
-    #pprint(outL)
-    return outL
-
+  
 #=================================
 #=================================
 #  M A I N 
@@ -140,7 +149,7 @@ if __name__ == '__main__':
   sumF=args.modelPath+'/sum_train.yaml'
   trainMD = read_yaml( sumF)
   parMD=trainMD['train_params']
-  inpMD=trainMD['input_meta']
+#   inpMD=trainMD['input_meta']
   #pprint(inpMD)
   assert torch.cuda.is_available() 
   model=load_model(trainMD,args.modelPath)
@@ -150,74 +159,63 @@ if __name__ == '__main__':
       parMD['cell_name']=args.cellName
       
   if args.numSamples!=None:
-      parMD['data_conf']['max_glob_samples_per_epoch' ] = args.numSamples
-
-  if args.stimsSelect!=None:
-      assert  parMD['data_conf']['serialize_stims']==True 
-      parMD['data_conf']['stims_select' ] = args.stimsSelect
-      args.prjName='nistim'+''.join(['%d'%i for i in args.stimsSelect] )
-      print('M: prjName',args.prjName)
-    
+      parMD['max_local_samples_per_epoch' ] = args.numSamples
   domain=args.dom
-  idx=range(len(inpMD['parName']))
-  if(args.idx is not None):
-      idx= args.idx
-      idx =[int(i) for i in idx]
+
   parMD['world_size']=1
-  #pprint(parMD); ok6
+
+  parMD['local_batch_size']=1
+  parMD['data_path']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/L5_TTPC1cADpyr2.mlPack1.h5'
+  parMD['data_conf']['data_path']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/'
+  parMD['data_path_temp']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/'
+  parMD['cell_name']='L5_TTPC1cADpyr2'
+  parMD['data_conf']['probs_select']=[0]
+  parMD['data_conf']['stims_select']=[5]
+  parMD['exp_data']=True
   
+
   data_loader = get_data_loader(parMD, domain, verb=1)
 
   startT=time.time()
-  loss,trueU,recoU=model_infer(model,data_loader,trainMD)
+  loss,U,Z=model_infer(model,data_loader,trainMD)
   predTime=time.time()-startT
-  print('M: infer : Average loss: %.4f  dom=%s samples=%d , elaT=%.2f min\n'% (loss, domain, trueU.shape[0],predTime/60.))
+  print('M: infer : Average loss: %.4f  dom=%s samples=%d , elaT=%.2f min\n'% (loss, domain, Z.shape[0],predTime/60.))
 
-  residualL=compute_residual(trueU,recoU,inpMD,idx)
-  print('#res,job,%s'%trainMD['job_id'])
-  print('#res,MSEloss,%.4f'%loss)
-  print('#res,samples,%d\n'%trueU.shape[0])
-    
   sumRec={}
   sumRec['domain']=domain
   sumRec['jobId']=trainMD['job_id']
   sumRec[domain+'LossMSE']=float(loss)
   sumRec['predTime']=predTime
-  sumRec['numSamples']=trueU.shape[0]
+  sumRec['numSamples']=U.shape[0]
   sumRec['lossThrHi']=0.40  # for tagging plots
   sumRec['inpShape']=trainMD['train_params']['model']['inputShape']
   sumRec['short_name']=trainMD['train_params']['cell_name']
   sumRec['modelDesign']=trainMD['train_params']['model']['myId']
+  sumRec['trainRanks']=trainMD['train_params']['world_size']
   sumRec['trainTime']=trainMD['trainTime_sec']
   sumRec['loss_valid']= trainMD['loss_valid']
-  sumRec['train_stims_select']= trainMD['train_stims_select']
-  sumRec['train_glob_sampl']= trainMD['train_glob_sampl']
-  sumRec['pred_stims_select']= trainMD['train_params']['data_conf']['stims_select']
-  sumRec['residual_mean_std']=residualL
 
-  outN='sum_pred_%s.yaml'%args.prjName
-  write_yaml(sumRec, os.path.join(args.outPath,outN))
-    
-  #  - - - -  only plotting code is below - - - - -  
-  plot=Plotter_NeuronInverter(args,inpMD ,sumRec )
+
+  #  - - - -  only plotting code is below - - - - -
   
-  if 'a' in args.showPlots:
-      plot.param_residua2D(trueU,recoU)
-  if 'b' in args.showPlots:
-      plot.params1D(recoU,'pred U',figId=8)
-  if 'c' in args.showPlots:
-      plot.params1D(trueU,'true U',figId=7)
+#   plot=Plotter_NeuronInverter(args,inpMD ,sumRec )
+
+#   plot.param_residua2D(U,Z)
+
+  write_yaml(sumRec, args.outPath+'/sum_pred.yaml')
+
+  #1plot.params1D(U,'true U',figId=7)
+#   plot.params1D(Z,'pred Z',figId=8)
 
   if 0: 
-      print('input data example, it will plot waveforms')
-      dlit=iter(data_loader)
-      xx, yy = next(dlit)
-      #1xx, yy = next(dlit) #another sample
-      print('batch, X,Y;',xx.shape,xx.dtype,yy.shape,yy.dtype)
-      print('Y[:2]',yy[:2])
-      plot.frames_vsTime(xx,yy,9)
+    print('input data example, it will plot waveforms')
+    dlit=iter(data_loader)
+    xx, yy = next(dlit)
+    #1xx, yy = next(dlit) #another sample
+    print('batch, X,Y;',xx.shape,xx.dtype,yy.shape,yy.dtype)
+    print('Y[:2]',yy[:2])
+    # plot.frames_vsTime(xx,yy,9)
    
-  figN=domain+'_'+ parMD['cell_name']
-
-  plot.display_all(figN, png=1)  
+  
+#   plot.display_all(domain+'_'+args.cellName, png=1)  
 
