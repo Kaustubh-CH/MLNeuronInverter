@@ -43,6 +43,7 @@ def get_parser():
 
     parser.add_argument("-n", "--numSamples", type=int, default=None, help="limit samples to predict")
     parser.add_argument("--stimsSelect",default=None, type=int, nargs='+', help="list of stims, space separated")
+    parser.add_argument("--testStimsSelect",default=None, type=int, nargs='+', help="list of stims, space separated")
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
     parser.add_argument("-p", "--showPlots",  default='ab', nargs='+',help="abcd-string listing shown plots")
 
@@ -152,8 +153,11 @@ if __name__ == '__main__':
   if args.numSamples!=None:
       parMD['data_conf']['max_glob_samples_per_epoch' ] = args.numSamples
 
+  if args.testStimsSelect!=None:
+      parMD['data_conf']['valid_stims_select' ] = args.testStimsSelect
+
   if args.stimsSelect!=None:
-      assert  parMD['data_conf']['serialize_stims']==True 
+    #   assert  parMD['data_conf']['serialize_stims']==True 
       parMD['data_conf']['stims_select' ] = args.stimsSelect
       args.prjName='nistim'+''.join(['%d'%i for i in args.stimsSelect] )
       print('M: prjName',args.prjName)

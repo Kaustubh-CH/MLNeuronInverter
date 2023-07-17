@@ -4,12 +4,13 @@ import socket  # for hostname
 import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
+from ray.exceptions import RayTaskError
 
 import logging
 
-#from toolbox.Model import  MyModel
+from toolbox.Model import  MyModel
 #from toolbox.Model2d import  MyModel
-from toolbox.Model_Multi import  MyModel
+#from toolbox.Model_Multi import  MyModel
 from toolbox.Dataloader_H5 import get_data_loader
 from toolbox.Util_IOfunc import read_yaml
 
@@ -108,9 +109,12 @@ class Trainer():
 
     # must know the number of steps to decided how often to print
     self.params['log_freq_step']=max(1,len(self.train_loader)//self.params['log_freq_per_epoch'])
-
+    
     myModel=MyModel(params['model'], verb=self.verb)
-
+    # except RuntimeError as e:
+    #   print("T: Worker Exception at Model init",e)
+    #   # session.report({"loss": 5})
+    #   return
     if self.isRank0 and params['tb_show_graph']:
        dataD=next(iter(self.train_loader))
        images, labels = dataD
@@ -123,10 +127,10 @@ class Trainer():
     
     if self.verb:
       print('\n\nT: torchsummary.summary(model):',params['model']['inputShape']);
-      timeBins,inp_chan,stim_number=params['model']['inputShape']
-      # timeBins,inp_chan=params['model']['inputShape']
+      #timeBins,inp_chan,stim_number=params['model']['inputShape']
+      timeBins,inp_chan=params['model']['inputShape']
       from torchsummary import summary
-      summary(self.model,(timeBins,inp_chan,stim_number)) #Removed the (1,timeBins,inp_chan,stim_number)
+      summary(self.model,(timeBins,inp_chan)) #Removed the (1,timeBins,inp_chan,stim_number)
       if self.verb>1: print(self.model)
 
       # save entirel model before training
@@ -219,7 +223,6 @@ class Trainer():
 
       if self.doRay:
         if doVal:
-          print("DOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
           os.makedirs("./my_model", exist_ok=True)
           torch.save(
             (self.model.state_dict(), self.optimizer.state_dict()), "./my_model/checkpoint.pt")

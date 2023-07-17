@@ -18,7 +18,29 @@ from ray import air
 from ray.tune.suggest.optuna import OptunaSearch
 # from ray.tune.suggest.ax import AxSearch
 from toolbox.Trainer import Trainer
+from ray.air import session
 import ray
+import multiprocessing
+import threading
+import torch.distributed as dist
+
+
+def threadTrain(params):
+  #  print(params)
+  #  params=dict(params)
+   
+  #  params['world_rank']=int(threading.get_ident())
+  #  print('WORLD RANK',params['world_rank'])
+   try:
+      trainer = Trainer(params)
+      trainer.train()
+   except RuntimeError as e:
+      print("RAYTUNE Exception",type(e).__name__, e.args)
+      from ray.air import session
+      session.report({"loss": 5})
+   except Exception as E:
+      import traceback
+      traceback.print_exc()
 
 def trainable(params):
     cnn_depth=params['model']['conv_block']['cnn_depth']
@@ -33,18 +55,41 @@ def trainable(params):
     print("Model Kernel Shape ",params['model']['conv_block']['kernel'])
     print("Model Pooling ",params['model']['conv_block']['pool'])
 
-    
-    trainer = Trainer(params)
-    trainer.train()
+    try:
+      trainer = Trainer(params)
+      trainer.train()
+    except RuntimeError as e:
+      print("RAYTUNE Exception",type(e).__name__, e.args)
+      from ray.air import session
+      session.report({"loss": 2})
+    except Exception as E:
+      import traceback
+      traceback.print_exc()
+      from ray.air import session
+      session.report({"loss": 5})
+    # pool = multiprocessing.Pool(processes=params['world_size'])
+    # result=[]
 
+    # torch.cuda.set_device(0)
+    # dist.init_process_group(backend='nccl', init_method='env://')
+    # # params['world_rank'] = dist.get_rank()
+    # for thread_id in range(params['world_size']):
+    #    params['world_rank']=thread_id
+    #    res= pool.apply_async(threadTrain, (params,))
+    #    result.append(res)
+    # pool.close()
+    # pool.join()
+
+    
+      
 class Raytune:
 
 
     def __init__(self,params):
         # trainer = Trainer(params)
         max_num_epochs=10
-        gpus_per_trial=1
-        num_samples=10
+        gpus_per_trial=2
+        num_samples=1000
         cpus_per_trail=8
         # trainer.train()
         scheduler = ASHAScheduler(
@@ -68,10 +113,10 @@ class Raytune:
         # params['model']['conv_block']['cnn_depth']=tune.randint(2, 8)
         params['model']['conv_block']['cnn_depth']=tune.choice([2,3,4,5,6,7,8])
         params['model']['conv_block']['filter']={str(x):tune.choice([30, 60, 90, 120]) for x in range(8)}
-        params['model']['conv_block']['kernel']={str(x):tune.choice([3,4,5,6]) for x in range(8)}
-        params['model']['conv_block']['pool']={str(x):tune.choice([3,4,5,6]) for x in range(8)}
+        params['model']['conv_block']['kernel']={str(x):tune.choice([1,2,3,4,5,6]) for x in range(8)}
+        params['model']['conv_block']['pool']={str(x):tune.choice([1,2,3,4,5,6]) for x in range(8)}
         params['model']['fc_block']['fc_depth']=tune.choice([4,5,6,7,8])
-        params['model']['fc_block']['dims']={str(x):tune.choice([256,512,768]) for x in range(8)}
+        params['model']['fc_block']['dims']={str(x):tune.choice([256,512,768,1024]) for x in range(8)}
        
         # params['model']['conv_block']['filter']=[tune.choice([30, 60, 90, 120]) for _ in range(8)]
         # params['model']['conv_block']['kernel']=[tune.choice([3,4,5,6]) for _ in range(8)]
@@ -85,7 +130,7 @@ class Raytune:
         # params['model']['conv_block']['filter']=tune.choice([[30, 120, 240], [30, 90, 180]])
 
 
-
+        # params['world_size']=cpus_per_trail
         
         tuner = Tuner(tune.with_resources(
                         tune.with_parameters(trainable),

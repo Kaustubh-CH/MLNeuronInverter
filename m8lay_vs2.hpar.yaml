@@ -7,7 +7,9 @@ data_path:
   perlmutter:  /pscratch/sd/k/ktub1999/bbp_May_08_19_Wide_1_NoNoise/
 
 data_conf:
-    serialize_stims :  True  # False= append  timeBins
+    serialize_stims :  True  #Adds each stim as a seperate Sample 
+    append_stim : False #Append Stim one after the other
+    parallel_stim : False #Parallel stim Only with Multi Model
     #max_glob_samples_per_epoch: 40000  # optional, reduces epoch size
     num_data_workers: 4  
 
@@ -45,9 +47,9 @@ model:
     comment: 1-stim 2021-10 not optimized ML model
 
     conv_block: # CNN params
-        filter: [30, 90, 180]
-        kernel: [ 4,  4,  4]
-        pool:   [ 4,  4,  4]
+        filter: [32,64,64,128,128,180,180]
+        kernel: [ 4,  4,  4,4,4,4,4]
+        pool:   [ 4,  4,  4,4,4,4,4]
 
     instance_norm_slot: -9
     layer_norm: False
