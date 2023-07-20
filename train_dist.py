@@ -77,7 +77,8 @@ if __name__ == '__main__':
   
   if(params['do_ray']):
     params['world_size']=1
-    params['world_rank'] = 0
+    #params['world_rank'] = 0
+  params['world_rank'] = 0
   # print("WORDL SIZEEEEEEEEEEEEEEEEEEEEEEee",params['world_size'])
   if params['world_size'] > 1:  # multi-GPU training
     torch.cuda.set_device(0)

@@ -8,7 +8,7 @@ from ray.exceptions import RayTaskError
 
 import logging
 
-from toolbox.Model import  MyModel
+# from toolbox.Model import  MyModel
 #from toolbox.Model2d import  MyModel
 #from toolbox.Model_Multi import  MyModel
 from toolbox.Dataloader_H5 import get_data_loader
@@ -109,7 +109,11 @@ class Trainer():
 
     # must know the number of steps to decided how often to print
     self.params['log_freq_step']=max(1,len(self.train_loader)//self.params['log_freq_per_epoch'])
-    
+    if(params['data_conf']['parallel_stim']):
+      from toolbox.Model_Multi import  MyModel
+    else:
+      from toolbox.Model import  MyModel
+
     myModel=MyModel(params['model'], verb=self.verb)
     # except RuntimeError as e:
     #   print("T: Worker Exception at Model init",e)
@@ -127,10 +131,15 @@ class Trainer():
     
     if self.verb:
       print('\n\nT: torchsummary.summary(model):',params['model']['inputShape']);
-      #timeBins,inp_chan,stim_number=params['model']['inputShape']
-      timeBins,inp_chan=params['model']['inputShape']
-      from torchsummary import summary
-      summary(self.model,(timeBins,inp_chan)) #Removed the (1,timeBins,inp_chan,stim_number)
+      
+      if(params['data_conf']['parallel_stim']):
+        timeBins,inp_chan,stim_number=params['model']['inputShape']
+        from torchsummary import summary
+        summary(self.model,(timeBins,inp_chan,stim_number))
+      else:
+        timeBins,inp_chan=params['model']['inputShape']
+        from torchsummary import summary
+        summary(self.model,(timeBins,inp_chan)) #Removed the (1,timeBins,inp_chan,stim_number)
       if self.verb>1: print(self.model)
 
       # save entirel model before training
