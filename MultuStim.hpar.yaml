@@ -11,7 +11,7 @@ data_conf:
     append_stim : False #Append Stim one after the other
     parallel_stim : True #Parallel stim Only with Multi Model
 
-    #max_glob_samples_per_epoch: 40000  # optional, reduces epoch size
+    #max_glob_samples_per_epoch: 50000  # optional, reduces epoch size
     num_data_workers: 4  
 
 max_epochs: 12  
@@ -52,8 +52,8 @@ model:
     num_cnn_blocks: 1
     conv_block: # CNN params
         filter: [30, 90, 180]
-        kernel: [ 4,  4,  4]
-        pool:   [ 4,  4,  4]
+        kernel: [ 4, 4, 4]
+        pool:   [ 4, 4, 4]
 
     instance_norm_slot: -9
     layer_norm: False

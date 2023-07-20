@@ -26,6 +26,7 @@ def get_parser():
   parser.add_argument("--cellName", type=str, default='L23_PCcADpyr2', help="cell shortName ")
   parser.add_argument("--probsSelect",default=[0,1,2], type=int, nargs='+', help="list of probes, space separated")
   parser.add_argument("--stimsSelect",default=[0], type=int, nargs='+', help="list of stims, space separated")
+  parser.add_argument("--validStimsSelect",default=[0], type=int, nargs='+', help="list of stims for valid and test, space separated")
   parser.add_argument("--initLR",default=None, type=float, help="if defined, replaces learning rate from hpar")
   parser.add_argument("--epochs",default=None, type=int, help="if defined, replaces max_epochs from hpar")
   parser.add_argument("--data_path_temp",default="/pscratch/sd/k/ktub1999/bbp_May_10_8623428/", type=str, help="if defined, replaces max_epochs from hpar")
@@ -68,7 +69,15 @@ if __name__ == '__main__':
 
   params['world_size'] = int(os.environ['WORLD_SIZE'])
   print("Wordl Size should be 1",params["world_size"])
-  # params['world_size']=1
+  verb=1
+  blob=read_yaml( args.design+'.hpar.yaml',verb=1)
+  params.update(blob)
+  params['design']=args.design
+  
+  
+  if(params['do_ray']):
+    params['world_size']=1
+    #params['world_rank'] = 0
   params['world_rank'] = 0
   # print("WORDL SIZEEEEEEEEEEEEEEEEEEEEEEee",params['world_size'])
   if params['world_size'] > 1:  # multi-GPU training
@@ -78,9 +87,7 @@ if __name__ == '__main__':
     #print('M:locRank:',params['local_rank'],'rndSeed=',torch.seed())
   params['verb'] =params['world_rank'] == 0
 
-  blob=read_yaml( args.design+'.hpar.yaml',verb=params['verb'])
-  params.update(blob)
-  params['design']=args.design
+  
 
   if params['verb']:
     logging.info('M: MASTER_ADDR=%s WORLD_SIZE=%s RANK=%s  pytorch:%s'%(os.environ['MASTER_ADDR'] ,os.environ['WORLD_SIZE'], os.environ['RANK'],torch.__version__ ))
@@ -99,6 +106,7 @@ if __name__ == '__main__':
   params['cell_name']=args.cellName
   params['data_conf']['probs_select']=args.probsSelect
   params['data_conf']['stims_select']=args.stimsSelect
+  params['data_conf']['valid_stims_select']=args.validStimsSelect
   params['data_conf']['data_path']=params['data_path'][args.facility]
   params['job_id']=args.jobId
   params['out_path']=args.outPath

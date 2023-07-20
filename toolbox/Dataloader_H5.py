@@ -140,7 +140,10 @@ class Dataset_h5_neuronInverter(object):
         
         #********* data reading starts .... is compact to save CPU RAM
         # TypeError: Only one indexing vector or array is currently allowed for fancy indexing
-        volts=h5f[dom+'_volts_norm'][sampIdxOff:sampIdxOff+locSamp,:,:,dcf['stims_select']] .astype(np.float32)  # input=fp16 is not working for Model - fix it one day
+        if dom=="train" or not serializedStim:
+            volts=h5f[dom+'_volts_norm'][sampIdxOff:sampIdxOff+locSamp,:,:,dcf['stims_select']] .astype(np.float32)  # input=fp16 is not working for Model - fix it one day
+        else:
+            volts=h5f[dom+'_volts_norm'][sampIdxOff:sampIdxOff+locSamp,:,:,dcf['valid_stims_select']] .astype(np.float32)
         parU=h5f[dom+'_unit_par'][sampIdxOff:sampIdxOff+locSamp]
         #... chose how to re-shape the ML input
        
@@ -158,12 +161,25 @@ class Dataset_h5_neuronInverter(object):
             shp=parU.shape+(numStim,)
             parU2=np.zeros(shp,dtype=np.float32)  # WARN: slightly increases RAM usage
             for i in range(numStim): parU2[...,i]=parU.copy()
-            if self.verb : print('WS1 numStim=%d volts:'%(numStim),volts.shape,', parU2:',parU2.shape)
-            locSamp*=numStim
-            volts=volts[:,:,dcf['probs_select']]
-            volts=np.moveaxis(volts,-1,0).reshape(locSamp,timeBins,-1)
-            parU=np.moveaxis(parU2,-1,0).reshape(locSamp,-1)
-            if self.verb : print('WS2 locSamp=%d, volts:'%locSamp,volts.shape,', parU:',parU.shape,', dom=',dom)
+            if dom=="train":
+                if self.verb : print('WS1 numStim=%d volts:'%(numStim),volts.shape,', parU2:',parU2.shape)
+                locSamp*=numStim
+                volts=volts[:,:,dcf['probs_select']]
+                volts=np.moveaxis(volts,-1,0).reshape(locSamp,timeBins,-1)
+                parU=np.moveaxis(parU2,-1,0).reshape(locSamp,-1)
+                # rand_idx=torch.randperm(volts.elements())
+                # volts=volts.view(-1)[rand_idx].view(volts.size())
+                # parU = parU.view(-1)[rand_idx].view(volts.size())
+                rand_idx=np.random.permutation(len(volts))
+                volts=volts[rand_idx]
+                parU=parU[rand_idx]
+
+                if self.verb : print('WS2 locSamp=%d, volts:'%locSamp,volts.shape,', parU:',parU.shape,', dom=',dom)
+            else:
+                if self.verb : print('WS1 numStim=%d volts:'%(numStim),volts.shape,', parU2:',parU2.shape)
+                volts=volts[:,:,dcf['probs_select']].reshape(locSamp,timeBins,-1)
+
+                if self.verb : print('WS2 locSamp=%d, volts:'%locSamp,volts.shape,', parU:',parU.shape,', dom=',dom)
         
         if parallelStim:
             if self.verb : print('WT1 numStim=%d volts:'%(numStim),volts.shape)
