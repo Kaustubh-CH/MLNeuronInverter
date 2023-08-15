@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#SBATCH  -N1 --time=11:30:00  -J ni_h5   -q regular
+#SBATCH  -N1 --time=8:30:00  -J ni_h5   -q regular
 #-SBATCH -q regular
 #SBATCH --image=nersc/pytorch:ngc-21.08-v2
 #-SBATCH --image=nersc/pytorch:ngc-22.09-v0  # runs 1/4 x slower
@@ -16,16 +16,18 @@ cellName=L5_TTPC1cADpyr0  # most complex aka bbp153-vyassa
 
 #design=m8lay
 design=m8lay_vs
-epochs=100
+epochs=10
 data_temp=$1
 # can use mutiple stims serially, as independent samples
 probsSelect=" 0 1 2 3"  # index from  list: ['soma', 'axon', apic,'dend']
 # probsSelect=" 0 "
 # stimsSelect=" 0 1 2 3 4 5 "  #  index from  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
 #stimsSelect=" 0  3  5 "  # chaosA+B+chirp
-stimsSelect="5"  # chaosB
-validStimsSelect=" 5"
+stimsSelect="0 1 2 3 4 6"  # chaosB
+validStimsSelect=" 0 1 2 3 4 6"
 #stimsSelect="  0 "  # chaosA
+
+
 
 N=${SLURM_NNODES}
 G=$[ $N * $nprocspn ]
@@ -54,10 +56,22 @@ fi
 wrkDir0=$SCRATCH/tmp_neuInv/bbp3//${cellName}/
 wrkDir=$wrkDir0/$wrkSufix
 
+ymlDir=$SCRATCH/tmpYml/$design/
+ymlOutDir=$SCRATCH/tmpYmlModel/
+
+mkdir -p $ymlDir
+mkdir -p $ymlOutDir
+./yaml_check.sh $ymlDir $ymlOutDir $design $data_temp &
+yaml_proc_id=$!
+echo ProcessID Yaml Search
+echo $yaml_proc_id
+
+minLoss=0.117
+
 echo "S:cellName=$cellName  initLRstr=$initLRstr jobId=$jobId  wrkSufix=$wrkSufix wrkDir=$wrkDir" 
 date
 
-export CMD="python -u train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --probsSelect $probsSelect  --stimsSelect $stimsSelect --validStimsSelect $validStimsSelect --epochs $epochs --data_path_temp $data_temp "
+export CMD="python -u train_dist.py --cellName $cellName   --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --probsSelect $probsSelect  --stimsSelect $stimsSelect --validStimsSelect $validStimsSelect --epochs $epochs --data_path_temp $data_temp --minLoss-RayTune $minLoss --minLoss-RayTune-yamlPath $ymlDir"
 # spare  --numGlobSamp 101000 
 
 echo CMD=$CMD
@@ -76,13 +90,14 @@ time srun -n $G  shifter  bash  toolbox/driveOneTrain.sh >& log.train
 sleep 2
 
 echo S:done train
-time srun -n1 shifter  python -u ./predict.py  --modelPath out  -X  >& log.predictAll
-echo S:done predict all, 2 more for stim 0 and 5
-# time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS5
-time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS0  
-date
+kill $yaml_proc_id
+# time srun -n1 shifter  python -u ./predict.py  --modelPath out  -X  >& log.predictAll
+# echo S:done predict all, 2 more for stim 0 and 5
+# # time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS5
+# time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS0  
+# date
 
-time srun -n1 shifter  python -u ./predictExp.py  --modelPath out  -X  >& log.Exp  
+# time srun -n1 shifter  python -u ./predictExp.py  --modelPath out  -X  >& log.Exp  
 #--idx 0 1 2 3 4 5 6 7 8 9 10 13 14 15 18
 # spare: --numSamples 500000  --cellName $cellName
 # manual: ~/neuronInverter/predict.py --modelPath out --numSamples 5000 --stimsSelect 5 --showPlots a  --venue poster

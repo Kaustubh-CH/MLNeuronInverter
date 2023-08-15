@@ -109,12 +109,24 @@ class Trainer():
 
     # must know the number of steps to decided how often to print
     self.params['log_freq_step']=max(1,len(self.train_loader)//self.params['log_freq_per_epoch'])
-    if(params['data_conf']['parallel_stim']):
-      from toolbox.Model_Multi import  MyModel
+    myModel=None
+    if(params['model_type']=="Transformers"):
+      d_model = 4
+      nhead = 4
+      num_encoder_layers = 6
+      dim_feedforward = 64
+      max_seq_len = 4000
+      num_channels = d_model
+      from toolbox.Transformer_Model import TransformerEncoder
+      myModel=TransformerEncoder(d_model, nhead, num_encoder_layers, dim_feedforward, max_seq_len)
+      
     else:
-      from toolbox.Model import  MyModel
+      if(params['data_conf']['parallel_stim']):
+        from toolbox.Model_Multi import  MyModel
+      else:
+        from toolbox.Model import  MyModel
 
-    myModel=MyModel(params['model'], verb=self.verb)
+      myModel=MyModel(params['model'], verb=self.verb)
     # except RuntimeError as e:
     #   print("T: Worker Exception at Model init",e)
     #   # session.report({"loss": 5})
@@ -123,7 +135,8 @@ class Trainer():
        dataD=next(iter(self.train_loader))
        images, labels = dataD
        t1=time.time()
-       self.TBSwriter.add_graph(myModel,images.to('cpu'))
+       if(params['model_type']!="Transformers"):
+         self.TBSwriter.add_graph(myModel,images.to('cpu'))#should fix for transformers
        t2=time.time()
        if self.verb:  logging.info('show model graph at TB took %.1f sec'%(t2-t1))
     
@@ -131,15 +144,15 @@ class Trainer():
     
     if self.verb:
       print('\n\nT: torchsummary.summary(model):',params['model']['inputShape']);
-      
-      if(params['data_conf']['parallel_stim']):
-        timeBins,inp_chan,stim_number=params['model']['inputShape']
-        from torchsummary import summary
-        summary(self.model,(timeBins,inp_chan,stim_number))
-      else:
-        timeBins,inp_chan=params['model']['inputShape']
-        from torchsummary import summary
-        summary(self.model,(timeBins,inp_chan)) #Removed the (1,timeBins,inp_chan,stim_number)
+      if(params['model_type']!="Transformers"):
+        if(params['data_conf']['parallel_stim']):
+          timeBins,inp_chan,stim_number=params['model']['inputShape']
+          from torchsummary import summary
+          summary(self.model,(timeBins,inp_chan,stim_number))
+        else:
+          timeBins,inp_chan=params['model']['inputShape']
+          from torchsummary import summary
+          summary(self.model,(timeBins,inp_chan)) #Removed the (1,timeBins,inp_chan,stim_number)
       if self.verb>1: print(self.model)
 
       # save entirel model before training
@@ -285,7 +298,6 @@ class Trainer():
           if epoch%5==0:
              self.TBSwriter.add_text('summary',txt , epoch)
           if self.verb:  logging.info(txt )
-
         
     #. . . . . . .  epoch loop end . . . . . . . .
     
@@ -301,7 +313,8 @@ class Trainer():
       except:
          if  self.verb:
            logging.warn('trainig  not executed?, summary update failed')
-
+    if doVal:
+      return valid_logs['loss']
       
 #...!...!..................
   def train_one_epoch(self):
@@ -314,10 +327,14 @@ class Trainer():
     # Loop over training data batches
     for step, data in enumerate(self.train_loader, 0):
       self.iters += 1
-
+      
+        
+        
       # Move our images and labels to GPU
       images, labels = map(lambda x: x.to(self.device), data)
-        
+      # if(self.params['model_type']=="Transformers"):
+      #   images=torch.squeeze(images)
+
       if optTorch['zerograd']:
         # EXTRA: Use set_to_none option to avoid slow memsets to zero
         self.model.zero_grad(set_to_none=True) # not allowed for torch 1.6?
@@ -374,11 +391,12 @@ class Trainer():
       for data in self.valid_loader:
         # Move our images and labels to GPU
         images, labels = map(lambda x: x.to(self.device), data)
+        # if(self.params['model_type']=="Transformers"):
+        #   images=torch.squeeze(images)
         outputs = self.model(images)
         loss += self.criterion(outputs, labels)
         
     logs = {'loss': loss/len(self.valid_loader),}
-    print("VALID LLOSSSSSSSSSSSSSSSSSSSSSSSSSSSSSs",type(logs['loss']),logs['loss'].shape)
     if self.params['world_size']>1:
       for key in sorted(logs.keys()):
         logs[key] = torch.as_tensor(logs[key]).to(self.device)

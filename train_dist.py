@@ -30,8 +30,8 @@ def get_parser():
   parser.add_argument("--initLR",default=None, type=float, help="if defined, replaces learning rate from hpar")
   parser.add_argument("--epochs",default=None, type=int, help="if defined, replaces max_epochs from hpar")
   parser.add_argument("--data_path_temp",default="/pscratch/sd/k/ktub1999/bbp_May_10_8623428/", type=str, help="if defined, replaces max_epochs from hpar")
-
-   
+  parser.add_argument("--minLoss-RayTune",default=0.04, type=int, help="Min Threshold after which ray tune will execute 500k sample jobs")
+  parser.add_argument("--minLoss-RayTune-yamlPath",default='/pscratch/sd/k/ktub1999/tmpYml', type=str,help="Path to store below min loss runs while doing Ray Tune")
 
   parser.add_argument("-j","--jobId", default=None, help="optional, aux info to be stored w/ summary")
   parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
@@ -48,6 +48,7 @@ def get_parser():
 #=================================
 
 if __name__ == '__main__':
+  torch.cuda.empty_cache()
   args = get_parser()
   if args.verb>2: # extreme debugging
       for arg in vars(args):  print( 'myArg:',arg, getattr(args, arg))
@@ -111,7 +112,8 @@ if __name__ == '__main__':
   params['job_id']=args.jobId
   params['out_path']=args.outPath
   params['data_path_temp']=args.data_path_temp
-
+  params['minLoss_RayTune']=args.minLoss_RayTune
+  params['minLoss_RayTune_yamlPath']=args.minLoss_RayTune_yamlPath
   # overwrite default configuration
   #.... update selected params based on runtime config
   if args.numGlobSamp!=None:  # reduce num steps/epoch - code testing

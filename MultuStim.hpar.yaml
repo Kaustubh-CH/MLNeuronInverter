@@ -7,15 +7,15 @@ data_path:
   perlmutter:  /pscratch/sd/k/ktub1999/bbp_May_08_19_Wide_1_NoNoise/
 
 data_conf:
-    serialize_stims :  False  #Adds each stim as a seperate Sample 
+    serialize_stims :  True  #Adds each stim as a seperate Sample 
     append_stim : False #Append Stim one after the other
-    parallel_stim : True #Parallel stim Only with Multi Model
+    parallel_stim : False #Parallel stim Only with Multi Model
 
     #max_glob_samples_per_epoch: 50000  # optional, reduces epoch size
     num_data_workers: 4  
 
 max_epochs: 12  
-batch_size: 512
+batch_size: 32
 
 const_local_batch: True   # True is faster  but LR changes w/ num GPUs
 validation_period: [1, 1] # [ period, len] (epochs)
@@ -24,7 +24,7 @@ validation_period: [1, 1] # [ period, len] (epochs)
 log_freq_per_epoch: 3
 tb_show_graph: True
 
-save_checkpoint: False  # only when loss improves
+save_checkpoint: True  # only when loss improves
 resume_checkpoint: False  # False: always start over 
 # warning: for multi-gpu & resume --> val_loss explodes - no loop over GPUs
   
@@ -32,7 +32,7 @@ resume_checkpoint: False  # False: always start over
 # AMP: Automatic Mixed Precision package
 # autotune: # activates cudnn.benchmark
 do_ray: False
-
+model_type: Transformers
 
 
 opt_pytorch:  
@@ -43,8 +43,8 @@ opt_pytorch:
 
 train_conf:
     warmup_epochs: 10
-    optimizer: [adam, 0.005] # initLR  
-    LRsched: { plateau_patience: 8, reduceFactor: 0.11  }
+    optimizer: [adam, 0.001] # initLR  
+    LRsched: { plateau_patience: 800, reduceFactor: 0.11  }
 
 model:
     myId:  m8lay_vassa

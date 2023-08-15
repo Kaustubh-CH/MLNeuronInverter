@@ -57,7 +57,14 @@ def trainable(params):
 
     try:
       trainer = Trainer(params)
-      trainer.train()
+      loss = trainer.train()
+      if(params['minLoss_RayTune']>loss):
+         import yaml
+         with open(params['minLoss_RayTune_yamlPath']+'/'+str(loss)[:4]+'_'+params['job_id']+".yaml", "w") as file:
+            yaml.dump(params['model'], file)
+      from ray.air import session
+      session.report({"loss": loss})
+      
     except RuntimeError as e:
       print("RAYTUNE Exception",type(e).__name__, e.args)
       from ray.air import session
@@ -89,7 +96,7 @@ class Raytune:
         # trainer = Trainer(params)
         max_num_epochs=10
         gpus_per_trial=2
-        num_samples=1000
+        num_samples=10000
         cpus_per_trail=8
         # trainer.train()
         scheduler = ASHAScheduler(

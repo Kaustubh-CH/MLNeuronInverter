@@ -1,5 +1,5 @@
-jidL="11914757"
-dataPath=/pscratch/sd/k/ktub1999/bbp_Jul_19
+jidL="12321956"
+dataPath=/pscratch/sd/k/ktub1999/bbp_Jul_25
 
 
 # [[ -z "${NEUINV_WRK_SUFIX}" ]] && wrkSufix=$SLURM_JOBID || wrkSufix="${NEUINV_WRK_SUFIX}"
@@ -9,13 +9,13 @@ wrkDir0=$SCRATCH/tmp_neuInv/bbp3//${cellName}/
 outDir=$SCRATCH/tmp_neuInv/MeanTraining
 # wrkDir=$wrkDir0/$wrkSufix
 # /pscratch/sd/k/ktub1999/tmp_neuInv/MeanTraining
-
+# mkdir -p $outPath
 
 job_ids=()
 for ((i=1; i<=10; i++))
 do
 
-    job_id=($(sbatch batchShifter.slr "$dataPath"_"$jidL" $jidL | awk '{print $4}'))
+    job_id=($(sbatch batchShifter.slr "$dataPath"_"$jidL" | awk '{print $4}'))
     job_ids+=($job_id)
 done
 echo "JobIDS:" 
