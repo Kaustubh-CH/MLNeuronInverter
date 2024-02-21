@@ -54,6 +54,7 @@ def trainable(params):
     print("Model Shape ",params['model']['conv_block']['filter'])
     print("Model Kernel Shape ",params['model']['conv_block']['kernel'])
     print("Model Pooling ",params['model']['conv_block']['pool'])
+    params['global_batch_size'] =params['local_batch_size'] *params['world_size']
 
     try:
       trainer = Trainer(params)
@@ -72,6 +73,7 @@ def trainable(params):
     except Exception as E:
       import traceback
       traceback.print_exc()
+      print("Someother Exception",type(e).__name__, e.args)
       from ray.air import session
       session.report({"loss": 5})
     # pool = multiprocessing.Pool(processes=params['world_size'])
@@ -95,7 +97,7 @@ class Raytune:
     def __init__(self,params):
         # trainer = Trainer(params)
         max_num_epochs=10
-        gpus_per_trial=2
+        gpus_per_trial=1
         num_samples=10000
         cpus_per_trail=8
         # trainer.train()
@@ -122,9 +124,13 @@ class Raytune:
         params['model']['conv_block']['filter']={str(x):tune.choice([30, 60, 90, 120]) for x in range(8)}
         params['model']['conv_block']['kernel']={str(x):tune.choice([1,2,3,4,5,6]) for x in range(8)}
         params['model']['conv_block']['pool']={str(x):tune.choice([1,2,3,4,5,6]) for x in range(8)}
-        params['model']['fc_block']['fc_depth']=tune.choice([4,5,6,7,8])
+        params['model']['fc_block']['fc_depth']=tune.choice([1,2,3,4,5,6,7,8])
         params['model']['fc_block']['dims']={str(x):tune.choice([256,512,768,1024]) for x in range(8)}
-       
+        # params['max_epochs']= tune.choice([50,100,150])
+        params['local_batch_size'] =tune.choice([128,256,512])
+        params['model']['fc_block']['dropFrac']=tune.choice([0.02,0.04,0.06,0.08,0.1])
+        params['train_conf']['optimizer']=tune.choice([['adam', 0.00001],['adam', 0.0005],['adam', 0.001],['adam', 0.005]]) 
+        
         # params['model']['conv_block']['filter']=[tune.choice([30, 60, 90, 120]) for _ in range(8)]
         # params['model']['conv_block']['kernel']=[tune.choice([3,4,5,6]) for _ in range(8)]
         # params['model']['conv_block']['pool']=[tune.choice([3,4,5,6]) for _ in range(8)]

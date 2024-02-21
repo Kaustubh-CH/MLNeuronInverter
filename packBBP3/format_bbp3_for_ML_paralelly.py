@@ -21,7 +21,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
     
     parser.add_argument("--dataPath",help="input/output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3_march06')
-    parser.add_argument("--cellName", type=str, default='L5_TTPC1cADpyr0', help="cell name list, blanks separated")
+    parser.add_argument("--cellName", type=str, default='ALL_CELLS', help="cell name list, blanks separated")
     parser.add_argument("--conf", type=int, default=1, help="output configuration")
     
     args = parser.parse_args()
@@ -83,6 +83,7 @@ def append_data_hdf5_index(bigD,outF,metaD,thread_id=0,thread_total=1):
         dataset = h5f[items]
         index=dataset.shape[0]
         len_thread=int(index/thread_total)
+        #HDF5 loads that particular slice instead of the entire dataset.
         dataset[thread_id*len_thread:(thread_id+1)*len_thread]=bigD[items]
     h5f.close()
 
@@ -137,7 +138,7 @@ if __name__=="__main__":
   args=get_parser()
     # thread_id=int(os.environ['SLURM_PROCID'])
     # thread_total = int(os.environ['SLURM_NTASKS'])
-  thread_total=8
+  thread_total=2
   for thread_id in range(0,thread_total):  
     inpF0=args.cellName+'.simRaw.h5'
     inpF=os.path.join(args.dataPath,inpF0)
@@ -159,6 +160,7 @@ if __name__=="__main__":
     
     # compute offest and length per domain  (Offset,Length)
     split_index={'valid':[0+thread_id*tval,tval], 'test':[nval+thread_id*tval,tval],'train':[2*nval+thread_id*thread_train_val, thread_train_val]}
+    split_index_total = {'valid':[0,nval],'test':[nval,nval],'train':[2*nval,train_val]}
     print('M:split_index',split_index)
     print("M:Thread_id",thread_id)
     bigD={}  # this will be output
@@ -173,7 +175,7 @@ if __name__=="__main__":
         totFlat+=format_raw(dom,split_index[dom])
         
     #.... update meta data
-    pmd={'split_index':split_index,'num_flat_volts':totFlat,'pack_conf':args.conf,'full_input_h5':inpF0}
+    pmd={'split_index':split_index_total,'num_flat_volts':totFlat,'pack_conf':args.conf,'full_input_h5':inpF0}
     simMD['pack_info']=pmd
 
     #... add stims back

@@ -12,6 +12,8 @@ def get_arm_color(parName):
     armCol={'apical':'C2', 'axonal':'C3','somatic':'C4','dend':'C5','all':'C6'}
     arm=parName.split('_')[-1]
     #print('ccc',parName, arm)
+    if(arm not in armCol.keys()):
+        return 'C2'
     hcol=armCol[arm]
     return hcol
 
@@ -25,10 +27,10 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         self.inpMD=inpMD
         self.sumRec=sumRec
         self.formatVenue=args.formatVenue
-        self.idx=range(len(inpMD['parName']))
-        if(args.idx is not None):
-            self.idx=args.idx
-            self.idx=[int(i) for i in self.idx]
+        # self.idx=range(len(inpMD['parName']))
+        # if(args.idx is not None):
+        #     self.idx=args.idx
+        #     self.idx=[int(i) for i in self.idx]
         
 #...!...!..................
     def frames_vsTime(self,X,Y,nFr,figId=7,metaD=None, stim=[]):
@@ -88,13 +90,16 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         sumRec=self.sumRec
         parName=self.inpMD['parName']
         # idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
-        idx=self.idx
-        parName=[parName[id] for id in idx]
+        if('include' in self.inpMD.keys()):
+            idx=self.inpMD['include']
+        else:
+            idx = range(len(parName))
+        # parName=[parName[id] for id in idx]
         # nPar=self.inpMD['num_phys_par']
-        nPar=len(parName)
+        nPar=len(idx)
         residualL=sumRec['residual_mean_std']
-
-        nrow,ncol=4,5 # BBP3
+        
+        nrow,ncol=-(-(nPar+1) // 5),5 # BBP3
         #nrow,ncol=4,4  # for proposal update, 2022-01
 
         if  self.formatVenue=='poster':
@@ -103,7 +108,7 @@ class Plotter_NeuronInverter(Plotter_Backbone):
             figId+=100
 
         figId=self.smart_append(figId)
-        self.plt.figure(figId,facecolor='white', figsize=(14,9.))
+        self.plt.figure(figId,facecolor='white', figsize=(14,int(3*nrow)))
 
         #1fig, axs = self.plt.subplots(nrow,ncol, sharex='col', sharey='row', gridspec_kw={'hspace': 0.3, 'wspace': 0.1},num=figId)
 
@@ -129,9 +134,23 @@ class Plotter_NeuronInverter(Plotter_Backbone):
             
             ax1.plot([0, 1], [0,1], color='magenta', linestyle='--',linewidth=0.5,transform=ax1.transAxes) #diagonal
             # 
-            ax1.set_title('%d:%s'%(iPar,parName[iPar]), size=10)
+            ax1.set_title('%d:%s'%(iPar,parName[idx[iPar]]), size=10)
             tit4='job:'+str(self.sumRec['jobId'])
+            
+            # ax1.text(0.0,-0.01,'%.1f'%(self.inpMD['phys_par_range'][idx[iPar]][0]),transform=ax1.transAxes, color = 'blue')
+            # ax1.text(1.0,-0.01,'%.1f'%(self.inpMD['phys_par_range'][idx[iPar]][1]),transform=ax1.transAxes, color = 'blue')
+            lower_limit = self.inpMD['phys_par_range'][idx[iPar]][0]
+            upper_limit = self.inpMD['phys_par_range'][idx[iPar]][1]
+            original_ticks=[-1,0,1]
+            new_ticks = [lower_limit,'%.1f'%((lower_limit+upper_limit)/2),upper_limit]
+            new_ticks_dict={-1:lower_limit,
+                            0:(lower_limit+upper_limit)/2,
+                            1:upper_limit}
+            ax1.set_xticks(original_ticks,new_ticks)
+            ax1.set_yticks(original_ticks,new_ticks)
+            
 
+            # ax1.figtext(0.5, 0.01, self.inpMD[iPar][0], wrap=True, horizontalalignment='center', fontsize=12)
             if  self.formatVenue=='poster': continue
 
             # more details  will make plot more crowded
@@ -190,11 +209,13 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         metaD=self.inpMD
         parName=metaD['parName']
         # idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
-        idx=self.idx
+        if('include' in self.inpMD.keys()):
+            idx=self.inpMD['include']
+        else:
+            idx = range(len(parName))
         parName=[parName[id] for id in idx]
-        nPar=self.inpMD['num_phys_par']
-        nPar-=5
-        nrow,ncol=4,5
+        nPar=len(idx)
+        nrow,ncol=-(-(nPar+1) // 5),5
         
         figId=self.smart_append(figId)
         fig=self.plt.figure(figId,facecolor='white', figsize=(2.75*ncol,2.2*nrow))

@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """ 
-read trained net : model+weights
-read test data from HD5
-infere for  test data 
-
-Inference works alwasy on 1 GPU or CPUs
-
- ./predict.py  --modelPath /global/cfs/cdirs/mpccc/balewski/tmp_neurInv/exp_excite/70257/out
+PREDiction Kaustubh
 
 
 """
@@ -22,6 +16,10 @@ import  time
 import sys,os
 import logging
 logging.basicConfig(format='%(levelname)s - %(message)s', level=logging.INFO)
+import h5py
+from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.pyplot as plt
+
 
 from toolbox.Util_IOfunc import read_yaml, write_yaml
 from toolbox.Plotter import Plotter_NeuronInverter
@@ -48,6 +46,10 @@ param_names = ['gNaTs2_tbar_NaTs2_t_apical',
 'cm_somatic',
 'e_pas_all',]
 #...!...!..................
+
+
+
+
 def get_parser():
     parser = argparse.ArgumentParser()
     #parser.add_argument("--facility", default='corigpu', type=str)
@@ -63,7 +65,12 @@ def get_parser():
     parser.add_argument("-n", "--numSamples", type=int, default=None, help="limit samples to predict")
     parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
 
+    parser.add_argument("--expFile",  default='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/', help="Experimental data path")
+    
+    parser.add_argument("--saveFile",  default='./unitParams', help="Experimental data path")
     parser.add_argument("--cellName", type=str, default=None, help="alternative data file name ")
+    parser.add_argument("--predictStim",default=0 , type=int, nargs='+', help="list of stims, space separated")
+    parser.add_argument("--idx", nargs='*' ,required=False,type=str, default=None, help="Included parameters")
     args = parser.parse_args()
     args.prjName='neurInfer'
     args.outPath+'/'
@@ -109,7 +116,8 @@ def model_infer(model,test_loader,trainMD):
     nEve=0
     nStep=0
     sweepId=65
-    os.mkdir("./unitParams")
+    # os.mkdir("./unitParams")
+    os.mkdir(trainMD['saveFile'])
     with torch.no_grad():
         for data, target in test_loader:
             sweepId+=1
@@ -120,7 +128,7 @@ def model_infer(model,test_loader,trainMD):
             dataframe={"unit_params":output_dev.squeeze().tolist(),"param_names":param_names}
             df = pd.DataFrame(dataframe)
             
-            df.to_csv("./unitParams/unitParam"+str(sweepId)+".csv")
+            df.to_csv(trainMD['saveFile']+"/unitParam"+str(sweepId)+".csv")
             
             lossOp=criterion(output_dev, target_dev)
             #print('qq',lossOp,len(test_loader.dataset),len(test_loader)); ok55
@@ -149,11 +157,16 @@ if __name__ == '__main__':
   sumF=args.modelPath+'/sum_train.yaml'
   trainMD = read_yaml( sumF)
   parMD=trainMD['train_params']
-#   inpMD=trainMD['input_meta']
+  inpMD=trainMD['input_meta']
   #pprint(inpMD)
   assert torch.cuda.is_available() 
+  param_names=trainMD['input_meta']['parName']
   model=load_model(trainMD,args.modelPath)
   #1print(model)
+  idx=range(len(inpMD['parName']))
+  if(args.idx is not None):
+      idx= args.idx
+      idx =[int(i) for i in idx]
 
   if args.cellName!=None:
       parMD['cell_name']=args.cellName
@@ -167,12 +180,13 @@ if __name__ == '__main__':
   parMD['local_batch_size']=1
   parMD['data_path']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/L5_TTPC1cADpyr2.mlPack1.h5'
   parMD['data_conf']['data_path']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/'
-  parMD['data_path_temp']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/'
+  # parMD['data_path_temp']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/'
+  parMD['data_path_temp'] = args.expFile
   parMD['cell_name']='L5_TTPC1cADpyr2'
   parMD['data_conf']['probs_select']=[0]
-  parMD['data_conf']['stims_select']=[5]
+  parMD['data_conf']['stims_select']=args.predictStim
   parMD['exp_data']=True
-  
+  trainMD['saveFile']=args.saveFile
 
   data_loader = get_data_loader(parMD, domain, verb=1)
 

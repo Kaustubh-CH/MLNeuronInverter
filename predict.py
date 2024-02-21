@@ -163,13 +163,18 @@ if __name__ == '__main__':
       print('M: prjName',args.prjName)
     
   domain=args.dom
-  idx=range(len(inpMD['parName']))
-  if(args.idx is not None):
-      idx= args.idx
-      idx =[int(i) for i in idx]
+#   idx=range(len(inpMD['parName']))
+#   if(args.idx is not None):
+#       idx= args.idx
+#       idx =[int(i) for i in idx]
   parMD['world_size']=1
+
   #pprint(parMD); ok6
-  
+  if('include' in inpMD.keys()):
+        idx=range(len(inpMD['include']))
+  else:
+        idx = range(len(inpMD['parName']))
+
   data_loader = get_data_loader(parMD, domain, verb=1)
 
   startT=time.time()

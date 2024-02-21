@@ -111,8 +111,8 @@ class Trainer():
     self.params['log_freq_step']=max(1,len(self.train_loader)//self.params['log_freq_per_epoch'])
     myModel=None
     if(params['model_type']=="Transformers"):
-      d_model = 4
-      nhead = 4
+      d_model = 2
+      nhead = 2
       num_encoder_layers = 6
       dim_feedforward = 64
       max_seq_len = 4000
