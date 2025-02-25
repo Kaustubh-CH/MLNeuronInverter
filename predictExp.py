@@ -19,7 +19,7 @@ logging.basicConfig(format='%(levelname)s - %(message)s', level=logging.INFO)
 import h5py
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
-
+from toolbox.Util_H5io3 import write3_data_hdf5
 
 from toolbox.Util_IOfunc import read_yaml, write_yaml
 from toolbox.Plotter import Plotter_NeuronInverter
@@ -71,6 +71,9 @@ def get_parser():
     parser.add_argument("--cellName", type=str, default=None, help="alternative data file name ")
     parser.add_argument("--predictStim",default=0 , type=int, nargs='+', help="list of stims, space separated")
     parser.add_argument("--idx", nargs='*' ,required=False,type=str, default=None, help="Included parameters")
+    parser.add_argument("--test-plot-size",default=None , type=int, help="size of test plot")
+    
+    
     args = parser.parse_args()
     args.prjName='neurInfer'
     args.outPath+'/'
@@ -117,7 +120,11 @@ def model_infer(model,test_loader,trainMD):
     nStep=0
     sweepId=65
     # os.mkdir("./unitParams")
-    os.mkdir(trainMD['saveFile'])
+    try:
+      os.mkdir(trainMD['saveFile'])
+    except:
+      print("Directory already exists",trainMD['saveFile'])
+  
     with torch.no_grad():
         for data, target in test_loader:
             sweepId+=1
@@ -125,11 +132,11 @@ def model_infer(model,test_loader,trainMD):
             output_dev = model(data_dev)
             print(output_dev.size())
 
-            dataframe={"unit_params":output_dev.squeeze().tolist(),"param_names":param_names}
+            dataframe={"unit_params_predict":output_dev.squeeze().tolist(),"unit_params_actual":target_dev.squeeze().tolist(),"param_names":param_names}
             df = pd.DataFrame(dataframe)
             
-            df.to_csv(trainMD['saveFile']+"/unitParam"+str(sweepId)+".csv")
-            
+            df.to_csv(trainMD['saveFile']+"/unitParam"+str(sweepId)+".csv",index=False)
+            # if(trainMD['test_plot_size']!=None)
             lossOp=criterion(output_dev, target_dev)
             #print('qq',lossOp,len(test_loader.dataset),len(test_loader)); ok55
             test_loss += lossOp.item()
@@ -144,7 +151,18 @@ def model_infer(model,test_loader,trainMD):
     print('infere done, nEve=%d nStep=%d loss=%.4f'%(nEve,nStep,test_loss),flush=True)
     return test_loss,Uall,Zall
 
-  
+def compute_dummy_residual(md,idx):
+    parName=md['parName']
+    # idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
+    parName=[parName[id] for id in idx]
+    nPar=len(parName)
+    outL=[]
+    for iPar in range(0,nPar):
+        outL.append( [ parName[iPar], float(0.1),float(0.1) ] )
+        #print('#res,%d,%s'%(iPar,parName[iPar]))
+    #pprint(outL)
+    return outL
+
 #=================================
 #=================================
 #  M A I N 
@@ -164,9 +182,15 @@ if __name__ == '__main__':
   model=load_model(trainMD,args.modelPath)
   #1print(model)
   idx=range(len(inpMD['parName']))
-  if(args.idx is not None):
-      idx= args.idx
-      idx =[int(i) for i in idx]
+  # if(args.idx is not None):
+  #     idx= args.idx
+  #     idx =[int(i) for i in idx]
+  if('include' in inpMD.keys()):
+        idx=inpMD['include']
+  else:
+        idx = range(len(inpMD['parName']))
+
+  param_names=[param_names[id] for id in idx]
 
   if args.cellName!=None:
       parMD['cell_name']=args.cellName
@@ -176,16 +200,23 @@ if __name__ == '__main__':
   domain=args.dom
 
   parMD['world_size']=1
-
+  trainMD['test_plot_size']=None
   parMD['local_batch_size']=1
-  parMD['data_path']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/L5_TTPC1cADpyr2.mlPack1.h5'
-  parMD['data_conf']['data_path']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/'
-  # parMD['data_path_temp']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/'
-  parMD['data_path_temp'] = args.expFile
-  parMD['cell_name']='L5_TTPC1cADpyr2'
-  parMD['data_conf']['probs_select']=[0]
-  parMD['data_conf']['stims_select']=args.predictStim
-  parMD['exp_data']=True
+  if(args.test_plot_size!=None):
+      parMD['data_conf']['max_glob_samples_per_epoch']=args.test_plot_size
+      trainMD['test_plot_size']=args.test_plot_size
+    
+  else:
+    parMD['data_path']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/L5_TTPC1cADpyr2.mlPack1.h5'
+    parMD['data_conf']['data_path']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/'
+    # parMD['data_path_temp']='/global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data/'
+    parMD['data_path_temp'] = args.expFile
+    parMD['cell_name']='L5_TTPC1cADpyr2'
+    parMD['data_conf']['probs_select']=[0]
+    parMD['data_conf']['stims_select']=args.predictStim
+    parMD['data_conf']['valid_stims_select']=args.predictStim
+    parMD['exp_data']=True
+  parMD['shuffle']=False
   trainMD['saveFile']=args.saveFile
 
   data_loader = get_data_loader(parMD, domain, verb=1)
@@ -194,7 +225,20 @@ if __name__ == '__main__':
   loss,U,Z=model_infer(model,data_loader,trainMD)
   predTime=time.time()-startT
   print('M: infer : Average loss: %.4f  dom=%s samples=%d , elaT=%.2f min\n'% (loss, domain, Z.shape[0],predTime/60.))
+  if(len(data_loader.dataset)<30):
 
+    simulated_data  =np.array([batch.numpy() for batch,_ in data_loader])
+    simulated_data = simulated_data.squeeze()
+    simulated_data_hdf={}
+    simulated_data_hdf['volts']=simulated_data
+    simulated_data_hdf_meta={'cell':parMD['cell_name'],'dom':'TestPlot'}
+    
+    write3_data_hdf5(simulated_data_hdf,args.saveFile+'inputVolts.hdf5',simulated_data_hdf_meta)
+  else:
+    print("Not saving h5py because size>30",len(data_loader.dataset))
+  
+
+  residualL = compute_dummy_residual(inpMD,idx)
   sumRec={}
   sumRec['domain']=domain
   sumRec['jobId']=trainMD['job_id']
@@ -208,15 +252,18 @@ if __name__ == '__main__':
   sumRec['trainRanks']=trainMD['train_params']['world_size']
   sumRec['trainTime']=trainMD['trainTime_sec']
   sumRec['loss_valid']= trainMD['loss_valid']
-
+  sumRec['train_stims_select']= trainMD['train_stims_select']
+  sumRec['train_glob_sampl']= trainMD['train_glob_sampl']
+  sumRec['pred_stims_select']= trainMD['train_params']['data_conf']['stims_select']
+ 
+  sumRec['residual_mean_std']=residualL
 
   #  - - - -  only plotting code is below - - - - -
-  
-#   plot=Plotter_NeuronInverter(args,inpMD ,sumRec )
+  if(args.test_plot_size!=None):
+    plot=Plotter_NeuronInverter(args,inpMD ,sumRec )
+    plot.param_residua2D(U,Z)
 
-#   plot.param_residua2D(U,Z)
-
-  write_yaml(sumRec, args.outPath+'/sum_pred.yaml')
+  write_yaml(sumRec, args.outPath+'/sum_predExp.yaml')
 
   #1plot.params1D(U,'true U',figId=7)
 #   plot.params1D(Z,'pred Z',figId=8)
@@ -230,6 +277,8 @@ if __name__ == '__main__':
     print('Y[:2]',yy[:2])
     # plot.frames_vsTime(xx,yy,9)
    
-  
-#   plot.display_all(domain+'_'+args.cellName, png=1)  
+    if(args.test_plot_size!=None):
+      figN=domain+'_'+ parMD['cell_name']
+
+      plot.display_all(figN, png=1)  
 

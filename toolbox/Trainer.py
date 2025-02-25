@@ -110,35 +110,38 @@ class Trainer():
     # must know the number of steps to decided how often to print
     self.params['log_freq_step']=max(1,len(self.train_loader)//self.params['log_freq_per_epoch'])
     myModel=None
-    if(params['model_type']=="Transformers"):
-      d_model = 2
-      nhead = 2
-      num_encoder_layers = 6
-      dim_feedforward = 64
-      max_seq_len = 4000
-      num_channels = d_model
-      from toolbox.Transformer_Model import TransformerEncoder
-      myModel=TransformerEncoder(d_model, nhead, num_encoder_layers, dim_feedforward, max_seq_len)
-      
+    if(params['do_fine_tune']==True):
+      myModel= self.load_model(params)
     else:
-      if(params['data_conf']['parallel_stim']):
-        from toolbox.Model_Multi import  MyModel
+      if(params['model_type']=="Transformers"):
+        d_model = 2
+        nhead = 2
+        num_encoder_layers = 6
+        dim_feedforward = 64
+        max_seq_len = 4000
+        num_channels = d_model
+        from toolbox.Transformer_Model import TransformerEncoder
+        myModel=TransformerEncoder(d_model, nhead, num_encoder_layers, dim_feedforward, max_seq_len)
+        
       else:
-        from toolbox.Model import  MyModel
+        if(params['data_conf']['parallel_stim']):
+          from toolbox.Model_Multi import  MyModel
+        else:
+          from toolbox.Model import  MyModel
 
-      myModel=MyModel(params['model'], verb=self.verb)
-    # except RuntimeError as e:
-    #   print("T: Worker Exception at Model init",e)
-    #   # session.report({"loss": 5})
-    #   return
-    if self.isRank0 and params['tb_show_graph']:
-       dataD=next(iter(self.train_loader))
-       images, labels = dataD
-       t1=time.time()
-       if(params['model_type']!="Transformers"):
-         self.TBSwriter.add_graph(myModel,images.to('cpu'))#should fix for transformers
-       t2=time.time()
-       if self.verb:  logging.info('show model graph at TB took %.1f sec'%(t2-t1))
+        myModel=MyModel(params['model'], verb=self.verb)
+      # except RuntimeError as e:
+      #   print("T: Worker Exception at Model init",e)
+      #   # session.report({"loss": 5})
+      #   return
+      if self.isRank0 and params['tb_show_graph']:
+        dataD=next(iter(self.train_loader))
+        images, labels = dataD
+        t1=time.time()
+        if(params['model_type']!="Transformers"):
+          self.TBSwriter.add_graph(myModel,images.to('cpu'))#should fix for transformers
+        t2=time.time()
+        if self.verb:  logging.info('show model graph at TB took %.1f sec'%(t2-t1))
     
     self.model=myModel.to(self.device)
     
@@ -215,7 +218,26 @@ class Trainer():
                    'train_glob_sampl': len(self.train_loader) * params['global_batch_size']
       }
 
-      
+  def load_model(self,params):
+
+    # ... assemble model
+
+    device = torch.device("cuda")
+    # load entirel model
+    modelF = params['fine_tune']['blank_model']
+    stateF = params['fine_tune']['checkpoint_name']
+
+    model = torch.load(modelF)
+    model2 = torch.nn.DataParallel(model)
+    allD=torch.load(stateF, map_location=str(device))
+    print('all model ok',list(allD.keys()))
+    stateD=allD["model_state"]
+    keyL=list(stateD.keys())
+    if 'module' not in keyL[0]:
+      ccc={ 'module.%s'%k:stateD[k]  for k in stateD}
+      stateD=ccc
+    model2.load_state_dict(stateD)
+    return model2
 #...!...!..................
   def train(self):
     if self.verb:

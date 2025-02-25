@@ -32,7 +32,10 @@ def get_parser():
   parser.add_argument("--data_path_temp",default="/pscratch/sd/k/ktub1999/bbp_May_10_8623428/", type=str, help="if defined, replaces max_epochs from hpar")
   parser.add_argument("--minLoss-RayTune",default=0.04, type=int, help="Min Threshold after which ray tune will execute 500k sample jobs")
   parser.add_argument("--minLoss-RayTune-yamlPath",default='/pscratch/sd/k/ktub1999/tmpYml', type=str,help="Path to store below min loss runs while doing Ray Tune")
-
+  parser.add_argument("--do_fine_tune",action='store_true',default=False,help="Load a pretrained model")
+  parser.add_argument("--fine_tune-blank_model",default=None, type=str,help="Path to store below min loss runs while doing Ray Tune")
+  parser.add_argument("--fine_tune-checkpoint_name",default=None, type=str,help="Path to store below min loss runs while doing Ray Tune")
+   
   parser.add_argument("-j","--jobId", default=None, help="optional, aux info to be stored w/ summary")
   parser.add_argument("-v","--verbosity",type=int,choices=[0, 1, 2], help="increase output verbosity", default=1, dest='verb')
   parser.add_argument("-n", "--numGlobSamp", type=int, default=None, help="(optional) cut off num samples per epoch")
@@ -114,6 +117,10 @@ if __name__ == '__main__':
   params['data_path_temp']=args.data_path_temp
   params['minLoss_RayTune']=args.minLoss_RayTune
   params['minLoss_RayTune_yamlPath']=args.minLoss_RayTune_yamlPath
+  params['do_fine_tune'] = args.do_fine_tune
+  params['fine_tune']={}
+  params['fine_tune']['blank_model'] = args.fine_tune_blank_model
+  params['fine_tune']['checkpoint_name'] = args.fine_tune_checkpoint_name
   # overwrite default configuration
   #.... update selected params based on runtime config
   if args.numGlobSamp!=None:  # reduce num steps/epoch - code testing
@@ -132,7 +139,7 @@ if __name__ == '__main__':
     trainer = Trainer(params)
     trainer.train()
     
-
+  print("DONE for",params['world_rank'])
   if params['world_rank'] == 0:
     sumF=args.outPath+'/sum_train.yaml'
     write_yaml(trainer.sumRec, sumF) # to be able to predict while training continus

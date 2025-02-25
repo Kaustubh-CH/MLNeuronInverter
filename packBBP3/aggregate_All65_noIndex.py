@@ -23,9 +23,10 @@ def get_parser():
     
     parser.add_argument("-s","--simPath",help="simu raw path",  default='/pscratch/sd/k/ktub1999/BBP_TEST2/runs2/')
     parser.add_argument("-o","--outPath",help="output  path",  default='/pscratch/sd/b/balewski/tmp_bbp3_jan12')
-    parser.add_argument("--jid", type=str, default='3800565_1', help="cell shortName list, blanks separated")
+    parser.add_argument("--jid", type=str, nargs='+',required=True, default='3800565 380056', help="cell shortName list, blanks separated")
     parser.add_argument("--idx", type=str,nargs='+',required=False, default=None, help="id of parameters to include")
     parser.add_argument("--numExclude", type=str,required=False, default='0', help="No of parameters to exclude")
+    parser.add_argument("-f","--fileName",help="Name of the hdf5 stored",  default="ALL_CELLS")
     
     args = parser.parse_args()
     args.verb=1
@@ -147,6 +148,19 @@ def normalize_volts(volts,name='',perProbe=True,verb=1):  # slows down the code 
     return volts_norm,nZer
             
 #...!...!..................
+def get_only_directories(path):
+    allL=os.listdir(path)
+    print('get_glob_info len1',len(allL),allL)
+    for x in allL:
+        if 'L'!=x[0]: continue
+        cellName=x
+        break
+    print('GHL: cellName',cellName)
+    path2=os.path.join(path,cellName)
+    allL2=os.listdir(path2)
+    print('get_glob_info len2',len(allL2))
+    return allL2
+
 def get_h5_list(path):
     allL=os.listdir(path)
     print('get_glob_info len1',len(allL),allL)
@@ -168,7 +182,7 @@ def get_h5_list(path):
 
 
 #...!...!..................
-def assemble_MD(nh5):
+def assemble_MD(nh5,tmpnSamp=0):
     _,nppar=oneD['phys_par'].shape
     _,nspar,_=oneD['phys_stim_adjust'].shape
     nSamp,ntbin,nprob,nstim=oneD['volts'].shape
@@ -215,7 +229,6 @@ def import_stims_from_CVS():
     nameL1=oneMD.pop('stimName')
     #stimPath='/global/cscratch1/sd/ktub1999/stims/'
     stimPath='/pscratch/sd/k/ktub1999/main/DL4neurons2/stims/'
-    stimPath='/global/homes/k/ktub1999/mainDL4/DL4neurons2/stims'
     for name in  nameL1:
         inpF=os.path.join(stimPath,name)
         print('import ', inpF)
@@ -235,7 +248,7 @@ def import_stims_from_CVS():
 
 
 #...!...!..................
-def read_all_h5(inpL,args,idx,numExclude):
+def read_all_h5(inpL,args,idx,numExclude,new_path):
     nfile=len(inpL)
     oneSamp=oneD['volts'].shape[0]
     #print('aa',inpL); oko9
@@ -261,6 +274,7 @@ def read_all_h5(inpL,args,idx,numExclude):
     #     idx=[int(i) for i in idx]
     # idx=[0,1,2,3,4,5,6,7,8,9,10,12,13,14,15]
     #.... main loop over data
+    pathH5 = new_path
     print('RA5:read h5...',nfile)
     for j,name in enumerate(inpL):
         inpF=os.path.join(pathH5,name)
@@ -276,7 +290,7 @@ def read_all_h5(inpL,args,idx,numExclude):
                 bigD[x][ioff:ioff+oneSamp]=simD[x][:,idx]
             else:
                 bigD[x][ioff:ioff+oneSamp]=simD[x]
-    oneMD['simu_info']['num_NaN_volts_cleared']=int(nBadSamp)
+    oneMD['simu_info']['num_NaN_volts_cleared']=oneMD['simu_info']['num_NaN_volts_cleared']+int(nBadSamp)
         
 #...!...!..................
 def clear_NaN_samples(bigD):  # replace volts w/ 0s, only for volts
@@ -294,12 +308,12 @@ def clear_NaN_samples(bigD):  # replace volts w/ 0s, only for volts
             print('\nWARN see %d NaN bad samples in %s :'%(nBadS,x),badIdx)
             assert x=='volts'
             
-        if nBadS!=0:
-            print('clear NaN volts in %d sample(s)'%len(badIdx))
-            zeroVolts=np.zeros_like( bigD['volts'][0])
-            for i in  badIdx:
-                bigD['volts'][i]=zeroVolts
-            #exit(1)  # activate it to abort on NaN
+    if nBadS!=0:
+        print('clear NaN volts in %d sample(s)'%len(badIdx))
+        zeroVolts=np.zeros_like( bigD['volts'][0])
+        for i in  badIdx:
+            bigD['volts'][i]=zeroVolts
+        #exit(1)  # activate it to abort on NaN
     return nBadS
 #=================================
 #=================================
@@ -309,43 +323,64 @@ def clear_NaN_samples(bigD):  # replace volts w/ 0s, only for volts
 if __name__=="__main__":
     args=get_parser()
     
-    simPath=os.path.join(args.simPath,args.jid)
+    simPath=os.path.join(args.simPath,str(args.jid[0]+'_1'))
+
     h5L,pathH5,oneD,oneMD,cellName=get_h5_list(simPath)
-    #h5L=h5L[:20]  # shorten input for testing
+    h5L=h5L[:205]  # shorten input for testing
     nh5=len(h5L)
+    nfileTotal= len(h5L)*len(args.jid)
+   
     idx=[]
     numExclude=0
     _,totalPar = oneD['phys_par'].shape
-    idx=[x for x in range(0,totalPar)]
+    oneMD['include']=[x for x in range(0,totalPar)]
     if('include' in oneMD.keys()):
         idx =   oneMD['include']
         _,totalPar = oneD['phys_par'].shape
         numExclude = totalPar-len(idx)
     print("Included",idx)
     print("Num Excluded",numExclude)
-    assemble_MD(nh5)
+    print("Total number of files Cells * hdf5s",nfileTotal)
+    assemble_MD(nfileTotal)
     bigD={}
-    thread_all = 2 #2048/4
-    for thread_id in range(thread_all):
+    cells=[]
+    oneMD['simu_info']['num_NaN_volts_cleared']=0
+    for jId,currJid in enumerate(args.jid):
         bigD={}
-        thread_nh5= int(nh5/thread_all)
-        thread_h5L = h5L[thread_id*thread_nh5:(thread_id+1)*thread_nh5]
-
-        read_all_h5(thread_h5L,args,idx,numExclude)
-    
-
-        print('M:sim meta-data');   pprint(oneMD)
-        print('M:big',list(bigD))
-
+        currSimPath =  os.path.join(args.simPath,str(currJid+'_1'))
+        for dir_path in os.listdir(currSimPath):
+            if(os.path.isdir(os.path.join(currSimPath,dir_path))):
+                current_cell = dir_path
+        print("working on",current_cell)
+        if(current_cell not in cells):
+            cells.append(current_cell)
+        new_path = os.path.join(currSimPath,current_cell)
+        hdf5_single_cell = os.listdir(new_path)
+        # if(hdf5_single_cell)
+        hdf5_single_cell=hdf5_single_cell[:205]
+        read_all_h5(hdf5_single_cell,args,idx,numExclude,new_path)
         if 1:
             from toolbox.Util_IOfunc import write_yaml # for testing only
             write_yaml(oneMD,'aa.yaml')
-
-        outF=os.path.join(args.outPath,oneMD['cell_name']+'.simRaw.h5')
-        if(thread_id==0):
+        # outF=os.path.join(args.outPath,oneMD['cell_name']+'.simRaw.h5')
+        outF=os.path.join(args.outPath,args.fileName+'.simRaw.h5')
+        if(jId==0):
             import_stims_from_CVS()
-            write3_data_hdf5_partial(bigD,outF,metaD=oneMD)    
-        append_data_hdf5_index(bigD,outF,oneMD,thread_id,thread_all)
-    print('M:done')
+            write3_data_hdf5_partial(bigD,outF,metaD=oneMD)
+        # oneMD['all_cells']=cells
+        append_data_hdf5_index(bigD,outF,oneMD,jId,len(args.jid)) 
+
+    oneMD['all_cells']=cells
+
+
+    dtvs = h5py.special_dtype(vlen=str)
+    metaJ=json.dumps(oneMD)
+    h5f = h5py.File(outF, 'a')
+    del h5f['meta.JSON']
+    dset = h5f.create_dataset('meta.JSON', (1,), dtype=dtvs)
+    dset[0]=metaJ
+    h5f.close()
+
+    print("M:done")
 
  

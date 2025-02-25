@@ -15,14 +15,14 @@ from ray.tune.tuner import Tuner
 from ray import air
 # from ray.tune.search.hyperopt import HyperOptSearch
 # from ray.tune.search.dragonfly import DragonflySearch
-from ray.tune.suggest.optuna import OptunaSearch
+from ray.tune.search.optuna import OptunaSearch
 # from ray.tune.suggest.ax import AxSearch
 from toolbox.Trainer import Trainer
-from ray.air import session
-import ray
-import multiprocessing
-import threading
-import torch.distributed as dist
+# from ray.air import session
+# import ray
+# import multiprocessing
+# import threading
+# import torch.distributed as dist
 
 
 def threadTrain(params):

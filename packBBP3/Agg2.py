@@ -14,8 +14,7 @@ import os,sys,time
 from toolbox.Util_H5io3 import   read3_data_hdf5, write3_data_hdf5
 from pprint import pprint
 import numpy as np
-import json
-import h5py
+
 
 import argparse
 def get_parser():
@@ -34,57 +33,6 @@ def get_parser():
     assert os.path.exists(args.outPath)
 
     return args
-
-def write3_data_hdf5_partial(dataD,outF,metaD=None,verb=1):
-    if metaD!=None:
-        metaJ=json.dumps(metaD)
-        #print('meta.JSON:',metaJ)
-        dataD['meta.JSON']=metaJ
-    
-    dtvs = h5py.special_dtype(vlen=str)
-    h5f = h5py.File(outF, 'w')
-    if verb>0:
-            print('saving data as hdf5:',outF)
-            start = time.time()
-    for item in dataD:
-        rec=dataD[item]
-        if verb>1: print('x=',item,type(rec))
-        if type(rec)==str: # special case
-            dset = h5f.create_dataset(item, (1,), dtype=dtvs)
-            dset[0]=rec
-            if verb>0:print('h5-write :',item, 'as string',dset.shape,dset.dtype)
-            continue
-        if type(rec)!=np.ndarray: # packs a single value in ot np-array
-            rec=np.array([rec])
-        if(item in ['phys_par','phys_stim_adjust','unit_par','unit_stim_adjust','volts'] ):
-            shape_all = list(rec.shape)
-            shape_all[0] = metaD['simu_info']['num_total_samples'] ##TODO CREATE BLANK DATASET FOR US TO LATER FILL
-            h5f.create_dataset(item, shape=shape_all,dtype=rec.dtype)
-            if verb>0:print('h5-write :',item, rec.shape,rec.dtype)
-        else:
-            h5f.create_dataset(item, data=rec)
-            if verb>0:print('h5-write :',item, rec.shape,rec.dtype)
-    h5f.close()
-    xx=os.path.getsize(outF)/1048576
-    print('closed  hdf5:',outF,' size=%.2f MB, elaT=%.1f sec'%(xx,(time.time() - start)))
-
-
-def append_data_hdf5_index(bigD,outF,metaD,thread_id=0,thread_total=1):
-    h5f = h5py.File(outF, 'a')
-    for items in bigD:
-        if(items in ['phys_par','phys_stim_adjust','unit_par','unit_stim_adjust','volts'] ):
-            # rec=bigD[items]
-            # if type(rec)!=np.ndarray: # packs a single value in ot np-array
-            #     rec=np.array([rec])
-            dataset = h5f[items]
-            index=dataset.shape[0]
-            len_thread=int(index/thread_total)
-            #HDF5 loads that particular slice instead of the entire dataset.
-            dataset[thread_id*len_thread:(thread_id+1)*len_thread]=bigD[items]
-    h5f.close()
-
-
-
 
 #...!...!..................
 def normalize_volts(volts,name='',perProbe=True,verb=1):  # slows down the code a lot
@@ -112,8 +60,7 @@ def normalize_volts(volts,name='',perProbe=True,verb=1):  # slows down the code 
     #... to see indices of frames w/ volts==const
     result = np.where(xs==0)  
     xs[xs==0]=1  #hack:  for zero-value samples use mu=1 to allow scaling
-    xm=-60.0951997
-    xs=18.95055671
+
     #..... RENORMALIZE INPUT HERE 
     X=(X-xm)/xs   
     
@@ -124,15 +71,13 @@ def normalize_volts(volts,name='',perProbe=True,verb=1):  # slows down the code 
         print('restore',volts_norm.shape)
     
     elaTm=(time.time()-Ta)/60.
-    print('norm, xm:',xm,'X:',X.shape,'elaT=%.2f min'%elaTm)
+    print('norm, xm:',xm.shape,'X:',X.shape,'elaT=%.2f min'%elaTm)
     
     nZer=np.sum(xs==0)
     zerA=xs==0
-    print('   nZer=%d %s  : name=%s'%(nZer,xs,name))
+    print('   nZer=%d %s  : name=%s'%(nZer,xs.shape,name))
         
     del X
-    #TODO append stim in probe dimension
-    
     print('WW3',volts_norm.shape,volts_norm.dtype)
 
     if verb>1: # report flat volts for each sample
@@ -173,7 +118,7 @@ def assemble_MD(nh5):
     _,nspar,_=oneD['phys_stim_adjust'].shape
     nSamp,ntbin,nprob,nstim=oneD['volts'].shape
     prnmL=oneMD.pop('probeName')
-    
+ 
     #... append info to MD
     smd={}
     smd['num_total_samples']=nh5*nSamp
@@ -191,7 +136,6 @@ def assemble_MD(nh5):
     md['simu_info']=smd
     md['num_time_bins']=ntbin
     md['num_phys_par']=nppar
-    md['num_varied_phys_par']=nppar-numExclude
     md['num_stim_par']=nspar
     md['cell_name']=cellName
 
@@ -215,7 +159,6 @@ def import_stims_from_CVS():
     nameL1=oneMD.pop('stimName')
     #stimPath='/global/cscratch1/sd/ktub1999/stims/'
     stimPath='/pscratch/sd/k/ktub1999/main/DL4neurons2/stims/'
-    stimPath='/global/homes/k/ktub1999/mainDL4/DL4neurons2/stims'
     for name in  nameL1:
         inpF=os.path.join(stimPath,name)
         print('import ', inpF)
@@ -235,7 +178,7 @@ def import_stims_from_CVS():
 
 
 #...!...!..................
-def read_all_h5(inpL,args,idx,numExclude):
+def read_all_h5(inpL,args):
     nfile=len(inpL)
     oneSamp=oneD['volts'].shape[0]
     #print('aa',inpL); oko9
@@ -249,16 +192,15 @@ def read_all_h5(inpL,args,idx,numExclude):
         
         if(xN=="unit_par" or xN=="phys_par"):
             siz=sh1[1]
-            sh1[1]-=int(numExclude)
+            sh1[1]-=int(args.numExclude)
         bigD[xN]=np.zeros(tuple(sh1),dtype=one.dtype)       
 
     nBadSamp=0
      # idx=[0,1,2,3,4,5,6,7,8,9,10,13,14,15]
-    if len(idx)==0:
-        idx=range(siz)
-    # if(args.idx is not None):
-    #     idx=args.idx
-    #     idx=[int(i) for i in idx]
+    idx=range(siz)
+    if(args.idx is not None):
+        idx=args.idx
+        idx=[int(i) for i in idx]
     # idx=[0,1,2,3,4,5,6,7,8,9,10,12,13,14,15]
     #.... main loop over data
     print('RA5:read h5...',nfile)
@@ -294,12 +236,12 @@ def clear_NaN_samples(bigD):  # replace volts w/ 0s, only for volts
             print('\nWARN see %d NaN bad samples in %s :'%(nBadS,x),badIdx)
             assert x=='volts'
             
-        if nBadS!=0:
-            print('clear NaN volts in %d sample(s)'%len(badIdx))
-            zeroVolts=np.zeros_like( bigD['volts'][0])
-            for i in  badIdx:
-                bigD['volts'][i]=zeroVolts
-            #exit(1)  # activate it to abort on NaN
+    if nBadS!=0:
+        print('clear NaN volts in %d sample(s)'%len(badIdx))
+        zeroVolts=np.zeros_like( bigD['volts'][0])
+        for i in  badIdx:
+            bigD['volts'][i]=zeroVolts
+        #exit(1)  # activate it to abort on NaN
     return nBadS
 #=================================
 #=================================
@@ -313,39 +255,21 @@ if __name__=="__main__":
     h5L,pathH5,oneD,oneMD,cellName=get_h5_list(simPath)
     #h5L=h5L[:20]  # shorten input for testing
     nh5=len(h5L)
-    idx=[]
-    numExclude=0
-    _,totalPar = oneD['phys_par'].shape
-    idx=[x for x in range(0,totalPar)]
-    if('include' in oneMD.keys()):
-        idx =   oneMD['include']
-        _,totalPar = oneD['phys_par'].shape
-        numExclude = totalPar-len(idx)
-    print("Included",idx)
-    print("Num Excluded",numExclude)
+      
     assemble_MD(nh5)
     bigD={}
-    thread_all = 2 #2048/4
-    for thread_id in range(thread_all):
-        bigD={}
-        thread_nh5= int(nh5/thread_all)
-        thread_h5L = h5L[thread_id*thread_nh5:(thread_id+1)*thread_nh5]
+    read_all_h5(h5L,args)
+    import_stims_from_CVS()
 
-        read_all_h5(thread_h5L,args,idx,numExclude)
-    
+    print('M:sim meta-data');   pprint(oneMD)
+    print('M:big',list(bigD))
 
-        print('M:sim meta-data');   pprint(oneMD)
-        print('M:big',list(bigD))
+    if 1:
+        from toolbox.Util_IOfunc import write_yaml # for testing only
+        write_yaml(oneMD,'aa.yaml')
 
-        if 1:
-            from toolbox.Util_IOfunc import write_yaml # for testing only
-            write_yaml(oneMD,'aa.yaml')
-
-        outF=os.path.join(args.outPath,oneMD['cell_name']+'.simRaw.h5')
-        if(thread_id==0):
-            import_stims_from_CVS()
-            write3_data_hdf5_partial(bigD,outF,metaD=oneMD)    
-        append_data_hdf5_index(bigD,outF,oneMD,thread_id,thread_all)
+    outF=os.path.join(args.outPath,oneMD['cell_name']+'.simRaw.h5')
+    write3_data_hdf5(bigD,outF,metaD=oneMD)
     print('M:done')
 
  

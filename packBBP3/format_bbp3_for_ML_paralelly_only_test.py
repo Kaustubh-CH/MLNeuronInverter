@@ -199,21 +199,22 @@ if __name__=="__main__":
     
     # ... split data into domains
     totSamp=simMD['simu_info']['num_total_samples']
-    nval=int(totSamp/10)
+    # nval=int(totSamp/10)
+    nval=int(totSamp)
     tval =int(nval/thread_total)
-    train_val=totSamp-2*nval #
+    train_val=0
     thread_train_val=int(train_val/thread_total)
     
     # compute offest and length per domain  (Offset,Length)
-    split_index={'valid':[0+thread_id*tval,tval], 'test':[nval+thread_id*tval,tval],'train':[2*nval+thread_id*thread_train_val, thread_train_val]}
-    split_index_total = {'valid':[0,nval],'test':[nval,nval],'train':[2*nval,train_val]}
+    split_index={'valid':[0,0], 'test':[thread_id*tval,tval],'train':[0,0]}
+    split_index_total = {'valid':[0,0],'test':[0,nval],'train':[0,0]}
     print('M:split_index',split_index)
     print("M:Thread_id",thread_id)
     bigD={}  # this will be output
     totFlat=0
     
     # keep this order to deal with bigest record first - it may not matter
-    for dom in ['train','valid','test']: 
+    for dom in ['test']: 
         simD=read3_only_data_hdf5(inpF,1,None,split_index[dom][0],split_index[dom][1])
         #... isolate stims to be not split
         tmpD={xN:simD.pop(xN) for xN in stimNL}

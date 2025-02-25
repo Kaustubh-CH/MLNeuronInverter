@@ -1,22 +1,35 @@
 #!/bin/bash -l
-#SBATCH  -N4 --time=12:00:00  -J ni_h5   -q regular
+#SBATCH  -N8 --time=3:30:00  -J ni_h5   -q regular
 #-SBATCH -q regular
 #SBATCH --image=nersc/pytorch:ngc-21.08-v2
 #-SBATCH --image=nersc/pytorch:ngc-22.09-v0  # runs 1/4 x slower
 #SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
-#SBATCH  --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive  -C gpu -A  m2043   # Kris ML:m2043_g, simu:m3513_g
+#SBATCH  --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive  -C gpu -A  m2043_g   # Kris ML:m2043_g, simu:m3513_g
 #-SBATCH  -x  nid001016,nid002685,nid002688,nid002689 # block sick nodes
 # - - - E N D    O F    SLURM    C O M M A N D S
 nprocspn=${SLURM_NTASKS_PER_NODE}
 #nprocspn=2  # special case for partial use of a full node
 
 #cellName=L23_PCcADpyr2
-cellName=L5_TTPC1cADpyr0  # most complex aka bbp153-vyassa
+cellName=L5_BTCcAC0 #ALL_CELLS  # most complex aka bbp153-vyassa
+
+
+cellName=L6_TPC_L1cADpyr0
+
+cellName=L23_BPcAC0
+cellName=L6_TPC_L4cADpyr0
+cellName=ALL_CELLS_Inhibitory
+cellName=ALL_CELLS
+# cellName=L5_TTPC1cADpyr0
+
 #cellName=L4_SPcADpyr0     # the simplest
 
 #design=m8lay_vs2
-design=MultuStim
-epochs=50
+# design=MultuStim
+design=m8lay_vs3
+# design=InhOntraRay
+# design=MultuStimTrans
+epochs=100
 data_temp=$1
 echo "No of params"
 echo $#
@@ -25,11 +38,11 @@ if [[ $# -ge 2 ]];then
     echo "Using Param Design"
 fi
 # can use mutiple stims serially, as independent samples
-probsSelect=" 0 1 2 3"  # index from  list: ['soma', 'axon', apic,'dend']
+probsSelect="0 1 2"  # index from  list: ['soma', 'axon', apic,'dend']
 # probsSelect=" 0"
 # stimsSelect=" 0"  #  index from  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
-stimsSelect="5 "  # chaosA+B+chirp [5k0chaotic5A, 5k0step_200, 5k0ramp, 5k0chirp, 5k0step_500, 5k50kInterChaoticB,5k0chaotic5B]
-validStimsSelect="5"
+stimsSelect="0"  # chaosA+B+chirp [5k0chaotic5A, 5k0step_200, 5k0ramp, 5k0chirp, 5k0step_500, 5k50kInterChaoticB,5k0chaotic5B]
+validStimsSelect="0"
 
 # stimsSelect="  0 "  # chaosB
 #stimsSelect="  0 "  # chaosA
@@ -83,14 +96,60 @@ time srun -n $G  shifter  bash  toolbox/driveOneTrain.sh  >& log.train
 sleep 2
 
 echo S:done train
-time srun -n1 shifter  python -u ./predict.py  --modelPath out -X  >& log.predictAll
+
+saveResults=$wrkDir/predictionResutlsH5 #to save the results in hdf5
+mkdir -p $saveResults
+time srun -n1 shifter  python -u ./predict.py  --modelPath out -X --venue poster --segmentColors --sortBy axonal somatic dend apical all >& log.predictAll #--idx 1 2 3 4 5 6 7 8 9 10 11 13 15 16 17 18
+time srun -n1 shifter  python -u ./predict.py  --modelPath out -X --numSamples 51200 --saveH5 $saveResults/MLoutput.h5 >& log.predictAll50K
+time srun -n1 shifter  python -u ./predictExp.py --saveFile ./unitParamsTest  --modelPath out --test-plot-size 20 -X >& log.ExpExact  #For Simulatedx predictions
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsTest --yamlPath ./out/sum_train.yaml  >& log.ParamConvert #converts unit prarams into physical params
+
+time srun -n1 shifter python -u ./toolbox/unitParamConvertHdf5.py --h5pyPath $saveResults/MLoutput.h5 --yamlPath ./out/sum_train.yaml --numCSV 8 --saveDir $saveResults
 echo S:done predict all, 2 more for stim 0 and 5
 # time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS5
-time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --testStimsSelect 5 --showPlots a -X  >& log.predictS5  
-time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 1 --testStimsSelect 1 --showPlots a -X  >& log.predictS1  
-date
+# srun -n1 shifter  python -u ./predict.py  --modelPath out -X --venue poster --segmentColors
 
-time srun -n1 shifter  python -u ./predictExp.py  --modelPath out  -X  >& log.Exp  
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 0 --testStimsSelect 0 --showPlots a -X  >& log.predictS0
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 1 --testStimsSelect 1 --showPlots a -X  >& log.predictS1  
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 2 --testStimsSelect 2 --showPlots a -X  >& log.predictS2  
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 3 --testStimsSelect 3 --showPlots a -X  >& log.predictS3  
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 4 --testStimsSelect 4 --showPlots a -X  >& log.predictS4  
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --testStimsSelect 5 --showPlots a -X  >& log.predictS5
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 6 --testStimsSelect 6 --showPlots a -X  >& log.predictS6  
+date
+saveResultsOntra=$wrkDir/predictionlOntraNewCell #to save the results in hdf5
+mkdir -p $saveResultsOntra
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --showPlots a -X --cellName AllCellsTestOnly --numSamples 51200 --venue poster --segmentColors --sortBy axonal somatic dend apical all --saveH5 $saveResultsOntra/MLoutput.h5 >& log.OntraTest
+
+
+
+saveResultsOntraClone=$wrkDir/predictionlOntraNewClone #to save the results in hdf5
+mkdir -p $saveResultsOntraClone
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --showPlots a -X --cellName ALL_CELLS_interpolated --numSamples 51200 --venue poster --segmentColors --sortBy axonal somatic dend apical all --saveH5 $saveResultsOntraClone/MLoutput.h5 >& log.OntraTestInterpolate
+
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 5 --saveFile ./unitParamsExact --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data_Exact_TotalNorm/ --modelPath out  -X  >& log.ExpExact  
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 5 --saveFile ./unitParamsReduce --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data_Reduce_TotalNorm/  --modelPath out  -X  >& log.ExpReduced 
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 5 --saveFile ./unitParamsStep --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Step500_Data_Reduce_TotalNorm/  --modelPath out  -X  >& log.ExpStep
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 0 --saveFile ./unitParamsStepBBP --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/BBP_cADpyr_Step_last4/  --modelPath out  -X  >& log.ExpStepBBP
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 0 --saveFile ./unitParamsSimulated --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Sim_NNrow_TotalNorm/  --modelPath out  -X  >& log.ExpSim 
+
+
+
+srun -n1 shifter  python -u ./predictExp.py --predictStim 0 --saveFile ./unitParamsBBPCaC --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/BBP_cAc_Step_last4 --modelPath out  -X
+
+# time srun -n1 shifter  python -u ./predictExp.py --predictStim 5 --saveFile ./unitParamsStepBBP --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Step_data_4000_tmp --modelPath out  -X
+# /global/homes/k/ktub1999/ExperimentalData/PyForEphys/BBP_cAc_Step_last4
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsExact --yamlPath ./out/sum_train.yaml
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsReduce --yamlPath ./out/sum_train.yaml
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsStep --yamlPath ./out/sum_train.yaml
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsStepBBP --yamlPath ./out/sum_train.yaml 
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsSimulated --yamlPath ./out/sum_train.yaml 
+
+time srun -n1 shifter python -u ./toolbox/unitParamConvertHdf5.py --h5pyPath $saveResultsOntra/MLoutput.h5 --yamlPath ./out/sum_train.yaml --numCSV 8 --saveDir $saveResultsOntra
+
+time srun -n1 shifter python -u ./toolbox/unitParamConvertHdf5.py --h5pyPath $saveResultsOntraClone/MLoutput.h5 --yamlPath ./out/sum_train.yaml --numCSV 8 --saveDir $saveResultsOntraClone
 #--idx 0 1 2 3 4 5 6 7 8 9 10 13 14 15 18
 # spare: --numSamples 500000  --cellName $cellName
 # manual: ~/neuronInverter/predict.py --modelPath out --numSamples 5000 --stimsSelect 5 --showPlots a  --venue poster
+
+# srun -shifter  python -m pdb predictExp.py --saveFile ./unitParamsTest2  --modelPath out --test-plot-size 10 -X 

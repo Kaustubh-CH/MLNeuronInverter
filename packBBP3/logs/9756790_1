@@ -1,0 +1,7 @@
+cell=L5_TTPC1cADpyr
+./bigDom.sh: line 22: 204191 Killed                  ./format_bbp3_for_ML.py --cellName ${cell}0 --dataPath "$dataPath"_"$jid"
+
+real	13m55.350s
+user	10m29.089s
+sys	3m29.533s
+slurmstepd: error: Detected 1 oom_kill event in StepId=9756790.batch. Some of the step tasks have been OOM Killed.

@@ -184,7 +184,7 @@ if __name__=="__main__":
   args=get_parser()
     # thread_id=int(os.environ['SLURM_PROCID'])
     # thread_total = int(os.environ['SLURM_NTASKS'])
-  thread_total=2
+  thread_total=50
   for thread_id in range(0,thread_total):  
     inpF0=args.cellName+'.simRaw.h5'
     inpF=os.path.join(args.dataPath,inpF0)
@@ -203,10 +203,13 @@ if __name__=="__main__":
     tval =int(nval/thread_total)
     train_val=totSamp-2*nval #
     thread_train_val=int(train_val/thread_total)
-    
+    per_thread_totSamp = int(totSamp/thread_total)
+
+
     # compute offest and length per domain  (Offset,Length)
     split_index={'valid':[0+thread_id*tval,tval], 'test':[nval+thread_id*tval,tval],'train':[2*nval+thread_id*thread_train_val, thread_train_val]}
     split_index_total = {'valid':[0,nval],'test':[nval,nval],'train':[2*nval,train_val]}
+    split_index={'valid':[0+thread_id*per_thread_totSamp,tval], 'test':[tval+thread_id*per_thread_totSamp,tval],'train':[2*tval+thread_id*per_thread_totSamp, thread_train_val]}
     print('M:split_index',split_index)
     print("M:Thread_id",thread_id)
     bigD={}  # this will be output

@@ -26,6 +26,8 @@ from toolbox.Util_IOfunc import read_yaml, write_yaml
 from toolbox.Plotter import Plotter_NeuronInverter
 from toolbox.Dataloader_H5 import get_data_loader
 from pprint import pprint
+from toolbox.Util_H5io3 import write3_data_hdf5
+
 import argparse
 
 #...!...!..................
@@ -49,6 +51,9 @@ def get_parser():
 
     parser.add_argument("--cellName", type=str, default=None, help="alternative data file name ")
     parser.add_argument("--idx", nargs='*' ,required=False,type=str, default=None, help="Included parameters")
+    parser.add_argument("--saveH5", type=str, default=None ,required=False, help="If given as input, saves input and output")
+    parser.add_argument('--segmentColors', action='store_true', default=False,help="Cmap Color")
+    parser.add_argument("--sortBy", nargs='*' ,required=False,type=str, default=None, help="Included parameters")
     args = parser.parse_args()
     args.prjName='nif'
     args.outPath+'/'
@@ -87,10 +92,19 @@ def model_infer(model,test_loader,trainMD):
     # prepare output container, Thorsten's idea
     num_samp=len(test_loader.dataset)
     outputSize=trainMD['train_params']['model']['outputSize']
+
+    inputSize = [num_samp,trainMD['train_params']['model']['inputShape'][0],trainMD['train_params']['model']['inputShape'][1]]
+    
+    
+
     print('predict for num_samp=',num_samp,', outputSize=',outputSize)
     # clever list-->numpy conversion, Thorsten's idea
     Uall=np.zeros([num_samp,outputSize],dtype=np.float32)
     Zall=np.zeros([num_samp,outputSize],dtype=np.float32)
+
+
+    #TODO create a new volts array and send and save all in hdf5
+    voltsAll = np.zeros(inputSize ,dtype=np.float16)
     nEve=0
     nStep=0
     with torch.no_grad():
@@ -105,11 +119,14 @@ def model_infer(model,test_loader,trainMD):
             #print('nn',nEve,nEve2)
             Uall[nEve:nEve2,:]=target[:]
             Zall[nEve:nEve2,:]=output[:]
+            if(len(voltsAll.shape)==len(data.shape)):
+                voltsAll[nEve:nEve2,:,:] = data[:]
             nEve=nEve2
             nStep+=1
     test_loss /= nStep
+    np.savez('the_data.npz', actual_val=Uall, predicted_val=Zall)
     print('infere done, nEve=%d nStep=%d loss=%.4f'%(nEve,nStep,test_loss),flush=True)
-    return test_loss,Uall,Zall
+    return test_loss,Uall,Zall,voltsAll
 
 
 #...!...!..................
@@ -120,10 +137,11 @@ def compute_residual(trueU,recoU,md,idx):
     nPar=len(parName)
     outL=[]
     for iPar in range(0,nPar):
-        D=trueU[:,iPar] - recoU[:,iPar]
+        D = (trueU[:, iPar] - recoU[:, iPar]) ** 2
+        resMse=D.sum()/len(D)
         resM=D.mean()
         resS=D.std()
-        outL.append( [ parName[iPar], float(resM),float(resS) ] )
+        outL.append( [ parName[iPar], float(resM),float(resS),float(resMse) ] )
         print('#res,%d,%.4f'%(iPar,resS))
         #print('#res,%d,%s'%(iPar,parName[iPar]))
     #pprint(outL)
@@ -171,14 +189,14 @@ if __name__ == '__main__':
 
   #pprint(parMD); ok6
   if('include' in inpMD.keys()):
-        idx=range(len(inpMD['include']))
+        idx=inpMD['include']
   else:
         idx = range(len(inpMD['parName']))
 
   data_loader = get_data_loader(parMD, domain, verb=1)
 
   startT=time.time()
-  loss,trueU,recoU=model_infer(model,data_loader,trainMD)
+  loss,trueU,recoU,voltsAll=model_infer(model,data_loader,trainMD)
   predTime=time.time()-startT
   print('M: infer : Average loss: %.4f  dom=%s samples=%d , elaT=%.2f min\n'% (loss, domain, trueU.shape[0],predTime/60.))
 
@@ -228,5 +246,17 @@ if __name__ == '__main__':
    
   figN=domain+'_'+ parMD['cell_name']
 
-  plot.display_all(figN, png=1)  
+  plot.display_all(figN, png=1)
+  plot.display_all(figN, png=0)  
+  if(args.saveH5!=None):
+      bigD={
+          'test_volts':voltsAll,
+          'ground_truth_upar':trueU,
+          'predict_upar':recoU,
+      }
+      metadata = { 
+          'cell_name': trainMD['input_meta']['cell_name']
+
+      }
+      write3_data_hdf5(bigD,args.saveH5,metaD=metadata)
 

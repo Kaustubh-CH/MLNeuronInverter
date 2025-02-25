@@ -1,9 +1,12 @@
 jidL="
-8944917
-8944944
+17710054
+17710128
+17710172
 "
-
+# 
 for jid in $jidL ; do
-    dataPath=/pscratch/sd/k/ktub1999/bbp_May_18
+    dataPath=/pscratch/sd/k/ktub1999/M1_Nov_2Ex
     sbatch batchShifter.slr "$dataPath"_"$jid"
 done
+
+
