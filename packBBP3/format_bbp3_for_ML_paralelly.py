@@ -25,6 +25,7 @@ def get_parser():
     parser.add_argument("--cellName", type=str, default='ALL_CELLS', help="cell name list, blanks separated")
     parser.add_argument("--conf", type=int, default=1, help="output configuration")
     parser.add_argument("--addStim", type=bool, default=False, help="output configuration")
+    parser.add_argument("--thread_total", type=int, default=2, help="number of threads")
     
     args = parser.parse_args()
     args.verb=1
@@ -184,7 +185,7 @@ if __name__=="__main__":
   args=get_parser()
     # thread_id=int(os.environ['SLURM_PROCID'])
     # thread_total = int(os.environ['SLURM_NTASKS'])
-  thread_total=2
+  thread_total=args.thread_total
   for thread_id in range(0,thread_total):  
     inpF0=args.cellName+'.simRaw.h5'
     inpF=os.path.join(args.dataPath,inpF0)

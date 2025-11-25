@@ -222,7 +222,11 @@ if __name__ == '__main__':
   sumRec['pred_stims_select']= trainMD['train_params']['data_conf']['stims_select']
   sumRec['residual_mean_std']=residualL
 
-  outN='sum_pred_%s.yaml'%args.prjName
+
+  outN='sum_pred_%s.yaml'%args.prjName 
+  if args.cellName!=None:
+      outN='sum_pred_%s%s.yaml' % (args.prjName, args.cellName)   
+
   write_yaml(sumRec, os.path.join(args.outPath,outN))
     
   #  - - - -  only plotting code is below - - - - -  
