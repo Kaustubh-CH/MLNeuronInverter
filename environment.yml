@@ -1,0 +1,52 @@
+name: neuroninverter_jaxley
+# Canonical conda env for this repo.  Every Python command — training,
+# tests, packing, prediction — runs inside this env.
+#
+# Bootstrap:
+#     module load python
+#     conda env create -f environment.yml
+#     conda activate neuroninverter_jaxley
+#
+# Update after editing this file:
+#     conda env update -f environment.yml --prune
+#
+# Rationale: the `nersc/pytorch:ngc-21.08-v2` shifter image ships Python
+# 3.8 which is incompatible with modern `jaxley` (requires >=3.10).  A
+# self-contained conda env avoids the image-chase and makes the project
+# portable off NERSC.
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - pip
+  # Scientific Python (conda-managed so MKL / BLAS are consistent)
+  - numpy
+  - scipy
+  - matplotlib
+  - pandas
+  - h5py
+  - pyyaml
+  - tqdm
+  - cython
+  - pip:
+      # PyTorch GPU (CUDA 12 wheel)
+      - --extra-index-url https://download.pytorch.org/whl/cu121
+      - torch
+      - torchvision
+      - torchaudio
+      - torchsummary
+      # JAX + jaxley (differentiable biophysics)
+      - jax[cuda12]
+      - jaxley
+      - optax
+      - equinox
+      # Existing NeuronInverter deps (pinned by the training code)
+      - tensorboard
+      - ray[tune]
+      - optuna
+      - efel
+      - huggingface_hub
+      - scikit-learn

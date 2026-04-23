@@ -99,8 +99,8 @@ Reference implementations live at `/pscratch/sd/k/ktub1999/Neuron_Jaxley/`:
 
 | Phase | New files                                                      | Existing files touched (additive only) |
 |-------|----------------------------------------------------------------|----------------------------------------|
-| 0     | `structure.md`, `toolbox/refresh_structure.py`, `scripts/hooks/pre-commit`, `scripts/install_hooks.sh`, `requirements-jaxley.txt`, `PLAN.md` | — |
-| 1     | `toolbox/jaxley_cells/{__init__, ball_and_stick, l5ttpc}.py`, `toolbox/JaxleyBridge.py`, `toolbox/jaxley_utils.py`, `toolbox/tests/test_jaxley_bridge.py` | — |
+| 0     | `structure.md`, `toolbox/refresh_structure.py`, `scripts/hooks/pre-commit`, `scripts/install_hooks.sh`, `PLAN.md` | — |
+| 1     | `toolbox/jaxley_cells/{__init__, ball_and_stick, l5ttpc}.py`, `toolbox/JaxleyBridge.py`, `toolbox/jaxley_utils.py`, `toolbox/tests/test_jaxley_bridge.py`, `environment.yml`, `scripts/phase1_tests.slr` | — |
 | 2     | `toolbox/HybridLoss.py`, `m8lay_vs3_jaxley.hpar.yaml`, `toolbox/tests/test_hybrid_loss.py` | `toolbox/Trainer.py` (one `if params.get('use_voltage_loss'):` swap of `self.criterion`), `batchShifter.slr` `$codeList` (+1 entry) |
 | 3     | `scripts/gen_ball_and_stick_data.py`, `plotJaxleyValidation.py`, `batchShifterJaxley.slr`, `docs/phase3/*.png` | — |
 | 4     | `predict_finetuneExp.py` (or edits to `batchShifterFinetune.slr`), `docs/phase4/*.png` | `toolbox/HybridLoss.py` (mask_channels path) |
@@ -113,6 +113,14 @@ The jaxley cell expects conductances in S/cm² and capacitance in µF/cm². The 
 ## 5. Quick commands
 
 ```bash
+# activate the conda env (canonical runtime for the CNN_Jaxley branch)
+module load conda
+conda activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+# (rebuild from scratch: `conda env create --prefix <prefix> -f environment.yml`)
+
+# run the Phase 1 bridge tests (gradcheck + vmap + cache; CPU, ~20 s)
+python -m toolbox.tests.test_jaxley_bridge
+
 # regenerate auto-sections of this file
 python toolbox/refresh_structure.py
 
@@ -177,6 +185,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _safe_genfromtxt, get_data_loader, Dataset_h5_neuronInverter
 - `toolbox/Dataloader_multiH5.py`
     - defs: get_data_loader, Dataset_multiH5_neuronInverter
+- `toolbox/JaxleyBridge.py` - Torch <-> Jaxley bridge.
+    - defs: _CellHandle, _build_handle, get_handle, _torch_to_jax, _jax_to_torch, _JaxleySimulate, simulate_batch, output_shape, param_keys, clear_cache
 - `toolbox/Model.py`
     - defs: MyModel
 - `toolbox/Model2d.py`
@@ -201,12 +211,29 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: read_yaml, write_yaml, write_data_hdf5, read_data_hdf5, read_one_csv, write_one_csv, dateT2Str, dateStr2T, md5hash, build_name_hash, expand_dash_list
 - `toolbox/aggregate_loss.py`
     - defs: get_parser
+- `toolbox/jaxley_utils.py` - Helpers shared across the jaxley voltage-loss path.
+    - defs: phys_par_range_to_arrays, unit_to_phys_np, unit_to_phys_jax, load_stim_csv, upsample_stim, downsample_step
 - `toolbox/refresh_structure.py` - Regenerate the auto-appendix section of structure.md.
     - defs: FileSummary, tracked_files, summarize, collect, render, splice, main
 - `toolbox/unitParamConvert.py`
     - defs: get_parser
 - `toolbox/unitParamConvertHdf5.py`
     - defs: get_parser
+
+### toolbox/jaxley_cells/
+
+- `toolbox/jaxley_cells/__init__.py` - Registry of jaxley cell builders for the hybrid voltage-loss path.
+    - defs: CellSpec, register, get, list_cells
+- `toolbox/jaxley_cells/ball_and_stick.py` - Ball-and-stick cell builder for the hybrid voltage-loss path.
+    - defs: _build, _attach_stim, _attach_record, _spec
+- `toolbox/jaxley_cells/l5ttpc.py` - L5TTPC cell builder for the hybrid voltage-loss path.
+    - defs: _build, _attach_stim, _attach_record, _spec
+
+### toolbox/tests/
+
+- `toolbox/tests/__init__.py`
+- `toolbox/tests/test_jaxley_bridge.py` - Phase 1 tests for toolbox.JaxleyBridge.
+    - defs: test_registry_lists_both_cells, test_shapes, test_cache_hit_no_recompile, test_vmap_matches_serial_loop, test_gradcheck_tiny, test_l5ttpc_registers_but_do_not_build, main
 
 ### scripts/
 

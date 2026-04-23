@@ -8,7 +8,9 @@ Neuron-Inverter: given voltage traces from a simulated (BBP) or experimental neu
 
 ## Target environment
 
-This code runs on NERSC Perlmutter via SLURM + Shifter containers. It is **not expected to run on a laptop** and training will not run on CPU. Dataset paths (`/pscratch/...`, `/global/homes/k/ktub1999/...`) and `shifter --image=nersc/pytorch:...` invocations are hard-coded throughout the SLURM scripts and `.hpar.yaml` files. When editing, keep these absolute paths — they are load-bearing, not examples.
+This code runs on NERSC Perlmutter. It is **not expected to run on a laptop** and training will not run on CPU. Dataset paths (`/pscratch/...`, `/global/homes/k/ktub1999/...`) are hard-coded throughout the SLURM scripts and `.hpar.yaml` files — keep them, they're load-bearing.
+
+**Runtime: conda env, not shifter.** The `CNN_Jaxley` branch and anything that imports `jaxley`/`jax` runs inside the `neuroninverter_jaxley` conda env (`environment.yml` in repo root). Always bootstrap with `module load conda && conda activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley`. Original non-jaxley SLURM scripts (`batchShifter.slr` et al.) still use `shifter --image=nersc/pytorch:ngc-21.08-v2`; that can be migrated later but is not a prerequisite for the jaxley path.
 
 ## Commands
 

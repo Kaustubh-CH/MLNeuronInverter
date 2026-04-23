@@ -1,0 +1,36 @@
+#!/bin/bash -l
+# Phase 1 bridge tests.
+#
+# Interactive use (preferred):
+#     salloc -C gpu -q interactive -t1:00:00 --gpus-per-task=1 \
+#            -A m2043_g --ntasks-per-node=1 -N 1
+#     bash scripts/phase1_tests.slr
+#
+# Batch fallback: `sbatch scripts/phase1_tests.slr` also works.
+#
+#SBATCH  -N1 --time=30:00  -J ni_jxbr  -q debug
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/phase1-%j.out
+#SBATCH  --ntasks-per-node=1 --cpus-per-task=16 -C cpu -A  m2043
+# - - - E N D    O F    SLURM    C O M M A N D S
+set -euo pipefail
+
+repo_root=${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}
+cd "$repo_root"
+
+mkdir -p /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs
+
+echo "S: host=$(hostname)  cwd=$(pwd)  job=${SLURM_JOBID:-interactive}"
+date
+
+module load conda
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate neuroninverter_jaxley
+
+echo "S: python=$(which python)  $(python --version 2>&1)"
+
+echo
+echo "=== toolbox.tests.test_jaxley_bridge ==="
+python -m toolbox.tests.test_jaxley_bridge
+
+echo "S: done"
+date
