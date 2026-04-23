@@ -1,0 +1,32 @@
+#!/bin/bash
+# neuroninverter pre-commit hook:
+#   refresh structure.md appendix when staged changes touch Python files,
+#   and re-stage the refreshed file so the commit includes it.
+#
+# Bypass with:  git commit --no-verify
+set -e
+
+# Only bother if something Python-ish was staged.
+staged_py=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(py)$' || true)
+if [[ -z "$staged_py" ]]; then
+    exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+if [[ ! -f toolbox/refresh_structure.py ]]; then
+    exit 0
+fi
+
+# Prefer python3 since NERSC login nodes still default `python` to 2.7.
+PY=${PYTHON:-python3}
+"$PY" toolbox/refresh_structure.py
+
+# If structure.md changed as a result, stage it so it lands in this commit.
+if ! git diff --quiet structure.md 2>/dev/null; then
+    git add structure.md
+    echo "pre-commit: refreshed and staged structure.md"
+fi
+
+exit 0

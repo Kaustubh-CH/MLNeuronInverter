@@ -1,0 +1,29 @@
+# Extra deps needed for the Jaxley voltage-loss path.
+# Intended to be installed on top of the nersc/pytorch:ngc-21.08-v2 shifter
+# image via:
+#
+#   shifter --image=nersc/pytorch:ngc-21.08-v2 \
+#       python -m pip install --user -r requirements-jaxley.txt
+#
+# Versions are left loose on the CNN_Jaxley branch until the first green end-to-end
+# run; once pinned they should be kept in lock-step with `environment.yml` in
+# /pscratch/sd/k/ktub1999/Neuron_Jaxley/ which is the canonical Jaxley ref impl.
+#
+# For GPU Jaxley on Perlmutter you want the CUDA 12 pip wheels.  If your
+# shifter image ships CUDA 11.x, swap `jax[cuda12_pip]` for `jax[cuda11_pip]`.
+
+jaxley>=0.5
+jax[cuda12_pip]>=0.4.28
+jaxlib>=0.4.28
+optax>=0.2
+equinox>=0.11
+
+# These are already present in the shifter image (listed here for reproducibility
+# when installing on a non-NERSC host from this file alone):
+# torch
+# numpy
+# scipy
+# h5py
+# matplotlib
+# pyyaml
+# pandas
