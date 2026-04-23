@@ -108,9 +108,18 @@ def model_infer(model,test_loader,trainMD):
     nEve=0
     nStep=0
     with torch.no_grad():
-        for data, target in test_loader:
-            data_dev, target_dev = data.to(device), target.to(device)
-            output_dev = model(data_dev)
+        for batch in test_loader:
+            if isinstance(batch, (list, tuple)) and len(batch) == 3:
+                data, extras, target = batch
+                data_dev, extras_dev, target_dev = data.to(device), extras.to(device), target.to(device)
+                output_dev = model(data_dev, extras_dev)
+            elif isinstance(batch, (list, tuple)) and len(batch) == 2:
+                data, target = batch
+                data_dev, target_dev = data.to(device), target.to(device)
+                output_dev = model(data_dev)
+            else:
+                raise ValueError(f"Unexpected batch format from loader: type={type(batch)}")
+
             lossOp=criterion(output_dev, target_dev)
             #print('qq',lossOp,len(test_loader.dataset),len(test_loader)); ok55
             test_loss += lossOp.item()

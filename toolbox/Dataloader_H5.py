@@ -24,7 +24,17 @@ from torch.utils.data import Dataset, DataLoader
 import torch 
 import logging
 from pprint import pprint
+import efel
 
+
+def _safe_genfromtxt(csv_path):
+    arr = np.genfromtxt(csv_path, delimiter=',', dtype=np.float32)
+    if arr.ndim == 1:
+        arr = arr[np.newaxis, :]
+    # Drop header row if parsed as NaN values
+    if arr.shape[0] > 0 and np.isnan(arr[0]).any():
+        arr = arr[1:]
+    return arr.astype(np.float32)
 
 #...!...!..................
 def get_data_loader(params,domain, verb=1):
@@ -58,6 +68,8 @@ def get_data_loader(params,domain, verb=1):
 #-------------------
 #-------------------
 class Dataset_h5_neuronInverter(object):
+    _train_stats_cache = {}
+
 #...!...!..................    
     def __init__(self, conf,verb=1):
         self.conf=conf
@@ -79,7 +91,7 @@ class Dataset_h5_neuronInverter(object):
     def sanity(self):      
         stepPerEpoch=int(np.floor( self.numLocFrames/ self.conf['local_batch_size']))
         if  stepPerEpoch <1:
-            print('\nDS:ABORT, Have you requested too few samples per rank?, numLocFrames=%d, BS=%d  name=%s'%(self.numLocFrames, localBS,self.conf['name']))
+            print('\nDS:ABORT, Have you requested too few samples per rank?, numLocFrames=%d, BS=%d  name=%s'%(self.numLocFrames, self.conf['local_batch_size'],self.conf['name']))
             exit(67)
         # all looks good
         return stepPerEpoch
@@ -190,6 +202,49 @@ class Dataset_h5_neuronInverter(object):
         self.data_frames=volts
         self.data_parU=parU
 
+        self.use_manual_features = cf.get('use_manual_features', False)
+
+        if self.use_manual_features:
+            if self.verb:
+                logging.info("DS: Loading precomputed manual features...")
+
+            # Load domain features and select same local shard as voltages
+            local_feature_slice = slice(sampIdxOff, sampIdxOff + locSamp)
+            self.data_extras = self._load_features_for_domain(dom, sample_slice=local_feature_slice)
+
+            # Normalize with stats from all TRAIN features
+            self.feat_mean, self.feat_std = self._get_train_feature_stats()
+            self.data_extras = np.nan_to_num(self.data_extras, nan=0.0, posinf=0.0, neginf=0.0)
+            self.data_extras = (self.data_extras - self.feat_mean) / self.feat_std
+            self.data_extras = self.data_extras.astype(np.float32)
+
+            # Keep feature rows aligned with data reshuffling in serialized train mode
+            if serializedStim and dom == "train":
+                self.data_extras = np.repeat(self.data_extras, numStim, axis=0)
+                self.data_extras = self.data_extras[rand_idx]
+
+            if self.data_extras.shape[0] != self.data_frames.shape[0]:
+                raise ValueError(
+                    f"Feature/data sample mismatch: features={self.data_extras.shape[0]} "
+                    f"vs frames={self.data_frames.shape[0]} for domain={dom}"
+                )
+
+            if self.verb:
+                logging.info(
+                    'DS: loaded extras %s normalized by TRAIN stats shape=%s',
+                    dom,
+                    self.data_extras.shape
+                )
+        
+        # if self.use_manual_features:
+        #     if self.verb: logging.info("DS: Extracting manual features (e.g. AP count)...")
+        #     self.data_extras = self.extract_features(self.data_frames)
+        #     # Normalize
+        #     mean = np.mean(self.data_extras, axis=0)
+        #     std = np.std(self.data_extras, axis=0) + 1e-6
+        #     self.data_extras = (self.data_extras - mean) / std
+        #     self.data_extras = self.data_extras.astype(np.float32)
+
         #print('AA2 volts:',self.data_frames.shape,dom,self.data_parU.shape) ; okok11
 
         if cf['world_rank']==0:
@@ -225,12 +280,176 @@ class Dataset_h5_neuronInverter(object):
             ys=np.std(Y,axis=0)
             print('DLI:U',myShard,cf['domain'],Y.shape,ym.shape,'\nUm',ym[:10],'\nUs',ys[:10])
             pprint(self.conf)
-            end_test_norm
+            pass
         
         self.numLocFrames=self.data_frames.shape[0]
 
+    def _resolve_feature_csv_path(self, domain):
+        cf = self.conf
+        dcf = cf['data_conf']
+
+        templ = (
+            cf.get('manual_features_csv')
+            or dcf.get('manual_features_csv')
+            or cf.get('manual_features_csv_template')
+            or dcf.get('manual_features_csv_template')
+        )
+        if templ is None:
+            raise ValueError(
+                'Missing feature CSV configuration. Set one of: '
+                '`manual_features_csv` or `manual_features_csv_template` '
+                '(template may use {domain}).'
+            )
+
+        path = templ.format(domain=domain)
+        if not os.path.isabs(path):
+            path = os.path.join(cf['data_path_temp'], path)
+        return path
+
+    def _get_probe_select(self):
+        dcf = self.conf['data_conf']
+        # Backward compatibility for typo in config key
+        return dcf.get('prove_select', dcf['probs_select'])
+
+    def _load_features_for_domain(self, domain, sample_slice=None):
+        cf = self.conf
+        dcf = cf['data_conf']
+        if sample_slice is None:
+            sample_slice = slice(None)
+
+        # Prefer precomputed features stored in HDF5
+        efel_key = domain + '_efel_features'
+        with h5py.File(cf['h5name'], 'r') as h5f:
+            if efel_key in h5f:
+                feats = h5f[efel_key][sample_slice].astype(np.float32)  # (N, probes, stims, features)
+
+                probe_select = self._get_probe_select()
+                feats = feats[:, probe_select, :, :]
+
+                if domain == "train" or not dcf['serialize_stims']:
+                    stim_select = dcf['stims_select']
+                else:
+                    stim_select = dcf['valid_stims_select']
+                feats = feats[:, :, stim_select, :]
+
+                # Flatten to 2D per sample, expected by model concat path
+                feats = feats.reshape(feats.shape[0], -1)
+                return np.nan_to_num(feats, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+
+        # Fallback: load manual features from CSV
+        csv_path = self._resolve_feature_csv_path(domain)
+        if not os.path.exists(csv_path):
+            raise FileNotFoundError(f'Manual feature CSV not found: {csv_path}')
+        feats = _safe_genfromtxt(csv_path)
+        if feats.shape[0] == 0:
+            raise ValueError(f'No rows found in manual feature CSV: {csv_path}')
+        if sample_slice.stop is not None and sample_slice.stop > feats.shape[0]:
+            raise ValueError(
+                f"Feature CSV too short for domain={domain}: need {sample_slice.stop}, have {feats.shape[0]}"
+            )
+        feats = feats[sample_slice]
+        return np.nan_to_num(feats, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+
+    def _get_train_feature_stats(self):
+        cf = self.conf
+        h5_stats_key = cf['h5name'] + '::train_efel_features::' + str(self._get_probe_select())
+        train_csv = self._resolve_feature_csv_path('train') if (
+            cf.get('manual_features_csv')
+            or cf['data_conf'].get('manual_features_csv')
+            or cf.get('manual_features_csv_template')
+            or cf['data_conf'].get('manual_features_csv_template')
+        ) else None
+
+        stats_key = h5_stats_key
+        if train_csv is not None:
+            stats_key = train_csv
+
+        if stats_key in Dataset_h5_neuronInverter._train_stats_cache:
+            return Dataset_h5_neuronInverter._train_stats_cache[stats_key]
+
+        train_feats = self._load_features_for_domain('train', sample_slice=slice(None))
+        mean = np.mean(train_feats, axis=0).astype(np.float32)
+        std = (np.std(train_feats, axis=0) + 1e-6).astype(np.float32)
+        Dataset_h5_neuronInverter._train_stats_cache[stats_key] = (mean, std)
+        return mean, std
+
 #...!...!..................
-    def __len__(self):        
+    def extract_features(self,volts_batch, dt=0.1):
+        """
+        Extracts AP count using EFEL.
+        Expects volts_batch in shape (N, TimeBins) or (N, TimeBins, 1).
+        Assumes data is in mV.
+        """
+        # Handle input shape to ensure (N, TimeBins, 1)
+        if volts_batch.ndim == 1:
+            volts_batch = volts_batch[np.newaxis, :, np.newaxis]
+        elif volts_batch.ndim == 2:
+            volts_batch = volts_batch[:, :, np.newaxis]
+            
+        num_samples = volts_batch.shape[0]
+        num_time_bins = volts_batch.shape[1]
+        
+        # Create time array
+        time_array = np.arange(num_time_bins) * dt
+        
+        # Define stimulus window (using full trace for AP counting)
+        stim_start = 0.0
+        stim_end = num_time_bins * dt
+        
+        # Prepare Data for EFEL
+        trace_data_list = []
+        for i in range(num_samples):
+            trace = volts_batch[i, :, 0]
+            
+            trace_data = {
+                'T': time_array,
+                'V': trace,
+                'stim_start': [stim_start],
+                'stim_end': [stim_end]
+            }
+            trace_data_list.append(trace_data)
+            
+        # Run EFEL
+        # efel.setThreshold(-20) # Uncomment to force a specific threshold
+        feature_names = [
+            'mean_frequency', 'AP_amplitude', 'AHP_depth_abs_slow',
+            'fast_AHP_change', 'AHP_slow_time',
+            'spike_half_width', 'time_to_first_spike', 'inv_first_ISI', 'ISI_CV',
+            'ISI_values','adaptation_index'
+        ]
+        
+        # getFeatureValues processes list of traces efficiently
+        try:
+            features_list = efel.getFeatureValues(trace_data_list, feature_names)
+        except Exception as e:
+            logging.error(f"EFEL failed: {e}")
+            return np.zeros((num_samples, len(feature_names) + 1))
+        
+        # Parse Results
+        # We add 1 column for AP_Count at the end
+        features_out = np.zeros((num_samples, len(feature_names) + 1), dtype=np.float32)
+        
+        for i, result_dict in enumerate(features_list):
+            # 1. Compute mean of requested features
+            for j, name in enumerate(feature_names):
+                val = result_dict.get(name)
+                if val is not None and len(val) > 0:
+                    features_out[i, j] = np.mean(val)
+                else:
+                    features_out[i, j] = 0.0
+            
+            # 2. Compute AP_Count (length of AP_amplitude)
+            ap_amp = result_dict.get('AP_amplitude')
+            if ap_amp is not None:
+                features_out[i, -1] = len(ap_amp)
+            else:
+                features_out[i, -1] = 0.0
+                
+        return features_out
+        # getFeatureValues processes list of traces efficiently
+
+#...!...!.............
+    def __len__(self):
         return self.numLocFrames
 
 #...!...!..................
@@ -240,5 +459,11 @@ class Dataset_h5_neuronInverter(object):
         assert idx< self.numLocFrames
         X=self.data_frames[idx]
         Y=self.data_parU[idx]
-        return (X,Y)
+        
+        if self.use_manual_features:
+            # Return preloaded and normalized manual features from memory
+            Z=self.data_extras[idx]
+            return (X, Z, Y)
+        else:
+            return (X, Y)
 

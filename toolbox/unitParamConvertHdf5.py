@@ -47,8 +47,8 @@ if __name__ == '__main__':
     parName = train_data['input_meta']['parName']
     P_predict_big = np.zeros((predicted_units.shape[0],len(parName)))
     P_actual_big = np.zeros((ground_truth_units.shape[0],len(parName)))
-    if('base_values' in train_data.keys()):
-        default_params = train_data['base_values']
+    if('base_values' in train_data['input_meta'].keys()):
+        default_params = train_data['input_meta']['base_values']
     else:
         default_params = pd.read_csv("/pscratch/sd/k/ktub1999/main/DL4neurons2/sensitivity_analysis/NewBase2/MeanParams0.csv")['Values'].tolist()
     # assert len(default_params)>max(train_data['input_meta']['include'])

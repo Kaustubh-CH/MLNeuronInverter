@@ -78,7 +78,9 @@ if __name__ == '__main__':
   params.update(blob)
   params['design']=args.design
   
-  
+  if 'use_manual_features' not in params:
+    params['use_manual_features']=False
+
   if(params['do_ray']):
     params['world_size']=1
     #params['world_rank'] = 0

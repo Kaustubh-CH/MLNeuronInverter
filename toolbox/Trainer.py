@@ -136,10 +136,18 @@ class Trainer():
       #   return
       if self.isRank0 and params['tb_show_graph']:
         dataD=next(iter(self.train_loader))
-        images, labels = dataD
+        # -----------------------------------------------------
+        if params.get('use_manual_features', False):
+            images, extras, labels = dataD
+            # Pass tuple of inputs to add_graph
+            model_input = (images.to('cpu'), extras.to('cpu'))
+        else:
+            images, labels = dataD
+            model_input = images.to('cpu')
+        # -----------------------------------------------------    
         t1=time.time()
         if(params['model_type']!="Transformers"):
-          self.TBSwriter.add_graph(myModel,images.to('cpu'))#should fix for transformers
+          self.TBSwriter.add_graph(myModel, model_input)#should fix for transformers
         t2=time.time()
         if self.verb:  logging.info('show model graph at TB took %.1f sec'%(t2-t1))
     
@@ -350,10 +358,15 @@ class Trainer():
     for step, data in enumerate(self.train_loader, 0):
       self.iters += 1
       
-        
+      if self.params.get('use_manual_features', False):
+          images, extras, labels = map(lambda x: x.to(self.device), data)
+          model_input = (images, extras)
+      else:
+          images, labels = map(lambda x: x.to(self.device), data)
+          model_input = (images,)
         
       # Move our images and labels to GPU
-      images, labels = map(lambda x: x.to(self.device), data)
+      # images, labels = map(lambda x: x.to(self.device), data)
       # if(self.params['model_type']=="Transformers"):
       #   images=torch.squeeze(images)
 
@@ -368,7 +381,8 @@ class Trainer():
       # AMP: Add autocast context manager
       with torch.cuda.amp.autocast(enabled=optTorch['amp']):
         # Model forward pass and loss computation
-        outputs = self.model(images)
+        # outputs = self.model(images)
+        outputs = self.model(*model_input)
         loss = self.criterion(outputs, labels)
 
       # AMP: Use GradScaler to scale loss and run backward to produce scaled gradients
@@ -412,10 +426,16 @@ class Trainer():
     with torch.no_grad():
       for data in self.valid_loader:
         # Move our images and labels to GPU
-        images, labels = map(lambda x: x.to(self.device), data)
+        if self.params.get('use_manual_features', False):
+            images, extras, labels = map(lambda x: x.to(self.device), data)
+            model_input = (images, extras)
+        else:
+            images, labels = map(lambda x: x.to(self.device), data)
+            model_input = (images,)
+        # ---------------------------------------------------
         # if(self.params['model_type']=="Transformers"):
         #   images=torch.squeeze(images)
-        outputs = self.model(images)
+        outputs = self.model(*model_input)
         loss += self.criterion(outputs, labels)
         
     logs = {'loss': loss/len(self.valid_loader),}

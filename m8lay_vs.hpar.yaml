@@ -8,10 +8,10 @@ data_path:
 
 data_conf:
     #serialize_stims :  True  # False= append  timeBins
-    serialize_stims :  False  #Adds each stim as a seperate Sample 
+    serialize_stims :  True  #Adds each stim as a seperate Sample 
     append_stim : False #Append Stim one after the other
-    parallel_stim : True #Parallel stim Only with Multi Model
-    #max_glob_samples_per_epoch: 40000  # optional, reduces epoch size
+    parallel_stim : False #Parallel stim Only with Multi Model
+    # max_glob_samples_per_epoch: 3000  # optional, reduces epoch size
     num_data_workers: 4  
 
 max_epochs: 12  
@@ -32,6 +32,9 @@ resume_checkpoint: False  # False: always start over
 # AMP: Automatic Mixed Precision package
 # autotune: # activates cudnn.benchmark
 do_ray: True
+model_type: CNN
+
+use_manual_features: False
 
 opt_pytorch:  
     amp: False
@@ -62,4 +65,4 @@ model:
 
     fc_block: # FC params w/o last layer
        dims: [ 512, 512, 512, 256, 128 ]
-       dropFrac: 0.02
+       dropFrac: 0.04

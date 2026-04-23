@@ -45,6 +45,12 @@ class MyModel(nn.Module):
             x1=torch.tensor(np.zeros((2,)+self.inp_shape), dtype=torch.float32)
             y1=self.forwardCnnOnly(x1)
             self.flat_dim=np.prod(y1.shape[1:]) 
+            self.use_manual_features = hpar.get('use_manual_features', False)
+            self.extra_feat_dim = hpar.get('extra_features_dim', 1) # Default to 1 (AP count)
+
+            if self.use_manual_features:
+                self.flat_dim += self.extra_feat_dim
+                
             if verb>1: print('myNet flat_dim=',self.flat_dim)
 
         # here are all the preexisting normalization layers: https://pytorch.org/docs/stable/nn.html#normalization-layers
@@ -84,11 +90,20 @@ class MyModel(nn.Module):
         return x
         
 #...!...!..................
-    def forward(self, x):
+    def forward(self, x,x_extras=None):
         if self.verb>2: print('J: inF',x.shape,'numLayers CNN=',len(self.cnn_block),'FC=',len(self.fc_block))
         x=self.forwardCnnOnly(x)
         x = x.view(-1,self.flat_dim)
         
+        if getattr(self, 'use_manual_features', False):
+             # Subtract extra dim to get original CNN flat size
+            cnn_flat_dim = self.flat_dim - self.extra_feat_dim
+            x = x.view(-1, cnn_flat_dim)
+            if x_extras is not None:
+                x = torch.cat((x, x_extras), dim=1)
+        else:
+            x = x.view(-1,self.flat_dim)
+
         if self.flat_bn!=None:
             x=self.flat_bn(x);
             

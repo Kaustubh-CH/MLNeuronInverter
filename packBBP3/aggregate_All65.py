@@ -147,7 +147,7 @@ def assemble_MD(nh5):
     md['num_phys_par']=nppar
     md['num_stim_par']=nspar
     md['cell_name']=cellName
-
+    md['jobs_id_included']=args.jid
     #... add units to ranges
     pparRange=md.pop('physParRange')
     for i in range(nppar):
