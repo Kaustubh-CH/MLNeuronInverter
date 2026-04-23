@@ -115,20 +115,21 @@ def _build():
 
     # Mark each of the 19 CNN-facing params trainable.  The "basal + apical
     # both change" case for gIhbar_Ih_dend is handled by calling
-    # make_trainable on both groups with the same key, then the bridge sums
-    # the gradient contributions.
+    # make_trainable on both groups with the same key — both entries point
+    # back to the same CNN index (3), so the CNN prediction broadcasts to
+    # both branches and the backward pass naturally sums the gradients.
     groups = {"soma": cell.soma, "axon": cell.axon, "basal": cell.basal, "apical": cell.apical}
-    for name, group_key, jax_key in _CSV_PARAM_MAP:
+    entry_to_cnn_idx = []
+    for cnn_idx, (name, group_key, jax_key) in enumerate(_CSV_PARAM_MAP):
         if name == "gIhbar_Ih_dend":
-            # Apply to basal + apical so gradient flows to both branches.
-            groups["basal"].make_trainable(jax_key)
-            groups["apical"].make_trainable(jax_key)
+            groups["basal"].make_trainable(jax_key);   entry_to_cnn_idx.append(cnn_idx)
+            groups["apical"].make_trainable(jax_key);  entry_to_cnn_idx.append(cnn_idx)
         elif group_key == "all":
-            cell.make_trainable(jax_key)
+            cell.make_trainable(jax_key);              entry_to_cnn_idx.append(cnn_idx)
         else:
-            groups[group_key].make_trainable(jax_key)
+            groups[group_key].make_trainable(jax_key); entry_to_cnn_idx.append(cnn_idx)
 
-    return cell
+    return cell, entry_to_cnn_idx
 
 
 def _attach_stim(cell, stim_jnp):

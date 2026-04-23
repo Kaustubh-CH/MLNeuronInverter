@@ -30,9 +30,15 @@ class CellSpec:
     Attributes
     ----------
     build_fn
-        Zero-arg callable that returns a fresh `jx.Cell` with channels
-        inserted + defaults set + `make_trainable` called for every key in
-        `param_keys`.  Called once per process, result cached.
+        Zero-arg callable returning `(cell, entry_to_cnn_idx)`.  `cell` is
+        a fresh `jx.Cell` with channels inserted, defaults set, and
+        `make_trainable` already called for every parameter the bridge
+        will drive.  `entry_to_cnn_idx` is a list whose length equals
+        `len(cell.get_parameters())` and whose i-th element is the CNN
+        output index that feeds the i-th trainable entry.  Multiple
+        entries may share one CNN index (e.g. L5TTPC's `gIhbar_Ih_dend`
+        applies to both basal and apical, so index 3 appears twice).
+        Called once per process; the result is cached.
     param_keys
         Ordered list of trainable-parameter names.  Index `i` corresponds
         to the CNN output position `i` and must match the order of

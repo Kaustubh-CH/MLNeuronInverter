@@ -163,6 +163,13 @@ Assert: training loss decreases; GPU memory stable; each step < 2× the channel-
 
 **Goal:** same pipeline, full biophysical complexity, reasonable training time.
 
+**Phase 1 measurements (A100, stim=5k50kInterChaoticB, no param overrides):**
+- Single L5TTPC forward: 15.8 s (including JIT); B=4 OOMs with a 556 MB allocation.
+- Single ball-and-stick forward: 2.8 s; B=64 fits and scales (23 sims/s).
+- Voltage trace vs `Neuron_Jaxley/sim_jaxley_L5TTPC1.py` reference DIVERGES (max|Δ|=93 mV) because we deliberately skip the apical Ih distance gradient (CNN emits one scalar per conductance → must broadcast uniformly). Either regenerate the reference without the gradient or accept the drift.
+
+Those numbers are the concrete targets for Phase 5 (memory + throughput) before hybrid training on L5TTPC is tractable.
+
 **Deliverables**
 - `toolbox/jaxley_cells/l5ttpc.py` filled in — matches the 19 parameter names in `parName` exactly, in the same order, so `pred_params[:, i]` maps to the right channel.
 - Output-layer size already matches (19 for cADpyr). No model surgery needed.

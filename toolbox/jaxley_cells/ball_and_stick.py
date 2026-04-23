@@ -78,13 +78,15 @@ def _build():
 
     # Expose parameters to the bridge.  Each key maps to exactly one
     # compartment/branch so the trainable array has shape (1,) and the
-    # CNN-output vector (B, P=4) vmaps cleanly.
+    # CNN-output vector (B, P=4) vmaps cleanly.  Entry order == CNN order,
+    # so entry_to_cnn_idx is just [0, 1, 2, 3].
     cell.branch(0).make_trainable("HH_gNa")
     cell.branch(0).make_trainable("HH_gK")
     cell.branch(0).make_trainable("HH_gLeak")
     cell.branch(1).make_trainable("Leak_gLeak")
+    entry_to_cnn_idx = [0, 1, 2, 3]
 
-    return cell
+    return cell, entry_to_cnn_idx
 
 
 def _attach_stim(cell, stim_jnp):

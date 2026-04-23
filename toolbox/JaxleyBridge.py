@@ -61,10 +61,15 @@ def _build_handle(cell_name: str, stim_name: Optional[str] = None) -> _CellHandl
     import jaxley as jx
 
     spec = jaxley_cells.get(cell_name)
-    cell = spec.build_fn()
+    cell, entry_to_cnn_idx = spec.build_fn()
 
     # Snapshot the structure of the trainable list *before* any simulate call.
     default_params = cell.get_parameters()
+    if len(default_params) != len(entry_to_cnn_idx):
+        raise RuntimeError(
+            f"{cell_name}: build_fn returned {len(entry_to_cnn_idx)} CNN indices "
+            f"but cell has {len(default_params)} trainable entries. Spec bug."
+        )
 
     # Stimulus waveform — fixed per handle.  Changing stims means a new
     # handle (new jit).  That's intentional: stim length + content change
@@ -81,41 +86,13 @@ def _build_handle(cell_name: str, stim_name: Optional[str] = None) -> _CellHandl
 
     # Build a pytree-replaceable "params" list.  Each entry is a dict with
     # one key and a jnp array of shape matching the trainable's compartment
-    # selection.  To vmap over a single scalar per param, we take the CNN
-    # output value and broadcast to that shape.
-    # param_keys[i] may be used more than once (e.g. L5TTPC Ih_dend applies
-    # to basal + apical).  Walk default_params and remember which indices
-    # of the flat CNN vector feed each entry.
-    param_keys = list(spec.param_keys)
-    key_to_idx = {k: i for i, k in enumerate(param_keys)}
-
+    # selection.  `entry_to_cnn_idx[i]` tells us which CNN output value
+    # feeds `default_params[i]`; the value is broadcast into the entry's
+    # shape.  If multiple entries share a CNN index (L5TTPC Ih_dend ->
+    # basal + apical) the backward pass naturally sums their gradients.
     def _key_for_entry(entry_dict):
-        # Each entry has exactly one top-level key — use it.
         (k,) = entry_dict.keys()
         return k
-
-    entry_to_cnn_idx: List[int] = []
-    for e in default_params:
-        k = _key_for_entry(e)
-        # For L5TTPC, `Ih_gbar` is registered once in PARAM_KEYS (as the
-        # BBP name `gIhbar_Ih_dend`).  We key the flat vector by BBP name
-        # via jaxley_cells spec.param_keys; the jaxley key stored on the
-        # trainable entry is `Ih_gbar`.  For the ball-and-stick we used the
-        # jaxley key directly as the BBP name — so for that cell the
-        # lookup is one-to-one.
-        if k in key_to_idx:
-            entry_to_cnn_idx.append(key_to_idx[k])
-        else:
-            # fall back: try matching any BBP key whose jaxley key == k
-            # (for L5TTPC the spec exposes BBP names, which differ).
-            matches = [i for i, bbp in enumerate(param_keys)
-                       if bbp.split("_")[-1] in k or k in bbp]
-            if not matches:
-                raise RuntimeError(
-                    f"can't align jaxley trainable {k!r} with any CNN param key "
-                    f"in {param_keys!r}. Fix the spec's PARAM_KEYS."
-                )
-            entry_to_cnn_idx.append(matches[0])
 
     default_shapes = [e[_key_for_entry(e)].shape for e in default_params]
 
