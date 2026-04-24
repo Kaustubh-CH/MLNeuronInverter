@@ -144,6 +144,44 @@ def test_gradcheck_tiny():
         JaxleyBridge.clear_cache()
 
 
+def test_fresh_state_per_call():
+    """Each forward must start from the same initial membrane state, with no
+    leakage between calls.
+
+    Guarantees:
+      1. Same params twice  ->  bitwise identical outputs.
+      2. A -> B -> A sequence returns the A result identical to the first A.
+      3. Initial voltage at t=0 equals the cell's V_INIT and is independent
+         of the parameter vector.
+    """
+    from toolbox.jaxley_cells.ball_and_stick import _DEFAULTS, PARAM_KEYS, _V_INIT
+    p_A = torch.tensor([[_DEFAULTS[k] for k in PARAM_KEYS]], dtype=torch.float64)
+    p_B = p_A * 1.5   # different scale, still physiological
+
+    v_A1 = JaxleyBridge.simulate_batch(p_A, "ball_and_stick")
+    v_B  = JaxleyBridge.simulate_batch(p_B, "ball_and_stick")
+    v_A2 = JaxleyBridge.simulate_batch(p_A, "ball_and_stick")
+
+    # (1) repeat run of A
+    delta_AA = (v_A1 - v_A2).abs().max().item()
+    # (2) sandwich run of A around B -- same result?
+    #     (trivially equal to check 1 if (1) passes; kept explicit for clarity)
+    # (3) initial voltage at t=0
+    v0_A = v_A1[0, 0, 0].item()
+    v0_B = v_B[0, 0, 0].item()
+
+    print(f"  repeat-run max|A1 - A2| = {delta_AA:.3e}")
+    print(f"  v(t=0)  A = {v0_A:.4f}   B = {v0_B:.4f}   expected = {_V_INIT}")
+
+    assert delta_AA == 0.0, f"stateful drift across calls: {delta_AA}"
+    # HH init_states relaxes gate variables; the recorded trace's first
+    # time step may differ from V_INIT by a tiny amount, so allow 1e-3 mV.
+    assert abs(v0_A - _V_INIT) < 1e-3, f"A starts at {v0_A}, not {_V_INIT}"
+    assert abs(v0_B - _V_INIT) < 1e-3, f"B starts at {v0_B}, not {_V_INIT}"
+    # params should change the *trajectory*, not the init -- so v0_A==v0_B
+    assert abs(v0_A - v0_B) < 1e-6, f"initial V depends on params?! {v0_A} vs {v0_B}"
+
+
 def test_l5ttpc_registers_but_do_not_build():
     """Just confirm the spec is available; building the 19-param L5 cell
     + jit is Phase 5's problem."""
@@ -161,6 +199,7 @@ TESTS = [
     ("shapes",        test_shapes),
     ("cache",         test_cache_hit_no_recompile),
     ("vmap_vs_loop",  test_vmap_matches_serial_loop),
+    ("fresh_state",   test_fresh_state_per_call),
     ("gradcheck",     test_gradcheck_tiny),
     ("l5_registers",  test_l5ttpc_registers_but_do_not_build),
 ]

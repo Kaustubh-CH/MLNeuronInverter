@@ -235,7 +235,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `toolbox/tests/bench_jaxley_cells.py` - Correctness + throughput benchmark for the Phase 1 jaxley cells.
     - defs: _print, _default_params_tensor, _count_spikes, check_against_reference, bench_throughput, main
 - `toolbox/tests/test_jaxley_bridge.py` - Phase 1 tests for toolbox.JaxleyBridge.
-    - defs: test_registry_lists_both_cells, test_shapes, test_cache_hit_no_recompile, test_vmap_matches_serial_loop, test_gradcheck_tiny, test_l5ttpc_registers_but_do_not_build, main
+    - defs: test_registry_lists_both_cells, test_shapes, test_cache_hit_no_recompile, test_vmap_matches_serial_loop, test_gradcheck_tiny, test_fresh_state_per_call, test_l5ttpc_registers_but_do_not_build, main
 
 ### scripts/
 
