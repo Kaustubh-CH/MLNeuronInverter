@@ -1,0 +1,76 @@
+#!/bin/bash -l
+# Solver-sweep jaxley bench.  Runs the full (cell × solver × batch) matrix
+# single-thread, then a thread-scaling sweep over {1,2,4,8}.
+#
+# Interactive (preferred):
+#     salloc -C cpu -q interactive -t2:00:00 -A m2043 -N 1 \
+#            --ntasks-per-node=1 --cpus-per-task=16
+#     bash scripts/bench_solvers.slr
+#
+# Batch:
+#     sbatch scripts/bench_solvers.slr
+#
+#SBATCH -N 1
+#SBATCH --time=02:00:00
+#SBATCH -J ni_solvers
+#SBATCH -q regular
+#SBATCH -C cpu
+#SBATCH -A m2043
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/bench_solvers-%j.out
+#SBATCH -e /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/bench_solvers-%j.err
+# - - - E N D    O F    SLURM    C O M M A N D S
+
+set -euo pipefail
+
+repo_root=${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}
+cd "$repo_root"
+
+mkdir -p /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs
+BENCH_OUT=/pscratch/sd/k/ktub1999/tmp_neuInv/jaxley_solver_bench
+mkdir -p "$BENCH_OUT"
+export NEUINV_BENCH_OUT="$BENCH_OUT"
+
+echo "S: host=$(hostname)  cwd=$(pwd)  job=${SLURM_JOBID:-interactive}"
+date
+
+module load conda
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+
+echo "S: python=$(which python)  $(python --version 2>&1)"
+echo
+
+# Lock thread count for the main matrix run.
+export JAX_PLATFORMS=cpu
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 inter_op_parallelism_threads=1"
+
+# Wipe old scaling log so this run is self-contained.
+rm -f "$BENCH_OUT/scaling_log.csv"
+
+echo "=== main matrix (single-thread) ==="
+python -m toolbox.tests.bench_solvers
+
+echo
+echo "=== thread-scaling sweep: ball_and_stick · bwd_euler · B=16 ==="
+for T in 1 2 4 8; do
+    echo "--- threads=$T ---"
+    OMP_NUM_THREADS=$T \
+    MKL_NUM_THREADS=$T \
+    OPENBLAS_NUM_THREADS=$T \
+    XLA_FLAGS="--xla_cpu_multi_thread_eigen=true intra_op_parallelism_threads=$T inter_op_parallelism_threads=$T" \
+    python -m toolbox.tests.bench_solvers --only-scaling \
+        --scaling-cell ball_and_stick --scaling-solver bwd_euler --scaling-batch 16
+done
+
+echo
+echo "=== scaling log ==="
+cat "$BENCH_OUT/scaling_log.csv" || true
+
+echo
+echo "S: done"
+date
