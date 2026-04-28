@@ -25,6 +25,14 @@ _T_MAX   = 500.0
 _V_INIT  = -75.0
 _NCOMP   = 4
 
+# Apical Ih distance-dependent gradient — biophysics.hoc convention for L5TTPC.
+# gIh(d) = max(0, _IH_A + _IH_B * exp(d * _IH_K)) * ih_base   (S/cm²)
+# Ported from /pscratch/sd/k/ktub1999/Neuron_Jaxley/sim_jaxley_L5TTPC1.py.
+_IH_A    = -0.8696
+_IH_B    =  2.087
+_IH_K    =  0.0031   # µm⁻¹
+_IH_BASE =  8e-5     # base gbar (S/cm²)
+
 # Parameter ordering matches `sum_train.yaml['input_meta']['parName']` for a
 # BBP cADpyr excitatory cell (identical to predictExp.py's inlined list).
 # Each entry is (bbp_name, jaxley_group, jaxley_param_key).  "all" = cell.set.
@@ -53,6 +61,38 @@ _CSV_PARAM_MAP = [
 PARAM_KEYS    = [entry[0] for entry in _CSV_PARAM_MAP]
 _PARAM_GROUPS = [entry[1] for entry in _CSV_PARAM_MAP]
 _PARAM_JAX    = [entry[2] for entry in _CSV_PARAM_MAP]
+
+
+def _apply_apical_ih_gradient(cell, swc_path: str, ih_base: float = _IH_BASE) -> None:
+    """Apply the BBP biophysics.hoc distance-dependent Ih gradient to apical compartments.
+
+    gIh(d) = max(0, _IH_A + _IH_B * exp(d * _IH_K)) * ih_base
+    """
+    import sys
+    import numpy as np
+    if str(_NJ_ROOT) not in sys.path:
+        sys.path.insert(0, str(_NJ_ROOT))
+    from morphology_utils import swc_apical_branch_distances
+
+    distances = swc_apical_branch_distances(swc_path, ncomp=_NCOMP)
+    apical_nodes = cell.apical.nodes
+    # jaxley 0.13.x uses `global_branch_index`; older trees used `branch_index`.
+    branch_col = "global_branch_index" if "global_branch_index" in apical_nodes.columns else "branch_index"
+    apical_branch_indices = apical_nodes[branch_col].unique()
+
+    n_swc = len(distances)
+    n_jax = len(apical_branch_indices)
+    if n_swc != n_jax:
+        # Fallback to the audit's flat-value sentinel — clearly visible to anyone
+        # who runs the cell at default and finds the gradient missing.
+        cell.apical.set("Ih_gbar", 9.74e-5)
+        return
+
+    for i, branch_idx in enumerate(apical_branch_indices):
+        for j in range(_NCOMP):
+            d    = float(distances[i, j])
+            g_ih = max(0.0, (_IH_A + _IH_B * np.exp(d * _IH_K)) * ih_base)
+            cell.branch(int(branch_idx)).comp(j).set("Ih_gbar", g_ih)
 
 
 def _build():
@@ -109,6 +149,16 @@ def _build():
     cell.basal.set("Ih_ehcn", -45.0)
     cell.apical.set("NaTs2_t_ena", 50.0); cell.apical.set("SKv3_1_ek", -85.0)
     cell.apical.set("Im_ek", -85.0); cell.apical.set("Ih_ehcn", -45.0)
+
+    # BBP biophysics.hoc applies a distance-dependent gradient to apical Ih.
+    # Apply with `_IH_BASE` so the default-parameter forward matches NEURON.
+    # NOTE: `cell.apical.make_trainable("Ih_gbar")` below makes the bridge
+    # uniformly broadcast the CNN-predicted scalar across apical compartments,
+    # which overwrites this gradient during training. Gradient is preserved
+    # at default params (benchmarks, reference comparisons) and during inference
+    # whenever no override is supplied. See docs/phase1/L5TTPC.md for the plan
+    # to preserve the gradient under CNN-driven training.
+    _apply_apical_ih_gradient(cell, str(_SWC_PATH), _IH_BASE)
 
     cell.init_states(delta_t=_DT)
     cell.soma.comp(0).record()
