@@ -1,0 +1,82 @@
+#!/bin/bash -l
+# 4-way parallel L5TTPC GPU bench. Uses all 4 A100s on a single Perlmutter
+# GPU node — each GPU runs a different ablation. Variants:
+#
+#   GPU 0 → NCOMP=1                       (extreme cell-level ablation)
+#   GPU 1 → NCOMP=4 + checkpoint=[10,100] (system-only: T3)
+#   GPU 2 → NCOMP=2 + checkpoint=[10,100] (combined C1 + T3)
+#   GPU 3 → NCOMP=4 + checkpoint=[100,10] (alternate chunking)
+#
+# Interactive:
+#     salloc -A m2043_g -q interactive -C gpu -t 04:00:00 -N 1 \
+#            --ntasks-per-node=1 --gpus-per-node=4 --cpus-per-task=16
+#     bash scripts/bench_gpu_4way.slr
+#
+#SBATCH -A m2043_g
+#SBATCH -q regular
+#SBATCH -C gpu
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=4
+#SBATCH --cpus-per-task=16
+#SBATCH --time=02:00:00
+#SBATCH -J ni_gpu_4way
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/bench_gpu_4way-%j.out
+#SBATCH -e /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/bench_gpu_4way-%j.err
+# - - - E N D    O F    SLURM    C O M M A N D S
+
+set -euo pipefail
+
+repo_root=${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}
+cd "$repo_root"
+
+SLURM_LOGS=/pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs
+ROOT=/pscratch/sd/k/ktub1999/tmp_neuInv/jaxley_gpu_bench_4way
+mkdir -p "$SLURM_LOGS" "$ROOT"
+
+echo "S: host=$(hostname)  cwd=$(pwd)  job=${SLURM_JOBID:-interactive}"
+date
+which nvidia-smi >/dev/null 2>&1 && nvidia-smi -L || echo "nvidia-smi not found"
+
+module load conda
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+
+echo "S: python=$(which python)  $(python --version 2>&1)"
+echo
+
+export JAX_PLATFORMS=cuda,cpu
+
+run_variant() {
+    local gpu="$1"; local tag="$2"; shift 2
+    local outdir="$ROOT/$tag"
+    local log="$ROOT/${tag}.log"
+    mkdir -p "$outdir"
+    echo "  GPU $gpu → $tag  (out=$outdir)"
+    CUDA_VISIBLE_DEVICES="$gpu" \
+        python -u -m toolbox.tests.bench_gpu_l5ttpc \
+            --cells L5TTPC \
+            --out-dir "$outdir" \
+            "$@" \
+        > "$log" 2>&1 &
+}
+
+echo "=== launching 4 variants ==="
+run_variant 0 ncomp1                 --l5ttpc-ncomp 1
+run_variant 1 ncomp4_ckpt_10x100     --checkpoint-lengths 10 100
+run_variant 2 ncomp2_ckpt_10x100     --l5ttpc-ncomp 2 --checkpoint-lengths 10 100
+run_variant 3 ncomp4_ckpt_100x10     --checkpoint-lengths 100 10
+
+echo "=== waiting for all 4 to finish ==="
+wait
+echo "=== all done ==="
+
+for tag in ncomp1 ncomp4_ckpt_10x100 ncomp2_ckpt_10x100 ncomp4_ckpt_100x10; do
+    echo
+    echo "--- $tag ---"
+    cat "$ROOT/$tag/bench_gpu.csv" 2>&1 || true
+done
+
+echo
+echo "S: done"
+date

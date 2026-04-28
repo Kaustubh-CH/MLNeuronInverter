@@ -1,0 +1,61 @@
+#!/bin/bash -l
+# GPU bench: L5TTPC + ball_and_stick, fwd & fwd+bwd, jaxley voltage path.
+#
+# Interactive (preferred):
+#     salloc -A m2043_g -q interactive -C gpu -t 04:00:00 -N 1 \
+#            --ntasks-per-node=1 --gpus-per-task=1 --cpus-per-task=4
+#     bash scripts/bench_gpu.slr
+#
+# Batch:
+#     sbatch scripts/bench_gpu.slr
+#
+#SBATCH -A m2043_g
+#SBATCH -q regular
+#SBATCH -C gpu
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=02:00:00
+#SBATCH -J ni_gpu_bench
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/bench_gpu-%j.out
+#SBATCH -e /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/bench_gpu-%j.err
+# - - - E N D    O F    SLURM    C O M M A N D S
+
+set -euo pipefail
+
+repo_root=${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}
+cd "$repo_root"
+
+mkdir -p /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs
+BENCH_OUT=/pscratch/sd/k/ktub1999/tmp_neuInv/jaxley_gpu_bench
+mkdir -p "$BENCH_OUT"
+
+echo "S: host=$(hostname)  cwd=$(pwd)  job=${SLURM_JOBID:-interactive}"
+date
+
+# Show GPU before activation so we can tell from the log if alloc was wrong.
+which nvidia-smi >/dev/null 2>&1 && nvidia-smi -L || echo "nvidia-smi not found"
+
+module load conda
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+
+echo "S: python=$(which python)  $(python --version 2>&1)"
+echo
+
+# Prefer GPU; fall back to CPU if no device visible (so a misallocation
+# doesn't silently look like a "GPU bench").
+export JAX_PLATFORMS=cuda,cpu
+export NEUINV_GPU_BENCH_OUT="$BENCH_OUT"
+
+echo "=== GPU bench (full matrix) ==="
+python -m toolbox.tests.bench_gpu_l5ttpc
+
+echo
+echo "=== bench_gpu.csv ==="
+cat "$BENCH_OUT/bench_gpu.csv" || true
+
+echo
+echo "S: done"
+date

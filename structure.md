@@ -234,10 +234,16 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 ### toolbox/tests/
 
 - `toolbox/tests/__init__.py`
+- `toolbox/tests/bench_gpu_l5ttpc.py` - GPU bench for the jaxley voltage-loss path.
+    - defs: _build_loss_fn, _default_phys_jnp, _time_fn, _peak_mem_mb, _reset_peak_mem, run_combo, main
 - `toolbox/tests/bench_jaxley_cells.py` - Correctness + throughput benchmark for the Phase 1 jaxley cells.
     - defs: _print, _default_params_tensor, _count_spikes, check_against_reference, bench_throughput, main
 - `toolbox/tests/bench_solvers.py` - Solver + cell + batch sweep bench at dt=0.1 ms, t_max=100 ms.
     - defs: _default_params, build_simulate, time_warm, _extract_soma_trace, run_matrix, save_csv, save_text_summary, save_trace_plots, save_bars, cmd_main, cmd_scaling, build_parser, main
+- `toolbox/tests/plot_bench_bar_b128.py` - Grouped bar chart: sims/sec vs batch size, across every GPU config + CPU.
+    - defs: _gpu_value, _cpu_value, _plot_panel, main
+- `toolbox/tests/plot_bench_comparison.py` - Pull every completed bench CSV into a single comparison figure.
+    - defs: _load_gpu, _load_cpu, _plot_panel, main
 - `toolbox/tests/test_jaxley_bridge.py` - Phase 1 tests for toolbox.JaxleyBridge.
     - defs: test_registry_lists_both_cells, test_shapes, test_cache_hit_no_recompile, test_vmap_matches_serial_loop, test_gradcheck_tiny, test_fresh_state_per_call, test_l5ttpc_registers_but_do_not_build, main
 

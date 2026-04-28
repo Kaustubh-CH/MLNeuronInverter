@@ -1,0 +1,60 @@
+#!/bin/bash -l
+# Parallel GPU bench for the C1 ablation: L5TTPC with _NCOMP=2.
+#
+# Run alongside scripts/bench_gpu.slr (which uses default _NCOMP=4) on a
+# separate node. Output lands in jaxley_gpu_bench_ncomp2/ so the two runs
+# don't collide.
+#
+# Interactive:
+#     salloc -A m2043_g -q interactive -C gpu -t 04:00:00 -N 1 \
+#            --ntasks-per-node=1 --gpus-per-task=1 --cpus-per-task=4
+#     bash scripts/bench_gpu_ncomp2.slr
+#
+#SBATCH -A m2043_g
+#SBATCH -q regular
+#SBATCH -C gpu
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=02:00:00
+#SBATCH -J ni_gpu_ncomp2
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/bench_gpu_ncomp2-%j.out
+#SBATCH -e /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/bench_gpu_ncomp2-%j.err
+# - - - E N D    O F    SLURM    C O M M A N D S
+
+set -euo pipefail
+
+repo_root=${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}
+cd "$repo_root"
+
+mkdir -p /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs
+BENCH_OUT=/pscratch/sd/k/ktub1999/tmp_neuInv/jaxley_gpu_bench_ncomp2
+mkdir -p "$BENCH_OUT"
+
+echo "S: host=$(hostname)  cwd=$(pwd)  job=${SLURM_JOBID:-interactive}"
+date
+which nvidia-smi >/dev/null 2>&1 && nvidia-smi -L || echo "nvidia-smi not found"
+
+module load conda
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+
+echo "S: python=$(which python)  $(python --version 2>&1)"
+echo
+
+export JAX_PLATFORMS=cuda,cpu
+
+echo "=== L5TTPC × NCOMP=2 ablation (full matrix) ==="
+python -m toolbox.tests.bench_gpu_l5ttpc \
+    --cells L5TTPC \
+    --l5ttpc-ncomp 2 \
+    --out-dir "$BENCH_OUT"
+
+echo
+echo "=== bench_gpu.csv ==="
+cat "$BENCH_OUT/bench_gpu.csv" || true
+
+echo
+echo "S: done"
+date
