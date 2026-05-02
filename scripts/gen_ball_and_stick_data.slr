@@ -33,7 +33,9 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=0.7
 
 mkdir -p $out_dir
-cd $(dirname $0)/..
+# SLURM stages the script under /var/spool/slurmd; use SLURM_SUBMIT_DIR
+# (dir from which sbatch was called) to find the repo's scripts/.
+cd ${SLURM_SUBMIT_DIR:-$(pwd)}
 
 date
 echo "S: generating N=$n samples -> $out_dir (seed=$seed, batch=$batch)"
