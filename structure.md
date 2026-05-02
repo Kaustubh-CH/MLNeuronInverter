@@ -158,6 +158,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser, Plotter, process_one
 - `plotExpCSurvey.py` - inspect formated  experiment
     - defs: get_parser, print_exp_summary, Plotter
+- `plotJaxleyValidation.py` - Phase 3 validation plotter.
+    - defs: get_parser, load_trained_model, load_test_data, cnn_forward, jaxley_forward, per_param_metrics, voltage_metrics, plot_param_scatter, plot_voltage_overlay, plot_voltage_summary, main
 - `plotPredSurvey.py` - plot scores and waveforms w/ spikes
     - defs: get_parser, Plotter
 - `plotPredWave_fromRoy.py` - overlays  wavformes predicted by Roy to ML pred coductances
@@ -258,6 +260,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 
 ### scripts/
 
+- `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 for the ball_and_stick_bbp cell.
+    - defs: _build_phys_par_range, generate_voltages, zscore_per_sample_per_probe, write_h5, main
 - `scripts/install_hooks.sh`
 
 ### packBBP3/
