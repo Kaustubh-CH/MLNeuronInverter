@@ -226,6 +226,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: CellSpec, register, get, list_cells
 - `toolbox/jaxley_cells/ball_and_stick.py` - Ball-and-stick cell builder for the hybrid voltage-loss path.
     - defs: _build, _attach_stim, _attach_record, _spec
+- `toolbox/jaxley_cells/ball_and_stick_bbp.py` - Ball-and-stick cell with BBP channels (multi-section, multi-channel).
+    - defs: _build, _attach_stim, _attach_record, _spec
 - `toolbox/jaxley_cells/l5ttpc.py` - L5TTPC cell builder for the hybrid voltage-loss path.
     - defs: _apply_apical_ih_gradient, _build, _attach_stim, _attach_record, _spec
 - `toolbox/jaxley_cells/soma_only.py` - Single-compartment HH soma cell.
