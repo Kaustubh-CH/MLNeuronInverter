@@ -1,0 +1,44 @@
+#!/bin/bash -l
+#SBATCH -N1 --time=1:30:00 -J phase3gen -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=1 --gpus-per-node=1 --cpus-per-task=32 -C gpu -A m2043_g
+# - - - E N D    O F    SLURM    C O M M A N D S
+#
+# Phase 3 — generate the matched ball_and_stick_bbp synthetic data pack.
+#
+# Single GPU is enough; this is a one-shot data-prep job.  Total runtime
+# at N=20480 is ~30-60 min on 1 A100 in fp64.  Output:
+#   $SCRATCH/synthetic_bbp_data/ballBBP_synth_v1/ball_and_stick_bbp_synth.mlPack1.h5
+#
+# Override N via:
+#   sbatch scripts/gen_ball_and_stick_data.slr 20480
+
+set -e
+
+n=${1:-20480}
+out_dir=${2:-/pscratch/sd/k/ktub1999/synthetic_bbp_data/ballBBP_synth_v1}
+seed=${3:-0}
+batch=${4:-128}
+
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+
+# Per-rank cache dir even though we're 1-rank — keeps the convention.
+export JAX_COMPILATION_CACHE_DIR=$SCRATCH/jax_cc/rank_${SLURM_PROCID:-0}
+mkdir -p $JAX_COMPILATION_CACHE_DIR
+export JAX_PLATFORMS=cuda
+export JAX_ENABLE_X64=true
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.7
+
+mkdir -p $out_dir
+cd $(dirname $0)/..
+
+date
+echo "S: generating N=$n samples -> $out_dir (seed=$seed, batch=$batch)"
+time srun -n 1 python -u scripts/gen_ball_and_stick_data.py \
+    --out $out_dir --n $n --batch $batch --seed $seed
+echo "S: gen done"
+date
+ls -lh $out_dir
