@@ -4,7 +4,10 @@ import socket  # for hostname
 import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
-from ray.exceptions import RayTaskError
+try:
+    from ray.exceptions import RayTaskError  # only used by Ray-tune path
+except Exception:
+    RayTaskError = Exception
 
 import logging
 
@@ -14,8 +17,17 @@ import logging
 from toolbox.Dataloader_H5 import get_data_loader
 from toolbox.Util_IOfunc import read_yaml
 
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+# ray.air moved between Ray versions — import lazily so non-Ray jobs (e.g.
+# the jaxley voltage-loss path) work in conda envs that ship newer Ray.
+try:
+    from ray.air import session
+    try:
+        from ray.air.checkpoint import Checkpoint
+    except ImportError:
+        from ray.train import Checkpoint  # Ray >= 2.10
+except Exception:
+    session = None
+    Checkpoint = None
 
 #...!...!..................
 def patch_h5meta(ds,params):
@@ -46,7 +58,11 @@ class Trainer():
     self.verb=params['verb']
     self.isRank0=params['world_rank']==0
     self.valPeriod=params['validation_period']
-    self.device = torch.cuda.current_device()      
+    # Pin to the local-rank GPU explicitly (SLURM_LOCALID).  current_device()
+    # can return 0 in some contexts even after set_device, when CUDA is not
+    # yet warm on the target GPU; using LOCALID makes this deterministic.
+    self.device = int(os.environ.get('SLURM_LOCALID', torch.cuda.current_device()))
+    torch.cuda.set_device(self.device)
     logging.info('T:ini world rank %d of %d, host=%s  see device=%d'%(params['world_rank'],params['world_size'],socket.gethostname(),self.device))
     self.doRay=params['do_ray']
     expDir=params['out_path']
@@ -109,6 +125,19 @@ class Trainer():
 
     # must know the number of steps to decided how often to print
     self.params['log_freq_step']=max(1,len(self.train_loader)//self.params['log_freq_per_epoch'])
+
+    # Allow the design YAML to force a CNN output dim that differs from
+    # `dataset.data_parU.shape[1]`.  Used by the voltage-only hybrid path:
+    # the data pack stores 19 unit_par columns, but a trimmed jaxley cell
+    # (e.g. ball_and_stick_bbp -> 12) needs the CNN to emit only 12.
+    _out_override = params['model'].get('outputSize_override')
+    if _out_override is not None:
+      _orig = params['model']['outputSize']
+      params['model']['outputSize'] = int(_out_override)
+      if self.verb:
+        logging.info('T:outputSize override %d -> %d (from design YAML)' %
+                     (_orig, params['model']['outputSize']))
+
     myModel=None
     if(params['do_fine_tune']==True):
       myModel= self.load_model(params)
@@ -192,16 +221,26 @@ class Trainer():
     # choose type of LR decay schedule
     if self.verb: logging.info('LR conf:%s'%str(lrcf))    
     if 'plateau_patience' in lrcf:
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, factor=lrcf['reduceFactor'], patience=lrcf['plateau_patience'], mode='min',cooldown=2, verbose=self.verb)   
+        # `verbose` kwarg was removed in torch 2.x; keep optional for old/new
+        _sch_kwargs = dict(factor=lrcf['reduceFactor'], patience=lrcf['plateau_patience'], mode='min', cooldown=2)
+        try:
+            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, verbose=self.verb, **_sch_kwargs)
+        except TypeError:
+            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, **_sch_kwargs)
     
-    self.criterion =torch.nn.MSELoss().to(self.device) # Mean Squared Loss
+    if params.get('use_voltage_loss'):
+      from toolbox.HybridLoss import build_hybrid_loss
+      self.criterion = build_hybrid_loss(params).to(self.device)
+      if self.verb: logging.info('T:criterion=HybridLoss %s'%pformat(params['voltage_loss']))
+    else:
+      self.criterion =torch.nn.MSELoss().to(self.device) # Mean Squared Loss
 
     if params['world_size']>1:
       # if(not self.doRay):
       if True:
+        # Use the rank-pinned device set in __init__ (SLURM_LOCALID).
         self.model = DDP(self.model,
-                       device_ids=[0],output_device=[0])
-               #device_ids=[params['local_rank']],output_device=[params['local_rank']])
+                       device_ids=[self.device], output_device=self.device)
       # note, using DDP assures the same as average_gradients(self.model), no need to do it manually 
     self.iters = 0
     self.startEpoch = 0
@@ -331,8 +370,11 @@ class Trainer():
         
     #. . . . . . .  epoch loop end . . . . . . . .
     
-    if self.isRank0:  
-      self.TBSwriter.add_histogram('time per epoch (sec)', np.array(TperEpoch),epoch)     
+    if self.isRank0:
+      # add_histogram fails on empty arrays (max_epochs=1 -> TperEpoch is
+      # never appended to since the loop only appends on epoch>startEpoch).
+      if len(TperEpoch) > 0:
+        self.TBSwriter.add_histogram('time per epoch (sec)', np.array(TperEpoch),epoch)
          
       # add info to summary
       try:
@@ -383,7 +425,10 @@ class Trainer():
         # Model forward pass and loss computation
         # outputs = self.model(images)
         outputs = self.model(*model_input)
-        loss = self.criterion(outputs, labels)
+        if self.params.get('use_voltage_loss'):
+          loss = self.criterion(outputs, labels, images)
+        else:
+          loss = self.criterion(outputs, labels)
 
       # AMP: Use GradScaler to scale loss and run backward to produce scaled gradients
       self.grad_scaler.scale(loss).backward()
@@ -436,7 +481,10 @@ class Trainer():
         # if(self.params['model_type']=="Transformers"):
         #   images=torch.squeeze(images)
         outputs = self.model(*model_input)
-        loss += self.criterion(outputs, labels)
+        if self.params.get('use_voltage_loss'):
+          loss += self.criterion(outputs, labels, images)
+        else:
+          loss += self.criterion(outputs, labels)
         
     logs = {'loss': loss/len(self.valid_loader),}
     if self.params['world_size']>1:

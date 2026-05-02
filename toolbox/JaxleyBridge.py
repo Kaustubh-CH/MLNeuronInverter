@@ -54,8 +54,17 @@ class _CellHandle:
 _CELL_CACHE: dict = {}
 
 
-def _build_handle(cell_name: str, stim_name: Optional[str] = None) -> _CellHandle:
-    """Build + compile the cell once.  Expensive; called on first use."""
+def _build_handle(cell_name: str, stim_name: Optional[str] = None,
+                  checkpoint_lengths: Optional[Tuple[int, ...]] = None,
+                  solver: str = "bwd_euler") -> _CellHandle:
+    """Build + compile the cell once.  Expensive; called on first use.
+
+    `checkpoint_lengths`: if given, passed to `jx.integrate` as
+    `checkpoint_lengths=list(checkpoint_lengths)` to enable gradient
+    checkpointing across the time axis (jaxley 0.13+).  Two-level form
+    `(outer, inner)` makes the backward chain only `inner` stiff steps long
+    per VJP segment, which keeps fp32 stable at large t_max.
+    """
     import jax
     import jax.numpy as jnp
     import jaxley as jx
@@ -96,6 +105,8 @@ def _build_handle(cell_name: str, stim_name: Optional[str] = None) -> _CellHandl
 
     default_shapes = [e[_key_for_entry(e)].shape for e in default_params]
 
+    ckpt = list(checkpoint_lengths) if checkpoint_lengths else None
+
     def _simulate_one(flat_phys):
         """Run one forward.  `flat_phys` shape: (P,)."""
         params = []
@@ -103,14 +114,16 @@ def _build_handle(cell_name: str, stim_name: Optional[str] = None) -> _CellHandl
             k = _key_for_entry(e)
             val = jnp.broadcast_to(flat_phys[idx:idx + 1], shape)
             params.append({k: val})
-        v = jx.integrate(
-            cell,
+        kw = dict(
             params=params,
             delta_t=spec.dt,
             t_max=spec.t_max,
             data_stimuli=data_stim,
-            solver="bwd_euler",
+            solver=solver,
         )
+        if ckpt is not None:
+            kw["checkpoint_lengths"] = ckpt
+        v = jx.integrate(cell, **kw)
         # `v` shape: (n_recorded, T_sim).  Downsample time axis.
         v_ds = v[:, ::step]
         return v_ds
@@ -133,11 +146,18 @@ def _build_handle(cell_name: str, stim_name: Optional[str] = None) -> _CellHandl
     )
 
 
-def get_handle(cell_name: str, stim_name: Optional[str] = None) -> _CellHandle:
-    """Return a cached (cell, compiled simulate) pair, building on first use."""
-    key = (cell_name, stim_name or "__default__")
+def get_handle(cell_name: str, stim_name: Optional[str] = None,
+               checkpoint_lengths: Optional[Tuple[int, ...]] = None,
+               solver: str = "bwd_euler") -> _CellHandle:
+    """Return a cached (cell, compiled simulate) pair, building on first use.
+
+    `checkpoint_lengths` and `solver` are part of the cache key — distinct
+    values get distinct compiled handles.
+    """
+    ckpt_key = tuple(checkpoint_lengths) if checkpoint_lengths else None
+    key = (cell_name, stim_name or "__default__", ckpt_key, solver)
     if key not in _CELL_CACHE:
-        _CELL_CACHE[key] = _build_handle(cell_name, stim_name)
+        _CELL_CACHE[key] = _build_handle(cell_name, stim_name, ckpt_key, solver)
     return _CELL_CACHE[key]
 
 
@@ -175,9 +195,11 @@ class _JaxleySimulate(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, params_phys: torch.Tensor, cell_name: str,
-                stim_name: Optional[str]) -> torch.Tensor:
+                stim_name: Optional[str],
+                checkpoint_lengths: Optional[Tuple[int, ...]] = None,
+                solver: str = "bwd_euler") -> torch.Tensor:
         import jax
-        handle = get_handle(cell_name, stim_name)
+        handle = get_handle(cell_name, stim_name, checkpoint_lengths, solver)
 
         # (B, P) torch → jax
         params_j = _torch_to_jax(params_phys)
@@ -195,16 +217,18 @@ class _JaxleySimulate(torch.autograd.Function):
         return _jax_to_torch(v_j, params_phys.device, params_phys.dtype)
 
     @staticmethod
-    def backward(ctx, grad_out: torch.Tensor) -> Tuple[Optional[torch.Tensor], None, None]:
+    def backward(ctx, grad_out: torch.Tensor):
         grad_j = _torch_to_jax(grad_out.contiguous())
         (dparams_j,) = ctx.vjp_fn(grad_j)
         dparams = _jax_to_torch(dparams_j, ctx.in_device, ctx.in_dtype)
-        return dparams, None, None
+        return dparams, None, None, None, None
 
 
 def simulate_batch(params_phys: torch.Tensor,
                    cell_name: str,
-                   stim_name: Optional[str] = None) -> torch.Tensor:
+                   stim_name: Optional[str] = None,
+                   checkpoint_lengths: Optional[Tuple[int, ...]] = None,
+                   solver: str = "bwd_euler") -> torch.Tensor:
     """Run a vmapped, differentiable jaxley forward on a batch of params.
 
     Parameters
@@ -224,7 +248,8 @@ def simulate_batch(params_phys: torch.Tensor,
     """
     if params_phys.ndim != 2:
         raise ValueError(f"params_phys must be 2D (B, P), got shape {tuple(params_phys.shape)}")
-    return _JaxleySimulate.apply(params_phys, cell_name, stim_name)
+    ckpt = tuple(checkpoint_lengths) if checkpoint_lengths else None
+    return _JaxleySimulate.apply(params_phys, cell_name, stim_name, ckpt, solver)
 
 
 # ═════════════════════════════════════════════════════════════════════════

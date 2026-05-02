@@ -1,0 +1,115 @@
+# Voltage-only hybrid loss against the ball_and_stick_bbp cell.
+#
+# Data pack stores 19 unit_par columns (cADpyr), but ball_and_stick_bbp
+# exposes only 12 trainable conductances — see toolbox/jaxley_cells/
+# ball_and_stick_bbp.py:_PARAM_MAP.
+#
+# - mask_channels: True       -> data unit_par is ignored, so the dim
+#                                 mismatch (19 vs 12) is benign.
+# - model.outputSize_override: 12  -> forces the CNN's last FC to 12.
+# - voltage_loss.phys_par_range: 12 entries matching ball_and_stick_bbp
+#   PARAM_KEYS in order; centers are the cell's _DEFAULTS, log halfspan
+#   0.5 (~3.16x range when unit ∈ [-1, 1]).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/Apr26ExcNoNoise_24733338/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 2
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False        # graph trace would JIT jaxley a 2nd time
+
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0003]
+    LRsched:   { plateau_patience: 2, reduceFactor: 0.3 }
+
+# ─────────────────────────────────────────────────────────────────────────
+# Voltage-only hybrid loss
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ball_and_stick_bbp
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True             # skip channel term entirely
+    stim_name:         5k50kInterChaoticB
+    soma_probe_index:  0                # data probe order: [soma, axon, apic, dend]
+    clamp_unit_tanh:   True             # squash pred_unit -> tanh before phys
+                                        # mapping: keeps jaxley numerically
+                                        # stable when there's no channel anchor
+    t_max_override:    auto             # = dt_stim × len(stim_csv); resolved
+                                        # at criterion-build time, sim span
+                                        # exactly matches the stim waveform.
+    # Two-level grad checkpointing through jx.integrate.  outer * inner must
+    # equal the total step count (t_max/dt = 5000 here).  inner=10 keeps the
+    # backward Jacobian-product chain only 10 stiff steps long per VJP
+    # segment — should keep fp32 stable through the 500 ms span where the
+    # un-checkpointed adjoint NaN'd.
+    # Drop checkpointing — fp64 is the actual fix; ckpt only saves memory.
+    # checkpoint_lengths: [500, 10]
+    solver:            bwd_euler        # bwd_euler in fp64 is stable at 500 ms.
+    fp64:              True             # promote pred_phys -> jaxley sim -> MSE
+                                        # to float64. Requires JAX_ENABLE_X64=true
+                                        # in the SLURM env (set in batchShifter-
+                                        # Jaxley.slr). Without fp64, backward
+                                        # NaN's at t_max ≥ 250 ms with BBP set.
+    # 12-entry [center, log10_halfspan, unit] aligned with
+    # ball_and_stick_bbp.PARAM_KEYS.  Halfspan 0.5 -> unit∈[-1,1] maps to
+    # ~3.16x range around the BBP defaults.
+    phys_par_range:
+        - [0.983955, 0.5, "S/cm^2"]   # gNaTs2_tbar_NaTs2_t_somatic
+        - [0.006827, 0.5, "S/cm^2"]   # gNap_Et2bar_Nap_Et2_somatic
+        - [0.089259, 0.5, "S/cm^2"]   # gK_Tstbar_K_Tst_somatic
+        - [0.100000, 0.5, "S/cm^2"]   # gK_Pstbar_K_Pst_somatic
+        - [0.000333, 0.5, "S/cm^2"]   # gCa_LVAstbar_Ca_LVAst_somatic
+        - [0.000990, 0.5, "S/cm^2"]   # gCa_HVAbar_Ca_HVA_somatic
+        - [3.0e-5,   0.5, "S/cm^2"]   # g_pas_somatic
+        - [0.026145, 0.5, "S/cm^2"]   # gNaTs2_tbar_NaTs2_t_apical
+        - [0.010000, 0.5, "S/cm^2"]   # gK_Pstbar_K_Pst_apical
+        - [0.000143, 0.5, "S/cm^2"]   # gImbar_Im_apical
+        - [8.0e-5,   0.5, "S/cm^2"]   # gIhbar_Ih_apical
+        - [3.0e-5,   0.5, "S/cm^2"]   # g_pas_apical
+
+model:
+    myId:    ballBBP_voltage_only
+    comment: Phase 2 debug-queue smoke run, ball_and_stick_bbp voltage-only
+    outputSize_override: 12          # data has 19; CNN should emit 12 to match cell
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04
