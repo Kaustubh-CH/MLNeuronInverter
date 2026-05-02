@@ -41,7 +41,7 @@ _NJ_ROOT  = Path("/pscratch/sd/k/ktub1999/Neuron_Jaxley")
 _STIM_DIR = Path("/pscratch/sd/k/ktub1999/main/DL4neurons2/stims")
 
 _DT_STIM = 0.1     # ms
-_DT      = 0.025   # ms
+_DT      = 0.1     # ms (use 0.025 if spike-time precision <0.1 ms matters)
 _T_MAX   = 500.0   # ms
 _V_INIT  = -75.0   # mV  — BBP convention (matches L5TTPC), not HH ball-and-stick
 

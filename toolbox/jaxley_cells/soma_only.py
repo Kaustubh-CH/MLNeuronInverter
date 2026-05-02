@@ -18,7 +18,7 @@ from . import CellSpec, register
 _STIM_DIR = Path("/pscratch/sd/k/ktub1999/main/DL4neurons2/stims")
 
 _DT_STIM = 0.1     # ms
-_DT      = 0.025   # ms (spec default; bench overrides to 0.1)
+_DT      = 0.1     # ms (use 0.025 if spike-time precision <0.1 ms matters)
 _T_MAX   = 500.0   # ms (spec default; bench overrides to 100)
 _V_INIT  = -65.0   # mV
 
