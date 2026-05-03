@@ -301,6 +301,10 @@ def main():
             "fp64":          (not args.fp32),
             "seed":          args.seed,
             "cell_spec":     cell_spec,
+            # `Trainer.patch_h5meta` reads probe/stim names from simu_info,
+            # not from the top level — keep both for self-documentation.
+            "probe_names":   ["soma"],
+            "stim_names":    [_STIM_NAME],
         },
         "pack_info": {
             "n_total":       int(n),
