@@ -1,0 +1,75 @@
+# Neur-inver design  with hybrid jaxley voltage loss enabled.
+# Mirrors m8lay_vs3.hpar.yaml; only the use_voltage_loss / voltage_loss
+# block is added.
+#
+# IMPORTANT: *yaml is in .gitignore — git add -f this file.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/bbp_May_02/
+
+data_conf:
+    serialize_stims :  True   # each stim becomes an independent sample
+    append_stim : False
+    parallel_stim : False     # HybridLoss assumes (B, T, C); parallel_stim breaks that
+    num_data_workers: 4
+
+max_epochs: 12
+batch_size: 512
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 3
+tb_show_graph: True
+
+save_checkpoint: False
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp: False
+    apex:  False
+    autotune:  False
+    zerograd: False
+
+train_conf:
+    warmup_epochs: 10
+    optimizer: [adam, 0.005]
+    LRsched: { plateau_patience: 8, reduceFactor: 0.11  }
+
+# ─────────────────────────────────────────────────────────────────────────
+# Hybrid (channel + voltage) loss — Phase 2
+# ─────────────────────────────────────────────────────────────────────────
+# When True, Trainer constructs HybridLoss instead of plain MSELoss.
+# Set voltage_weight=0 to recover the channel-only path bit-equivalently
+# (handy for ablations).
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ball_and_stick   # or "L5TTPC" once that bridge cost is acceptable
+    channel_weight:    1.0
+    voltage_weight:    0.1              # anneal up after a few epochs
+    mask_channels:     False            # True for experimental fine-tune (Phase 4)
+    stim_name:         5k50kInterChaoticB   # null -> spec.default_stim_name
+    soma_probe_index:  0                # index into the dataloader probs_select
+
+model:
+    myId:  m8lay_vs3_jaxley
+    comment: Hybrid voltage-loss design — Phase 2 scaffold
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [ 4,  4,  4]
+        pool:   [ 4,  4,  4]
+
+    instance_norm_slot: -9
+    layer_norm: False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat: True
+
+    fc_block:
+       dims: [ 512, 512, 512, 256, 128 ]
+       dropFrac: 0.04

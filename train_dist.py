@@ -15,7 +15,9 @@ import  logging
 logging.basicConfig(format='%(levelname)s - %(message)s', level=logging.INFO)
 import torch
 import torch.distributed as dist
-from RayTune import Raytune
+# RayTune (and ray) is only needed when do_ray=True; defer the import so
+# non-Ray runs (e.g. the jaxley voltage-only path) don't pay for ray's
+# transitive deps that may be missing in lean conda envs.
 
 
 def get_parser():  
@@ -87,7 +89,10 @@ if __name__ == '__main__':
   params['world_rank'] = 0
   # print("WORDL SIZEEEEEEEEEEEEEEEEEEEEEEee",params['world_size'])
   if params['world_size'] > 1:  # multi-GPU training
-    torch.cuda.set_device(0)
+    # Pin to the local-rank GPU when SLURM exposes all GPUs to every task
+    # (--gpu-bind=none). Falls back to 0 in single-GPU-per-task setups.
+    _local = int(os.environ.get('SLURM_LOCALID', 0))
+    torch.cuda.set_device(_local)
     dist.init_process_group(backend='nccl', init_method='env://')
     params['world_rank'] = dist.get_rank()
     #print('M:locRank:',params['local_rank'],'rndSeed=',torch.seed())
@@ -136,6 +141,7 @@ if __name__ == '__main__':
 
   # trainer.train()
   if(params['do_ray']):
+    from RayTune import Raytune  # heavy ray import deferred to here
     rayTune = Raytune(params)
   else:
     trainer = Trainer(params)

@@ -141,6 +141,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 
 - `RayTune.py`
     - defs: threadTrain, trainable, Raytune
+- `evaluate_voltage.py` - Evaluate a HybridLoss/voltage-trained model.
+    - defs: get_parser, load_trained_model, load_test_data, main
 - `findSpikesExpC.py` - identify spikes in experimental wave forms
     - defs: get_parser, score_me, pack_scores, M_build_metaData, M_save_tspike
 - `formatExpC4ML.py` - select subset of experimental waveforms and re-pack them for ML-predictions
@@ -185,6 +187,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _safe_genfromtxt, get_data_loader, Dataset_h5_neuronInverter
 - `toolbox/Dataloader_multiH5.py`
     - defs: get_data_loader, Dataset_multiH5_neuronInverter
+- `toolbox/HybridLoss.py` - Hybrid channel + voltage loss for the jaxley physics-supervised path.
+    - defs: HybridLoss, _ChannelOnlyAdapter, _log_jax_devices_once, _read_phys_par_range_from_h5, build_hybrid_loss
 - `toolbox/JaxleyBridge.py` - Torch <-> Jaxley bridge.
     - defs: _CellHandle, _build_handle, get_handle, _torch_to_jax, _jax_to_torch, _JaxleySimulate, simulate_batch, output_shape, param_keys, clear_cache
 - `toolbox/Model.py`
@@ -242,10 +246,13 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _print, _default_params_tensor, _count_spikes, check_against_reference, bench_throughput, main
 - `toolbox/tests/bench_solvers.py` - Solver + cell + batch sweep bench at dt=0.1 ms, t_max=100 ms.
     - defs: _default_params, build_simulate, time_warm, _extract_soma_trace, run_matrix, save_csv, save_text_summary, save_trace_plots, save_bars, cmd_main, cmd_scaling, build_parser, main
+- `toolbox/tests/phase2_demo.py` - End-to-end Phase 2 demo.
 - `toolbox/tests/plot_bench_bar_b128.py` - Grouped bar chart: sims/sec vs batch size, across every GPU config + CPU.
     - defs: _gpu_value, _cpu_value, _plot_panel, main
 - `toolbox/tests/plot_bench_comparison.py` - Pull every completed bench CSV into a single comparison figure.
     - defs: _load_gpu, _load_cpu, _plot_panel, main
+- `toolbox/tests/test_hybrid_loss.py` - Phase 2 tests for toolbox.HybridLoss.
+    - defs: _shrink_t_max, _restore_t_max, test_zero_recovers_mse, test_adapter_is_mse, test_voltage_forward_finite, test_voltage_grad_flows, test_mask_channels_skips_channel_loss, test_unit_to_phys_matches_numpy, test_factory_channel_only_passthrou...
 - `toolbox/tests/test_jaxley_bridge.py` - Phase 1 tests for toolbox.JaxleyBridge.
     - defs: test_registry_lists_both_cells, test_shapes, test_cache_hit_no_recompile, test_vmap_matches_serial_loop, test_gradcheck_tiny, test_fresh_state_per_call, test_l5ttpc_registers_but_do_not_build, main
 
