@@ -1,0 +1,38 @@
+#!/bin/bash -l
+#SBATCH -N1 --time=0:29:00 -J phase3val -q debug
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=1 --gpus-per-node=1 --cpus-per-task=32 -C gpu -A m2043_g
+# - - - E N D    O F    SLURM    C O M M A N D S
+#
+# Phase 3 — run plotJaxleyValidation.py on a trained checkpoint.
+#
+# Usage:
+#   sbatch scripts/run_plot_validation.slr <run_dir>/out [numSamples] [simBatch]
+# e.g.
+#   sbatch scripts/run_plot_validation.slr \
+#       /pscratch/sd/k/ktub1999/tmp_neuInv/jaxley_matched/ballBBP_matched/ball_and_stick_bbp_synth/52379072/out
+
+set -e
+
+modelPath=${1:?usage: $0 <run_dir>/out [numSamples] [simBatch]}
+n=${2:-2000}
+sb=${3:-64}
+
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+
+export JAX_COMPILATION_CACHE_DIR=$SCRATCH/jax_cc/rank_${SLURM_PROCID:-0}
+mkdir -p $JAX_COMPILATION_CACHE_DIR
+export JAX_PLATFORMS=cuda
+export JAX_ENABLE_X64=true
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.7
+
+cd ${SLURM_SUBMIT_DIR:-$(pwd)}
+date
+echo "S: validating $modelPath, N=$n, simBatch=$sb"
+time srun -n 1 python -u plotJaxleyValidation.py \
+    --modelPath $modelPath --numSamples $n --simBatch $sb
+echo "S: validation done"
+date

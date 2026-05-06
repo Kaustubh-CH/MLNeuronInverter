@@ -1,0 +1,41 @@
+cell_name: ball_and_stick_bbp
+model_path: /pscratch/sd/k/ktub1999/tmp_neuInv/jaxley_matched/ballBBP_matched/ball_and_stick_bbp_synth/52379233/out
+n_samples: 2000
+overall_pass: false
+param_ev_threshold: 0.85
+params:
+- {explained_variance: 0.12290906332918183, k: 0, mae: 0.46141662096899744, name: gNaTs2_tbar_NaTs2_t_somatic,
+  pass: false, pearson_r: 0.35635788223918446, rmse: 0.5396507662215219}
+- {explained_variance: 0.8501068522180113, k: 1, mae: 0.1753657445893041, name: gNap_Et2bar_Nap_Et2_somatic,
+  pass: true, pearson_r: 0.9232007203059727, rmse: 0.22053395582652557}
+- {explained_variance: 0.03797469330757053, k: 2, mae: 0.4990533943524806, name: gK_Tstbar_K_Tst_somatic,
+  pass: false, pearson_r: 0.19850516665815768, rmse: 0.5759957137826919}
+- {explained_variance: 0.7605361346224893, k: 3, mae: 0.22313156549418636, name: gK_Pstbar_K_Pst_somatic,
+  pass: false, pearson_r: 0.880649628421671, rmse: 0.28616453033412464}
+- {explained_variance: 0.005421792814803816, k: 4, mae: 0.5017404072537174, name: gCa_LVAstbar_Ca_LVAst_somatic,
+  pass: false, pearson_r: 0.08272457568212528, rmse: 0.5794620074208809}
+- {explained_variance: 0.2743766445677931, k: 5, mae: 0.392617751767757, name: gCa_HVAbar_Ca_HVA_somatic,
+  pass: false, pearson_r: 0.5380306359142594, rmse: 0.48120470286109274}
+- {explained_variance: 0.6387159345459894, k: 6, mae: 0.2839146664193686, name: g_pas_somatic,
+  pass: false, pearson_r: 0.8046170809130503, rmse: 0.35162016611241903}
+- {explained_variance: -0.01310982719292908, k: 7, mae: 0.5059923936142005, name: gNaTs2_tbar_NaTs2_t_apical,
+  pass: false, pearson_r: -0.053026031620668934, rmse: 0.5835339640157592}
+- {explained_variance: -0.002531901863623176, k: 8, mae: 0.4923551990505366, name: gK_Pstbar_K_Pst_apical,
+  pass: false, pearson_r: -0.007728312360112882, rmse: 0.5712480062963546}
+- {explained_variance: 0.0003097743646366391, k: 9, mae: 0.5115382699036273, name: gImbar_Im_apical,
+  pass: false, pearson_r: 0.02700605953302245, rmse: 0.5851669924218194}
+- {explained_variance: 0.32068305543111775, k: 10, mae: 0.39299260734780184, name: gIhbar_Ih_apical,
+  pass: false, pearson_r: 0.5669876285487, rmse: 0.47849454277861986}
+- {explained_variance: 0.04386767451229645, k: 11, mae: 0.48584688276415, name: g_pas_apical,
+  pass: false, pearson_r: 0.2124875340479363, rmse: 0.5629796026547859}
+params_passed_ev: 1
+params_total: 12
+spike_count_diff_mean_abs: 1.5725
+spikes_data_mean: 5.3875
+spikes_sim_mean: 6.876
+voltage_mse_z_mean: 0.02156958862899445
+voltage_mse_z_median: 0.0068373571393403245
+voltage_pass: true
+voltage_rmse_z_mean: 0.11290281412355255
+voltage_rmse_z_median: 0.08268831044017884
+voltage_rmse_z_threshold: 0.3
