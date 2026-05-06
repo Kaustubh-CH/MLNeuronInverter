@@ -50,6 +50,8 @@ class HybridLoss(nn.Module):
         checkpoint_lengths=None,
         solver: str = "bwd_euler",
         fp64: bool = False,
+        sim_t_skip_ms: float = 0.0,
+        sim_dt_ms: float = 0.1,
     ):
         super().__init__()
         self.cell_name        = cell_name
@@ -80,6 +82,13 @@ class HybridLoss(nn.Module):
         # tanh first so the CNN can only ask for phys ∈ [center/10^logspan,
         # center·10^logspan] — keeping jaxley numerically stable.
         self.clamp_unit_tanh  = bool(clamp_unit_tanh)
+        # `sim_t_skip_ms`: drop the first N ms of the simulated trace
+        # before z-scoring + MSE.  Use this when the data H5 trimmed an
+        # initial pre-stim window (e.g. L5_TTPC1 packs trim 100 ms, so
+        # data bin 0 corresponds to sim t = 100 ms).  Without this, the
+        # first 100 ms of jaxley's output is compared against data that
+        # actually starts at sim t = 100 ms — a 100 ms misalignment.
+        self.sim_t_skip_bins = max(0, int(round(float(sim_t_skip_ms) / float(sim_dt_ms))))
         self._mse = nn.MSELoss()
 
         centers, logspans = phys_par_range_to_arrays(phys_par_range)
@@ -134,7 +143,11 @@ class HybridLoss(nn.Module):
         )
         # v_sim: (B, n_recorded, T_out).  Use first recorded compartment (soma).
         v_sim_soma = v_sim[:, 0, :]                                  # (B, T_out)
-        v_sim_z    = self._zscore_time(v_sim_soma)                   # (B, T_out)
+        # Drop the first `sim_t_skip_bins` of jaxley's trace so the
+        # z-score window matches the data H5's pre-trimmed window.
+        if self.sim_t_skip_bins > 0:
+            v_sim_soma = v_sim_soma[:, self.sim_t_skip_bins:]
+        v_sim_z    = self._zscore_time(v_sim_soma)                   # (B, T_out')
 
         # Pick the soma probe trace from the dataloader's z-scored voltages.
         # `true_volts` shape: (B, T, C).  `soma_probe_index` selects the
@@ -317,4 +330,6 @@ def build_hybrid_loss(params) -> nn.Module:
         checkpoint_lengths = vl.get("checkpoint_lengths"),
         solver           = str(vl.get("solver", "bwd_euler")),
         fp64             = bool(vl.get("fp64", False)),
+        sim_t_skip_ms    = float(vl.get("sim_t_skip_ms", 0.0)),
+        sim_dt_ms        = float(vl.get("sim_dt_ms", 0.1)),
     )

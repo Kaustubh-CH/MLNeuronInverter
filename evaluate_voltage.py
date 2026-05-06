@@ -124,6 +124,10 @@ def main():
     stim_name      = vl.get("stim_name")
     t_max_override = vl.get("t_max_override")
     soma_probe_idx = int(vl.get("soma_probe_index", 0))
+    sim_t_skip_ms  = float(vl.get("sim_t_skip_ms", 0.0))
+    sim_dt_ms      = float(vl.get("sim_dt_ms", 0.1))
+    sim_skip_bins  = max(0, int(round(sim_t_skip_ms / sim_dt_ms)))
+    print(f"[eval] sim_t_skip_ms={sim_t_skip_ms} -> skipping first {sim_skip_bins} bins of jaxley output")
 
     if phys_par_range is None:
         # Read from H5 meta — same fallback as build_hybrid_loss
@@ -200,6 +204,12 @@ def main():
     t1 = time.time()
     print(f"[eval] jaxley ran in {t1-t0:.1f}s, v_sim shape = {v_sim.shape}")
 
+    # Drop the pre-stim window from the simulated trace so its time axis
+    # aligns with the (already-pretrimmed) data H5.
+    if sim_skip_bins > 0:
+        v_sim = v_sim[:, sim_skip_bins:]
+        print(f"[eval] after sim_t_skip: v_sim shape = {v_sim.shape}")
+
     # Truncate to overlap
     T = min(v_sim.shape[1], T_data)
     v_sim_pre = v_sim[:, :T]                          # (N, T) in mV (pre z-score)
@@ -273,7 +283,9 @@ def main():
         order[-n_overlay // 3:],                             # worst
     ])[:n_overlay]
     dt = 0.1
-    t_axis = np.arange(T) * dt   # ms
+    # x-axis starts at sim_t_skip_ms so plots show absolute simulation time
+    # rather than relative-to-trim.  Easier to read against the stim CSV.
+    t_axis = sim_t_skip_ms + np.arange(T) * dt   # ms
 
     for k, idx in enumerate(pick):
         fig, axes = plt.subplots(2, 1, figsize=(11, 5), sharex=True)
