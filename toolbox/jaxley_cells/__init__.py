@@ -84,7 +84,7 @@ def get(name: str) -> CellSpec:
     if name not in _REGISTRY:
         # Lazy-import builders so a missing jaxley dep doesn't blow up
         # callers that don't actually use jaxley.
-        from . import ball_and_stick, ball_and_stick_bbp, l5ttpc, soma_only  # noqa: F401
+        from . import ball_and_stick, ball_and_stick_bbp, ca3_pyramidal, l5ttpc, soma_only  # noqa: F401
     if name not in _REGISTRY:
         raise KeyError(
             f"unknown jaxley cell {name!r}. Registered: {sorted(_REGISTRY)}"
@@ -93,5 +93,5 @@ def get(name: str) -> CellSpec:
 
 
 def list_cells() -> List[str]:
-    from . import ball_and_stick, ball_and_stick_bbp, l5ttpc, soma_only  # noqa: F401
+    from . import ball_and_stick, ball_and_stick_bbp, ca3_pyramidal, l5ttpc, soma_only  # noqa: F401
     return sorted(_REGISTRY)

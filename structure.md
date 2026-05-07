@@ -234,6 +234,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _build, _attach_stim, _attach_record, _spec
 - `toolbox/jaxley_cells/ball_and_stick_bbp.py` - Ball-and-stick cell with BBP channels (multi-section, multi-channel).
     - defs: _build, _attach_stim, _attach_record, _spec
+- `toolbox/jaxley_cells/ca3_pyramidal.py` - CA3 Pyramidal Neuron (single-comp soma) — Jaxley port.
+    - defs: _build, _attach_stim, _attach_record, _spec
 - `toolbox/jaxley_cells/l5ttpc.py` - L5TTPC cell builder for the hybrid voltage-loss path.
     - defs: _apply_apical_ih_gradient, _build, _attach_stim, _attach_record, _spec
 - `toolbox/jaxley_cells/soma_only.py` - Single-compartment HH soma cell.
@@ -253,6 +255,10 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _gpu_value, _cpu_value, _plot_panel, main
 - `toolbox/tests/plot_bench_comparison.py` - Pull every completed bench CSV into a single comparison figure.
     - defs: _load_gpu, _load_cpu, _plot_panel, main
+- `toolbox/tests/sim_neuron_ca3.py` - NEURON-side reference simulation for the CA3 Pyramidal model.
+    - defs: _load_neuron, build_cell, run_protocol, _resample_to_grid, _make_step, _save, run_test1_rest, run_test2_subthresh, run_test3_suprathresh, run_test4_fI, run_test5_paramsweep, run_test6_apshape, run_test7_walltime, main
+- `toolbox/tests/test_ca3_neuron_vs_jaxley.py` - CA3 NEURON-vs-Jaxley comparison harness.
+    - defs: _jaxley_runner, detect_spikes, coincidence_fraction, half_width, ahp_depth, Summary, _load_neuron, _plot_overlay, _gbar_from_npz, run_test1_rest, run_test2_subthresh, run_test3_suprathresh, run_test4_fI, run_test5_paramsweep, run_test6_a...
 - `toolbox/tests/test_hybrid_loss.py` - Phase 2 tests for toolbox.HybridLoss.
     - defs: _shrink_t_max, _restore_t_max, test_zero_recovers_mse, test_adapter_is_mse, test_voltage_forward_finite, test_voltage_grad_flows, test_mask_channels_skips_channel_loss, test_unit_to_phys_matches_numpy, test_factory_channel_only_passthrou...
 - `toolbox/tests/test_jaxley_bridge.py` - Phase 1 tests for toolbox.JaxleyBridge.
