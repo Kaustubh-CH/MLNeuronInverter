@@ -53,6 +53,13 @@ train_conf:
     warmup_epochs: 0
     optimizer: [adam, 0.0003]
     LRsched:   { plateau_patience: 2, reduceFactor: 0.3 }
+    # Gradient clipping — required for HybridLoss/jaxley training where
+    # rare extreme CNN-predicted parameter draws produce huge (post-fp64,
+    # finite) gradients that destabilise Adam.  Without this, job 52656278
+    # (10-epoch debug run) descended cleanly to val 0.57 by epoch 3 then
+    # spiked to val 7.6 at epoch 6 before recovering.  With clip_grad_norm,
+    # the spike is bounded.  1.0 is the standard ML-hygiene default.
+    clip_grad_norm: 1.0
 
 # ─────────────────────────────────────────────────────────────────────────
 # Hybrid (channel + voltage) loss

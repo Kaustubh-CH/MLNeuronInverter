@@ -433,6 +433,17 @@ class Trainer():
       # AMP: Use GradScaler to scale loss and run backward to produce scaled gradients
       self.grad_scaler.scale(loss).backward()
 
+      # Gradient clipping (off by default; required for HybridLoss/jaxley
+      # training where rare extreme parameter draws produce huge — but
+      # finite, after fp64 — gradients that destabilise Adam's moment
+      # estimates.  Value taken from train_conf.clip_grad_norm; <=0 disables.
+      _clip = float(self.params.get('train_conf', {}).get('clip_grad_norm', 0))
+      if _clip > 0:
+        # Unscale grads before clipping (no-op when AMP disabled, but
+        # required by the GradScaler contract before .step()).
+        self.grad_scaler.unscale_(self.optimizer)
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=_clip)
+
       # AMP: Run optimizer step through GradScaler (unscales gradients and skips steps if required)
       self.grad_scaler.step(self.optimizer)
       
