@@ -70,9 +70,16 @@ voltage_loss:
                                     # criterion-build time so sim length
                                     # matches the stim waveform exactly.
     solver:            bwd_euler
-    fp64:              False        # CA3 fp32 is stable (single-comp, 6 chan;
-                                    # no backward NaNs at t_max=500 ms in
-                                    # docs/ca3/gpu_bench.md).
+    # IMPORTANT: fp64 is REQUIRED for training even though the GPU bench (with
+    # default ḡ) was fp32-stable.  Under DDP, the CNN samples extreme parameter
+    # combinations across 16 ranks × 128 batch = 2048 sims/step, and rare
+    # high-gNa/low-gK draws push bwd_euler over 5000 stiff steps into the fp32
+    # mantissa overflow regime.  ONE rank with NaN gradient -> NCCL all-reduce
+    # propagates NaN to every rank -> entire model permanently NaN.  Confirmed
+    # in job 52652251 (10-epoch debug run, all epochs train=nan val=nan from
+    # epoch 0).  fp64 cost on CA3 is negligible: B=256 fp64 fwd_bwd = 5.37 ms
+    # vs fp32 5.32 ms (docs/ca3/gpu_bench.md).
+    fp64:              True         # also requires JAX_ENABLE_X64=true in SLR env.
     # phys_par_range omitted -> read from H5 meta.JSON.input_meta.phys_par_range
     # at criterion-build time.
 

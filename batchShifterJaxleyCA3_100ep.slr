@@ -43,7 +43,10 @@ export PYTHONNOUSERSITE=1
 export JAX_COMPILATION_CACHE_DIR=$SCRATCH/jax_cc/rank_${SLURM_PROCID:-0}
 mkdir -p $JAX_COMPILATION_CACHE_DIR
 export JAX_PLATFORMS=cuda
-# fp32 is enough for CA3 — no JAX_ENABLE_X64.
+# fp64 is REQUIRED for training (not just bench): under DDP, rare high-gNa
+# parameter draws produce NaN backward gradients in fp32, and NCCL all-reduce
+# propagates NaN across ranks.  See ca3_matched.hpar.yaml fp64 comment.
+export JAX_ENABLE_X64=true
 
 # ─── NCCL (Perlmutter, no shifter) ──────────────────────────────────────
 export NCCL_DEBUG=WARN
