@@ -1,0 +1,49 @@
+#!/bin/bash -l
+#SBATCH -N1 --time=0:29:00 -J ca3gen -q debug
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=1 --gpus-per-node=1 --cpus-per-task=32 -C gpu -A m2043_g
+# - - - E N D    O F    SLURM    C O M M A N D S
+#
+# Phase 4 — generate the matched CA3 Pyramidal synthetic data pack.
+#
+# CA3 is much faster than ball_and_stick_bbp on GPU (single-comp, 6
+# channels, fp32 stable — see docs/ca3/gpu_bench.md).  At B=1024 fwd-only
+# fp32, throughput is ~9 000 traces/s on 1 A100, so 50k samples ≈ 6 s
+# of pure sim time + a few minutes of disk I/O / z-score / H5 write.
+# Debug queue (29 min) is plenty.
+#
+# Output:
+#   $SCRATCH/synthetic_ca3_data/ca3_synth_v1/ca3_pyramidal_synth.mlPack1.h5
+#
+# Override N / batch via:
+#   sbatch scripts/gen_ca3_data.slr [n] [out_dir] [seed] [batch]
+
+set -e
+
+n=${1:-50000}
+out_dir=${2:-/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_synth_v1}
+seed=${3:-0}
+batch=${4:-1024}
+
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+
+export JAX_COMPILATION_CACHE_DIR=$SCRATCH/jax_cc/rank_${SLURM_PROCID:-0}
+mkdir -p $JAX_COMPILATION_CACHE_DIR
+export JAX_PLATFORMS=cuda
+# fp32 is fine for CA3, no JAX_ENABLE_X64 needed.
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.7
+
+mkdir -p $out_dir
+cd ${SLURM_SUBMIT_DIR:-$(pwd)}
+
+date
+echo "S: generating N=$n CA3 samples -> $out_dir (seed=$seed, batch=$batch, fp32)"
+time srun -n 1 python -u scripts/gen_ball_and_stick_data.py \
+    --source-cell ca3_pyramidal \
+    --out $out_dir --n $n --batch $batch --seed $seed --fp32
+echo "S: gen done"
+date
+ls -lh $out_dir

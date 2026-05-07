@@ -17,12 +17,12 @@ os.environ.setdefault("JAX_PLATFORMS", "cuda,cpu")
 import numpy as np
 import torch
 
-CELL = "ca3_pyramidal"
+CELL_DEFAULT = "ca3_pyramidal"
 T_MAX = 500.0
 DT    = 0.1
 
 
-def _build(solver: str, fp64: bool):
+def _build(solver: str, fp64: bool, cell_name: str = CELL_DEFAULT):
     if fp64:
         os.environ["JAX_ENABLE_X64"] = "true"
     import jax
@@ -32,7 +32,7 @@ def _build(solver: str, fp64: bool):
     import jaxley as jx
     from toolbox import jaxley_cells, jaxley_utils
 
-    spec = jaxley_cells.get(CELL)
+    spec = jaxley_cells.get(cell_name)
     cell, idx_map = spec.build_fn()
 
     stim_path = Path(spec.stim_dir) / f"{spec.default_stim_name}.csv"
@@ -45,9 +45,10 @@ def _build(solver: str, fp64: bool):
     keys           = [next(iter(e.keys())) for e in default_params]
     shapes         = [e[k].shape for e, k in zip(default_params, keys)]
 
-    from toolbox.jaxley_cells.ca3_pyramidal import _DEFAULTS, PARAM_KEYS
+    import importlib
+    cell_mod = importlib.import_module(f"toolbox.jaxley_cells.{cell_name}")
     default_row = jnp.asarray(
-        [_DEFAULTS[k] for k in PARAM_KEYS],
+        [cell_mod._DEFAULTS[k] for k in cell_mod.PARAM_KEYS],
         dtype=jnp.float64 if fp64 else jnp.float32,
     )
 
@@ -79,22 +80,30 @@ def _time(fn, x, n_warm=2, n_timed=5):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--cell",    default=CELL_DEFAULT,
+                    help="Registered jaxley cell name (default: %(default)s)")
     ap.add_argument("--solver",  default="bwd_euler")
     ap.add_argument("--batches", nargs="+", type=int,
                     default=[1, 16, 64, 128, 256, 512, 1024, 2048])
     ap.add_argument("--out-dir", default="/pscratch/sd/k/ktub1999/tmp_neuInv/ca3_gpu_bench")
     ap.add_argument("--fp64-batch", type=int, default=256)
+    ap.add_argument("--out-name", default=None,
+                    help="output CSV filename stem (default: bench_<cell>_gpu)")
+    ap.add_argument("--skip-fp64", action="store_true",
+                    help="skip the fp64 spot check")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir); out_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = out_dir / "bench_ca3_gpu.csv"
+    out_stem = args.out_name or f"bench_{args.cell}_gpu"
+    csv_path = out_dir / f"{out_stem}.csv"
 
     rows = []
     rows.append(["dtype", "mode", "B", "cold_s", "warm_ms", "p5_ms", "p95_ms",
                  "ms_per_trace", "traces_per_sec", "note"])
 
     # ── fp32 forward sweep ─────────────────────────────────────────────────
-    loss_one, default_row, jax = _build(args.solver, fp64=False)
+    loss_one, default_row, jax = _build(args.solver, fp64=False, cell_name=args.cell)
+    print(f"[bench] cell={args.cell}  solver={args.solver}  t_max={T_MAX} ms  dt={DT} ms", flush=True)
 
     for mode in ("fwd", "fwd_bwd"):
         if mode == "fwd":
@@ -120,9 +129,15 @@ def main():
                 print(f"[fp32 {mode}] B={B:5d}  ERROR: {type(e).__name__}: {str(e)[:80]}", flush=True)
         jax.clear_caches()
 
+    if args.skip_fp64:
+        with open(csv_path, "w", newline="") as f:
+            w = csv.writer(f); w.writerows(rows)
+        print(f"\nwrote {csv_path}", flush=True)
+        return
+
     # ── fp64 spot check (just one batch size) ──────────────────────────────
     print("\n--- fp64 spot check ---", flush=True)
-    loss_one, default_row, jax = _build(args.solver, fp64=True)
+    loss_one, default_row, jax = _build(args.solver, fp64=True, cell_name=args.cell)
     for mode in ("fwd", "fwd_bwd"):
         if mode == "fwd":
             fn = jax.jit(jax.vmap(loss_one))

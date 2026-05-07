@@ -268,8 +268,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 
 ### scripts/
 
-- `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 for the ball_and_stick_bbp cell.
-    - defs: _build_phys_par_range, generate_voltages, zscore_per_sample_per_probe, write_h5, main
+- `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 from a registered jaxley cell.
+    - defs: _load_source_cell, _build_phys_par_range, generate_voltages, zscore_per_sample_per_probe, write_h5, main
 - `scripts/install_hooks.sh`
 
 ### packBBP3/
