@@ -244,6 +244,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 ### toolbox/tests/
 
 - `toolbox/tests/__init__.py`
+- `toolbox/tests/bench_gpu_ca3.py` - GPU bench for CA3 Pyramidal — t_max=500 ms apples-to-apples vs NEURON.
+    - defs: _build, _time, main
 - `toolbox/tests/bench_gpu_l5ttpc.py` - GPU bench for the jaxley voltage-loss path.
     - defs: _build_loss_fn, _default_phys_jnp, _time_fn, _peak_mem_mb, _reset_peak_mem, run_combo, main
 - `toolbox/tests/bench_jaxley_cells.py` - Correctness + throughput benchmark for the Phase 1 jaxley cells.

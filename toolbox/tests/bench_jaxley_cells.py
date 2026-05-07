@@ -65,6 +65,9 @@ def _default_params_tensor(cell_name: str, batch: int, dtype: torch.dtype) -> to
     elif cell_name == "ball_and_stick_bbp":
         from toolbox.jaxley_cells.ball_and_stick_bbp import _DEFAULTS, PARAM_KEYS
         row = [_DEFAULTS[k] for k in PARAM_KEYS]
+    elif cell_name == "ca3_pyramidal":
+        from toolbox.jaxley_cells.ca3_pyramidal import _DEFAULTS, PARAM_KEYS
+        row = [_DEFAULTS[k] for k in PARAM_KEYS]
     elif cell_name in ("L5TTPC", "L5_TTPC1cADpyr0"):
         # Use values from the Neuron_Jaxley reference
         # biophysics.hoc defaults (see sim_jaxley_L5TTPC1.py build_cell).
