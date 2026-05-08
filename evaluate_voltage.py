@@ -190,6 +190,40 @@ def main():
                                        pred_unit_d * logspans_t)
     print(f"[eval] pred_phys[0] = {pred_phys[0].cpu().numpy()}")
 
+    # ── Channel-recovery metrics ──────────────────────────────────────────
+    # Compare CNN prediction (post-clamp) against ground-truth unit_par.
+    # Per-param MSE, R² (explained variance), bias.  Plus an aggregate.
+    import importlib
+    cell_mod = importlib.import_module(f"toolbox.jaxley_cells.{cell_name}")
+    param_names = list(cell_mod.PARAM_KEYS)
+    P = len(param_names)
+    pred_u = pred_unit_d.cpu().numpy()        # (N, P) post-tanh
+    true_u = unit_par_true.astype(np.float64) # (N, P) in [-1, 1]
+    # Sanity guard — model output P should match cell PARAM_KEYS length.
+    if pred_u.shape[1] != P or true_u.shape[1] != P:
+        print(f"[eval] WARN: param count mismatch — pred {pred_u.shape[1]} / "
+              f"true {true_u.shape[1]} / cell PARAM_KEYS {P}; channel-recovery"
+              f" metrics may be misaligned.")
+        P = min(pred_u.shape[1], true_u.shape[1], P)
+        pred_u = pred_u[:, :P]; true_u = true_u[:, :P]
+        param_names = param_names[:P]
+
+    chan_mse_per_param = ((pred_u - true_u) ** 2).mean(axis=0)
+    chan_bias_per_param = (pred_u - true_u).mean(axis=0)
+    chan_var_per_param  = true_u.var(axis=0)
+    # R² = 1 - MSE/Var, clipped to [-1, 1] for readability
+    chan_r2_per_param = 1.0 - chan_mse_per_param / np.maximum(chan_var_per_param, 1e-12)
+    chan_mse_overall = float(chan_mse_per_param.mean())
+    chan_rmse_overall = float(np.sqrt(chan_mse_overall))
+    chan_r2_overall = float(chan_r2_per_param.mean())
+
+    print(f"[eval] channel-recovery (N={pred_u.shape[0]}):")
+    print(f"[eval]   overall MSE  = {chan_mse_overall:.4f}  RMSE = {chan_rmse_overall:.4f}  mean R² = {chan_r2_overall:.3f}")
+    for i, name in enumerate(param_names):
+        print(f"[eval]   {name:<32}  MSE={chan_mse_per_param[i]:.4f}  "
+              f"R²={chan_r2_per_param[i]:+.3f}  bias={chan_bias_per_param[i]:+.3f}  "
+              f"pred range=[{pred_u[:,i].min():+.2f}, {pred_u[:,i].max():+.2f}]")
+
     # Run jaxley on the predicted phys params (chunked)
     # Outputs (B, n_recorded=1, T_sim).
     sim_chunks = []
@@ -246,8 +280,8 @@ def main():
             w.writerow([i, f"{rmse_z[i]:.4f}", f"{err_z[i]:.4f}",
                         int(spikes_sim[i]), int(spikes_data[i]), int(spike_diff[i])])
 
-    # Summary YAML
-    write_yaml({
+    # Summary YAML — voltage + channel-recovery metrics together.
+    summary = {
         "n_samples": int(N),
         "voltage_mse_z_mean": float(err_z.mean()),
         "voltage_mse_z_median": float(np.median(err_z)),
@@ -256,9 +290,57 @@ def main():
         "spike_count_diff_mean_abs": float(np.abs(spike_diff).mean()),
         "spikes_sim_mean":  float(spikes_sim.mean()),
         "spikes_data_mean": float(spikes_data.mean()),
+        "channel_mse_overall":  chan_mse_overall,
+        "channel_rmse_overall": chan_rmse_overall,
+        "channel_r2_overall":   chan_r2_overall,
+        "channel_per_param": [
+            {"name": param_names[i],
+             "mse":  float(chan_mse_per_param[i]),
+             "r2":   float(chan_r2_per_param[i]),
+             "bias": float(chan_bias_per_param[i])}
+            for i in range(P)
+        ],
         "model_path": args.modelPath,
         "cell_name": cell_name,
-    }, os.path.join(outDir, "summary.yaml"))
+    }
+    write_yaml(summary, os.path.join(outDir, "summary.yaml"))
+
+    # Per-param channel-recovery CSV.
+    with open(os.path.join(outDir, "channel_recovery.csv"), "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["param", "mse", "rmse", "r2", "bias",
+                    "pred_min", "pred_max", "true_min", "true_max"])
+        for i, nm in enumerate(param_names):
+            w.writerow([nm,
+                        f"{chan_mse_per_param[i]:.6f}",
+                        f"{np.sqrt(chan_mse_per_param[i]):.6f}",
+                        f"{chan_r2_per_param[i]:+.4f}",
+                        f"{chan_bias_per_param[i]:+.6f}",
+                        f"{pred_u[:,i].min():+.4f}", f"{pred_u[:,i].max():+.4f}",
+                        f"{true_u[:,i].min():+.4f}", f"{true_u[:,i].max():+.4f}"])
+
+    # Scatter plot grid: pred vs true unit_par per parameter.
+    cols = 3
+    rows = int(np.ceil(P / cols))
+    fig_grid, axes = plt.subplots(rows, cols, figsize=(4.5 * cols, 4.0 * rows),
+                                   squeeze=False)
+    for i in range(P):
+        r, c = divmod(i, cols)
+        ax = axes[r][c]
+        ax.scatter(true_u[:, i], pred_u[:, i], s=8, alpha=0.4)
+        lim = max(1.05, abs(true_u[:, i]).max(), abs(pred_u[:, i]).max())
+        ax.plot([-lim, lim], [-lim, lim], "k--", lw=1, alpha=0.5)
+        ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
+        ax.set_xlabel("true unit"); ax.set_ylabel("pred unit")
+        ax.set_title(f"{param_names[i]}\nR²={chan_r2_per_param[i]:+.2f}  "
+                     f"MSE={chan_mse_per_param[i]:.3f}", fontsize=10)
+        ax.grid(alpha=0.3)
+    # blank trailing axes
+    for j in range(P, rows * cols):
+        r, c = divmod(j, cols); axes[r][c].axis("off")
+    fig_grid.tight_layout()
+    fig_grid.savefig(os.path.join(outDir, "channel_recovery_grid.png"), dpi=120)
+    plt.close(fig_grid)
     print(f"[eval] wrote summary -> {outDir}/summary.yaml")
 
     # Histogram

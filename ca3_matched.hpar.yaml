@@ -52,7 +52,13 @@ opt_pytorch:
 train_conf:
     warmup_epochs: 0
     optimizer: [adam, 0.0003]
-    LRsched:   { plateau_patience: 2, reduceFactor: 0.3 }
+    # plateau_patience bumped 2 -> 10 (Iteration A.1).  Job 52661942
+    # (100-epoch with patience=2) hit best val=0.609 at epoch 4, then
+    # ReduceLROnPlateau cut LR at epoch 7 and the model never escaped —
+    # LR collapsed to 5.9e-9 by epoch 50, val frozen at 0.689 from
+    # epoch 70 onward.  Loose patience gives the noisy hybrid loss room
+    # to oscillate without false-positive LR cuts.
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
     # Gradient clipping — required for HybridLoss/jaxley training where
     # rare extreme CNN-predicted parameter draws produce huge (post-fp64,
     # finite) gradients that destabilise Adam.  Without this, job 52656278
