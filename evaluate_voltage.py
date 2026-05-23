@@ -31,6 +31,7 @@ import h5py
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -369,6 +370,8 @@ def main():
     # rather than relative-to-trim.  Easier to read against the stim CSV.
     t_axis = sim_t_skip_ms + np.arange(T) * dt   # ms
 
+    pdf_path = os.path.join(outDir, "trace_overlays.pdf")
+    pdf = PdfPages(pdf_path)
     for k, idx in enumerate(pick):
         fig, axes = plt.subplots(2, 1, figsize=(11, 5), sharex=True)
         axes[0].plot(t_axis, v_data_z[idx], "k", lw=1.0, label="data (z-scored)")
@@ -384,8 +387,11 @@ def main():
         axes[1].legend(loc="upper right")
         plt.tight_layout()
         plt.savefig(os.path.join(outDir, f"trace_overlay_{k:02d}_sample{idx}.png"), dpi=120)
+        pdf.savefig(fig)
         plt.close(fig)
-    print(f"[eval] wrote {n_overlay} overlay plots to {outDir}/")
+    pdf.close()
+    print(f"[eval] wrote {n_overlay} overlay plots to {outDir}/ "
+          f"(+ combined {pdf_path})")
 
     # Aggregate accuracy plot: rmse_z sorted
     fig = plt.figure(figsize=(7, 4))
