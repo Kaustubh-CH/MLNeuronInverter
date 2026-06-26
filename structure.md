@@ -257,6 +257,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _gpu_value, _cpu_value, _plot_panel, main
 - `toolbox/tests/plot_bench_comparison.py` - Pull every completed bench CSV into a single comparison figure.
     - defs: _load_gpu, _load_cpu, _plot_panel, main
+- `toolbox/tests/sens_sweep_ball.py` - TEMPORARY sensitivity sweep for ball_and_stick.
+    - defs: unit_to_phys, zscore, main
 - `toolbox/tests/sim_neuron_ca3.py` - NEURON-side reference simulation for the CA3 Pyramidal model.
     - defs: _load_neuron, build_cell, run_protocol, _resample_to_grid, _make_step, _save, run_test1_rest, run_test2_subthresh, run_test3_suprathresh, run_test4_fI, run_test5_paramsweep, run_test6_apshape, run_test7_walltime, main
 - `toolbox/tests/test_ca3_neuron_vs_jaxley.py` - CA3 NEURON-vs-Jaxley comparison harness.

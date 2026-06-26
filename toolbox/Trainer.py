@@ -62,6 +62,10 @@ class Trainer():
     # can return 0 in some contexts even after set_device, when CUDA is not
     # yet warm on the target GPU; using LOCALID makes this deterministic.
     self.device = int(os.environ.get('SLURM_LOCALID', torch.cuda.current_device()))
+    # When SLURM gives each task a single GPU (--gpus-per-task=1), only ordinal 0
+    # is visible, so SLURM_LOCALID (1..3) is out of range -> clamp to 0.
+    if self.device >= torch.cuda.device_count():
+      self.device = 0
     torch.cuda.set_device(self.device)
     logging.info('T:ini world rank %d of %d, host=%s  see device=%d'%(params['world_rank'],params['world_size'],socket.gethostname(),self.device))
     self.doRay=params['do_ray']

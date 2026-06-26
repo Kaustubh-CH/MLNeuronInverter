@@ -142,19 +142,23 @@ def generate_voltages(unit_par, batch_size, src_cell_mod, src_cell_name,
             phys_b = phys_b.double()
         else:
             phys_b = phys_b.float()
-        # `simulate_batch` returns (B, n_recorded, T_out).  We record
-        # only soma -> n_recorded == 1.
+        # `simulate_batch` returns (B, n_recorded, T_out).  n_recorded is
+        # however many .record() calls the cell's _build made (1 for soma-
+        # only cells, >1 for multi-probe cells like ball_and_stick).
         with torch.no_grad():
             v = JaxleyBridge.simulate_batch(phys_b, src_cell_name,
                                             stim_name=_STIM_NAME)
-        v_np = v.detach().cpu().numpy()  # (B, 1, T)
+        v_np = v.detach().cpu().numpy()  # (B, n_rec, T)
         if out is None:
+            n_rec = v_np.shape[1]
             T = v_np.shape[-1]
-            out = np.zeros((N, T, 1), dtype=np.float32)
+            out = np.zeros((N, T, n_rec), dtype=np.float32)
             if verbose:
-                print(f"[gen] T_sim={T} (per cell spec dt_stim={src_cell_mod._DT_STIM} ms)",
+                print(f"[gen] T_sim={T} n_probes={n_rec} "
+                      f"(per cell spec dt_stim={src_cell_mod._DT_STIM} ms)",
                       flush=True)
-        out[i0:i1, :, 0] = v_np[:, 0, :].astype(np.float32)
+        # (B, n_rec, T) -> (B, T, n_rec)
+        out[i0:i1] = np.moveaxis(v_np, 1, 2).astype(np.float32)
         if verbose and (b % 5 == 0 or b == n_batches - 1):
             dt = time.time() - t0
             done = i1
@@ -304,16 +308,22 @@ def main():
     }
     phys_par_range = _build_phys_par_range(src_cell.PARAM_KEYS, src_cell._DEFAULTS)
     T = volts_norm.shape[1]
+    n_probes = volts_norm.shape[2]
+    probe_names = getattr(src_cell, "PROBE_NAMES", None)
+    if probe_names is None:
+        probe_names = ["soma"] if n_probes == 1 else [f"probe{i}" for i in range(n_probes)]
+    assert len(probe_names) == n_probes, \
+        f"PROBE_NAMES has {len(probe_names)} entries but sim returned {n_probes} probes"
     meta = {
         "cell_name":          args.cell_name,
         "source_cell":        args.source_cell,
         "num_phys_par":       P,
         "num_varied_phys_par": P,
-        "num_probs":          1,
+        "num_probs":          int(n_probes),
         "num_stims":          1,
         "num_time_bins":      int(T),
         "parName":            list(src_cell.PARAM_KEYS),
-        "probe_names":        ["soma"],
+        "probe_names":        list(probe_names),
         "stim_names":         [_STIM_NAME],
         "timeAxis":           {"step": float(src_cell._DT_STIM), "unit": "(ms)"},
         "phys_par_range":     phys_par_range,
@@ -330,7 +340,7 @@ def main():
             "cell_spec":     cell_spec,
             # `Trainer.patch_h5meta` reads probe/stim names from simu_info,
             # not from the top level — keep both for self-documentation.
-            "probe_names":   ["soma"],
+            "probe_names":   list(probe_names),
             "stim_names":    [_STIM_NAME],
         },
         "pack_info": {

@@ -18,7 +18,7 @@
 #   - data_path -> ca3 synth dir
 
 data_path:
-  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_synth_v1/
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_synth_v2/
 
 data_conf:
     serialize_stims:  True

@@ -31,6 +31,17 @@ PARAM_KEYS = [
     "Leak_gLeak",  # dendrite
 ]
 
+# Recording sites, in probe-index order.  Probe 0 MUST stay soma so the
+# HybridLoss voltage term (soma_probe_index=0) and downstream tooling keep
+# working.  Probe 1 is the (single) passive dendrite compartment, which gives
+# the CNN direct observability of the dendrite leak — a soma-only recording
+# cannot resolve Leak_gLeak (see toolbox/tests/sens_sweep_ball.py).
+# NOTE: the dendrite branch is one compartment despite the ncomp=5 in _build
+# (jx.Branch([Compartment()], ncomp=5) yields 1 comp), so there is only one
+# dendrite site to record.  Geometry is left unchanged so this stays a clean
+# more-recordings comparison against the soma-only baseline.
+PROBE_NAMES = ["soma", "dend"]
+
 # Default physical values — match NEURON hh mechanism defaults.
 _DEFAULTS = {
     "HH_gNa":     0.12,
@@ -73,8 +84,10 @@ def _build():
     cell.set("v", _V_INIT)
     cell.init_states(delta_t=_DT)
 
-    # Record soma voltage — must be set BEFORE integrate().
-    cell.branch(0).comp(0).record()
+    # Record soma + dendrite — must be set BEFORE integrate().
+    # Order defines the probe index (see PROBE_NAMES): 0=soma, 1=dend.
+    cell.branch(0).comp(0).record()   # probe 0: soma
+    cell.branch(1).comp(0).record()   # probe 1: dendrite
 
     # Expose parameters to the bridge.  Each key maps to exactly one
     # compartment/branch so the trainable array has shape (1,) and the
@@ -95,7 +108,8 @@ def _attach_stim(cell, stim_jnp):
 
 
 def _attach_record(cell):
-    cell.branch(0).comp(0).record()
+    cell.branch(0).comp(0).record()   # probe 0: soma
+    cell.branch(1).comp(0).record()   # probe 1: dendrite
 
 
 def _spec() -> CellSpec:

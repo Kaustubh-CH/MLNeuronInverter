@@ -92,6 +92,10 @@ if __name__ == '__main__':
     # Pin to the local-rank GPU when SLURM exposes all GPUs to every task
     # (--gpu-bind=none). Falls back to 0 in single-GPU-per-task setups.
     _local = int(os.environ.get('SLURM_LOCALID', 0))
+    # When SLURM gives each task a single GPU (--gpus-per-task=1), only ordinal 0
+    # is visible, so SLURM_LOCALID (1..3) is out of range -> clamp to 0.
+    if _local >= torch.cuda.device_count():
+      _local = 0
     torch.cuda.set_device(_local)
     dist.init_process_group(backend='nccl', init_method='env://')
     params['world_rank'] = dist.get_rank()

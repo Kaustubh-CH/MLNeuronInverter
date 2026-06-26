@@ -26,7 +26,7 @@ set -e
 cellName=ca3_pyramidal_synth
 design=ca3_matched
 epochs=10
-data_temp=${1:-/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_synth_v1/}
+data_temp=${1:-/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_synth_v2/}
 if [[ $# -ge 2 ]]; then design=$2; fi
 
 probsSelect="0"
@@ -81,14 +81,14 @@ cd $wrkDir
 echo "S:lsfPWD=`pwd` outPath=$outPath"
 
 # ─── Train ──────────────────────────────────────────────────────────────
-# Synth pack at N=50000, train split = 80% = 40000 samples.
+# Synth pack at N=200000 (v2), train split = 80% = 160000 samples.
 PY_CMD="python -u train_dist.py \
     --cellName $cellName --facility $facility \
     --outPath ./out --design $design --jobId $jobId \
     --probsSelect $probsSelect --stimsSelect $stimsSelect \
     --validStimsSelect $validStimsSelect \
     --epochs $epochs --data_path_temp $data_temp \
-    --numGlobSamp 40000"
+    --numGlobSamp 160000"
 echo "S:PY_CMD=$PY_CMD"
 
 date

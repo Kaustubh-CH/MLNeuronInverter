@@ -127,7 +127,7 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         nPar=len(idx)
         residualL=sumRec['residual_mean_std']
         
-        nrow,ncol=-(-(nPar+1) // 4 ),4 # BBP3
+        nrow,ncol=-(-(nPar+1) // 1 ),1 # BBP3
         #nrow,ncol=4,4  # for proposal update, 2022-01
 
         if  self.formatVenue=='poster':
@@ -140,7 +140,8 @@ class Plotter_NeuronInverter(Plotter_Backbone):
 
         #1fig, axs = self.plt.subplots(nrow,ncol, sharex='col', sharey='row', gridspec_kw={'hspace': 0.3, 'wspace': 0.1},num=figId)
 
-        fig, axs = self.plt.subplots(nrow,ncol,num=figId, sharey='row',gridspec_kw={'wspace': 0, 'hspace': 0},)
+        posterGrid={'wspace': 0, 'hspace': 0.45} if self.formatVenue=='poster' else {'wspace': 0, 'hspace': 0}
+        fig, axs = self.plt.subplots(nrow,ncol,num=figId, sharey='row',gridspec_kw=posterGrid,)
         # self.plt.subplots_adjust(wspace=0, hspace=0)
 
         param_to_biophys = {}

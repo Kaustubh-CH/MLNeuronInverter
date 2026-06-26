@@ -177,7 +177,12 @@ def main():
     pred_unit_chunks = []
     with torch.no_grad():
         for i in range(0, N, bs):
-            x = torch.from_numpy(cnn_in[i:i+bs]).permute(0, 2, 1).contiguous().to(device)
+            # Feed (B, T, C) exactly as Dataloader_H5 does.  Model.forwardCnnOnly
+            # does `x.view(-1, C, T)` — a RESHAPE, not a transpose — so the byte
+            # layout must match training.  Pre-permuting to (B, C, T) feeds a
+            # different byte order and silently corrupts multi-probe (C>1)
+            # inputs; it is a no-op for C=1, which is why soma-only looked fine.
+            x = torch.from_numpy(cnn_in[i:i+bs]).contiguous().to(device)
             y = model(x).float().cpu()
             pred_unit_chunks.append(y)
     pred_unit = torch.cat(pred_unit_chunks, dim=0)
