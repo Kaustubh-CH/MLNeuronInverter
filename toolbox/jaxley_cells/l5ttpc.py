@@ -11,6 +11,7 @@ is only exercised by shape tests — gradcheck continues to run on the
 ball-and-stick cell, which is orders of magnitude cheaper to backprop.
 """
 
+import os
 from pathlib import Path
 from . import CellSpec, register
 
@@ -23,7 +24,11 @@ _DT_STIM = 0.1
 _DT      = 0.1
 _T_MAX   = 500.0
 _V_INIT  = -75.0
-_NCOMP   = 4
+# Compartments per branch.  Env-overridable so candidate C1 can halve the
+# spatial discretisation (L5TTPC_NCOMP=2) at runtime without a code fork.
+# Read once at import; used by read_swc, the apical-Ih gradient loop, and
+# swc_apical_branch_distances.  Default stays 4 (baseline unchanged).
+_NCOMP   = int(os.environ.get("L5TTPC_NCOMP", "4"))
 
 # Apical Ih distance-dependent gradient — biophysics.hoc convention for L5TTPC.
 # gIh(d) = max(0, _IH_A + _IH_B * exp(d * _IH_K)) * ih_base   (S/cm²)
@@ -61,6 +66,32 @@ _CSV_PARAM_MAP = [
 PARAM_KEYS    = [entry[0] for entry in _CSV_PARAM_MAP]
 _PARAM_GROUPS = [entry[1] for entry in _CSV_PARAM_MAP]
 _PARAM_JAX    = [entry[2] for entry in _CSV_PARAM_MAP]
+
+# BBP base values, verbatim from DL4neurons2/.../NewBase2/L5Params.csv (the same
+# CSV generate_L5_samples.py / get_random_params samples around). Used as the
+# unit=0 centre when a caller does not supply an explicit phys_par_range (e.g.
+# scripts/gen_ball_and_stick_data.py). Order matches PARAM_KEYS.
+_DEFAULTS = {
+    "gNaTs2_tbar_NaTs2_t_apical":    0.026145,
+    "gSKv3_1bar_SKv3_1_apical":      0.004226,
+    "gImbar_Im_apical":              0.000143,
+    "gIhbar_Ih_dend":                8e-05,
+    "gNaTa_tbar_NaTa_t_axonal":      3.137968,
+    "gK_Tstbar_K_Tst_axonal":        0.089259,
+    "gNap_Et2bar_Nap_Et2_axonal":    0.006827,
+    "gSK_E2bar_SK_E2_axonal":        0.007104,
+    "gCa_HVAbar_Ca_HVA_axonal":      0.00099,
+    "gK_Pstbar_K_Pst_axonal":        0.973538,
+    "gCa_LVAstbar_Ca_LVAst_axonal":  0.008752,
+    "g_pas_axonal":                  3e-05,
+    "cm_axonal":                     1.0,
+    "gSKv3_1bar_SKv3_1_somatic":     0.303472,
+    "gNaTs2_tbar_NaTs2_t_somatic":   0.983955,
+    "gCa_LVAstbar_Ca_LVAst_somatic": 0.000333,
+    "g_pas_somatic":                 3e-05,
+    "cm_somatic":                    1.0,
+    "e_pas_all":                     -75.0,
+}
 
 
 def _apply_apical_ih_gradient(cell, swc_path: str, ih_base: float = _IH_BASE) -> None:
@@ -209,3 +240,8 @@ register("L5TTPC", _spec)
 # Also register under the BBP short-name so `cell_name_for_sim: L5_TTPC1cADpyr0`
 # in a design yaml resolves directly.
 register("L5_TTPC1cADpyr0", _spec)
+# And under the MODULE name `l5ttpc` — HybridLoss.build_hybrid_loss resolves
+# `t_max_override` by importing `toolbox.jaxley_cells.<cell_name_for_sim>`, so
+# `cell_name_for_sim` must equal the module name (the convention
+# ball_and_stick_bbp follows). Designs use `cell_name_for_sim: l5ttpc`.
+register("l5ttpc", _spec)

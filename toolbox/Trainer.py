@@ -77,7 +77,11 @@ class Trainer():
 
     params['checkpoint_name'] =  'checkpoints/ckpt.pth'
     params['checkpoint_path'] = os.path.join(expDir, params['checkpoint_name'])
-    params['resuming'] =  params['resume_checkpoint'] and os.path.isfile(params['checkpoint_path'])
+    # 'last' checkpoint: saved EVERY epoch so startEpoch advances on preempt-resume
+    # (ckpt.pth is best-val-only; resuming from it can stall if val plateaus early).
+    params['last_checkpoint_path'] = os.path.join(expDir, 'checkpoints/last.pth')
+    params['resuming'] =  params['resume_checkpoint'] and (
+        os.path.isfile(params['last_checkpoint_path']) or os.path.isfile(params['checkpoint_path']))
     
     optTorch=params['opt_pytorch']
     # EXTRA: enable cuDNN autotuning.
@@ -249,8 +253,11 @@ class Trainer():
     self.iters = 0
     self.startEpoch = 0
     if params['resuming']  and   self.verb:
-      logging.info("Loading checkpoint %s"%params['checkpoint_path'])
-      self.restore_checkpoint(params['checkpoint_path'])
+      # prefer 'last' (advances startEpoch); fall back to best-val ckpt.pth
+      resume_path = params['last_checkpoint_path'] if os.path.isfile(params['last_checkpoint_path']) \
+                    else params['checkpoint_path']
+      logging.info("Loading checkpoint %s"%resume_path)
+      self.restore_checkpoint(resume_path)
     self.epoch = self.startEpoch
 
     if self.verb:  logging.info(self.model)
@@ -278,9 +285,12 @@ class Trainer():
     modelF = params['fine_tune']['blank_model']
     stateF = params['fine_tune']['checkpoint_name']
 
-    model = torch.load(modelF)
+    # weights_only=False: blank_model.pth is a full pickled nn.Module
+    # (our own trusted checkpoint); newer torch defaults weights_only=True
+    # and refuses to unpickle the MyModel class otherwise.
+    model = torch.load(modelF, weights_only=False)
     model2 = torch.nn.DataParallel(model)
-    allD=torch.load(stateF, map_location=str(device))
+    allD=torch.load(stateF, map_location=str(device), weights_only=False)
     print('all model ok',list(allD.keys()))
     stateD=allD["model_state"]
     keyL=list(stateD.keys())
@@ -334,6 +344,9 @@ class Trainer():
           self.save_checkpoint(self.params['checkpoint_path'])
           bestLoss= valid_logs['loss']
           logging.info('save_checkpoint for epoch %d , val-loss=%.3g'%(epoch , bestLoss) )
+        if self.isRank0:
+          # ALWAYS persist 'last' so preempt-resume advances startEpoch past a plateau
+          self.save_checkpoint(self.params['last_checkpoint_path'])
 
       # . . . .   only logging and histogramming below . . . . .    
       if self.isRank0:
@@ -529,7 +542,7 @@ class Trainer():
     """ We intentionally require a checkpoint_dir to be passed
         in order to allow Ray Tune to use this function """
     local_rank=0
-    checkpoint = torch.load(checkpoint_path, map_location='cuda:{}'.format(local_rank))
+    checkpoint = torch.load(checkpoint_path, map_location='cuda:{}'.format(local_rank), weights_only=False)
     self.model.load_state_dict(checkpoint['model_state'])
     self.iters = checkpoint['iters']
     self.startEpoch = checkpoint['epoch'] + 1

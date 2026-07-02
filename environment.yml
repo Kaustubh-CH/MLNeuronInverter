@@ -41,6 +41,7 @@ dependencies:
       # JAX + jaxley (differentiable biophysics)
       - jax[cuda12]
       - jaxley
+      - jaxley_mech          # Hay-2011 L5PC channels (jaxley_mech.channels.l5pc) for L5PC_jaxley
       - optax
       - equinox
       # Existing NeuronInverter deps (pinned by the training code)

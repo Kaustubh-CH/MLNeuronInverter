@@ -68,10 +68,11 @@ def _default_params_tensor(cell_name: str, batch: int, dtype: torch.dtype) -> to
     elif cell_name == "ca3_pyramidal":
         from toolbox.jaxley_cells.ca3_pyramidal import _DEFAULTS, PARAM_KEYS
         row = [_DEFAULTS[k] for k in PARAM_KEYS]
-    elif cell_name in ("L5TTPC", "L5_TTPC1cADpyr0"):
+    elif cell_name in ("L5TTPC", "L5_TTPC1cADpyr0", "L5PC_jaxley"):
         # Use values from the Neuron_Jaxley reference
         # biophysics.hoc defaults (see sim_jaxley_L5TTPC1.py build_cell).
-        # Order must match l5ttpc.PARAM_KEYS.
+        # Order must match l5ttpc.PARAM_KEYS / l5pc_jaxley.PARAM_KEYS (identical
+        # 19-param BBP ordering), so the same default row serves both cells.
         row = [
             0.026145,   # gNaTs2_tbar_NaTs2_t_apical
             0.004226,   # gSKv3_1bar_SKv3_1_apical

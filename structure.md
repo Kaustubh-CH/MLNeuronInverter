@@ -218,9 +218,11 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `toolbox/aggregate_loss.py`
     - defs: get_parser
 - `toolbox/jaxley_utils.py` - Helpers shared across the jaxley voltage-loss path.
-    - defs: phys_par_range_to_arrays, unit_to_phys_np, unit_to_phys_jax, load_stim_csv, upsample_stim, downsample_step
+    - defs: normalize_volts_fixed, phys_par_range_to_arrays, unit_to_phys_np, unit_to_phys_jax, load_stim_csv, upsample_stim, downsample_step
 - `toolbox/refresh_structure.py` - Regenerate the auto-appendix section of structure.md.
     - defs: FileSummary, tracked_files, summarize, collect, render, splice, main
+- `toolbox/soft_efel.py` - Differentiable (PyTorch) surrogate for 11 eFEL electrophysiology features.
+    - defs: _softplus_max, _softplus_min, _soft_select, _spike_times, soft_efel_features, real_efel_features, _pearson, _self_test
 - `toolbox/unitParamConvert.py`
     - defs: get_parser
 - `toolbox/unitParamConvertHdf5.py`
@@ -236,14 +238,20 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _build, _attach_stim, _attach_record, _spec
 - `toolbox/jaxley_cells/ca3_pyramidal.py` - CA3 Pyramidal Neuron (single-comp soma) — Jaxley port.
     - defs: _build, _attach_stim, _attach_record, _spec
+- `toolbox/jaxley_cells/l5pc_jaxley.py` - Self-contained L5PC cell builder using an *existing* jaxley morphology.
+    - defs: _build, _attach_stim, _attach_record, _spec
 - `toolbox/jaxley_cells/l5ttpc.py` - L5TTPC cell builder for the hybrid voltage-loss path.
     - defs: _apply_apical_ih_gradient, _build, _attach_stim, _attach_record, _spec
+- `toolbox/jaxley_cells/l5ttpc_multiprobe.py` - Multi-probe L5TTPC cell builder (EXPERIMENT 2).
+    - defs: _branch_indices, _add_extra_records, _build, _attach_stim, _attach_record, _spec
 - `toolbox/jaxley_cells/soma_only.py` - Single-compartment HH soma cell.
     - defs: _build, _attach_stim, _attach_record, _spec
 
 ### toolbox/tests/
 
 - `toolbox/tests/__init__.py`
+- `toolbox/tests/bench_fwd_bwd.py` - Forward + backward throughput across all jaxley cells in the repo.
+    - defs: _sync, _time, bench_cell, main
 - `toolbox/tests/bench_gpu_ca3.py` - GPU bench for CA3 Pyramidal — t_max=500 ms apples-to-apples vs NEURON.
     - defs: _build, _time, main
 - `toolbox/tests/bench_gpu_l5ttpc.py` - GPU bench for the jaxley voltage-loss path.
@@ -271,7 +279,9 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 ### scripts/
 
 - `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 from a registered jaxley cell.
-    - defs: _load_source_cell, _build_phys_par_range, generate_voltages, zscore_per_sample_per_probe, write_h5, main
+    - defs: _load_source_cell, _build_phys_par_range, generate_voltages, normalize_volts_fixed_scale, write_h5, main
+- `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).
+    - defs: _load_source_cell, _build_phys_par_range, generate_voltages_one_stim, normalize_volts_fixed_scale, write_h5, main
 - `scripts/install_hooks.sh`
 
 ### packBBP3/

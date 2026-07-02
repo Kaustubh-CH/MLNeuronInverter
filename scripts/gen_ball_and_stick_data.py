@@ -116,20 +116,27 @@ def _build_phys_par_range(param_keys, defaults):
 # ─────────────────────────────────────────────────────────────────────────
 
 def generate_voltages(unit_par, batch_size, src_cell_mod, src_cell_name,
-                       fp64=True, verbose=True):
+                       fp64=True, verbose=True, centers=None, logspans=None,
+                       checkpoint_lengths=None):
     """Run the jaxley sim on every row of `unit_par`.
+
+    `centers`/`logspans` define the unit->phys map (phys = center·10^(unit·span)).
+    If None, fall back to the cell's `_DEFAULTS` + uniform `_LOG_HALFSPAN` — but
+    callers should pass the SAME mapping the training loss uses (e.g. from the
+    design YAML's phys_par_range) so the generated data is self-consistent.
 
     Returns
     -------
-    volts : (N, T, 1) float32  - per-sample soma trace, NOT z-scored.
+    volts : (N, T, P) float32  - per-sample probe traces, NOT z-scored.
     """
     N, P = unit_par.shape
-    centers = np.asarray(
-        [src_cell_mod._DEFAULTS[k] for k in src_cell_mod.PARAM_KEYS],
-        dtype=np.float64,
-    )
-    logspans = np.full(P, _LOG_HALFSPAN, dtype=np.float64)
-    phys_all = unit_to_phys_np(unit_par.astype(np.float64), centers, logspans)
+    if centers is None or logspans is None:
+        centers = np.asarray(
+            [src_cell_mod._DEFAULTS[k] for k in src_cell_mod.PARAM_KEYS],
+            dtype=np.float64,
+        )
+        logspans = np.full(P, _LOG_HALFSPAN, dtype=np.float64)
+    phys_all = unit_to_phys_np(unit_par.astype(np.float64), np.asarray(centers), np.asarray(logspans))
 
     out = None
     n_batches = int(np.ceil(N / batch_size))
@@ -146,8 +153,12 @@ def generate_voltages(unit_par, batch_size, src_cell_mod, src_cell_name,
         # however many .record() calls the cell's _build made (1 for soma-
         # only cells, >1 for multi-probe cells like ball_and_stick).
         with torch.no_grad():
+            # simulate_batch always builds jax.vjp; without checkpointing the
+            # forward tape OOMs for the ~2000-comp L5 cell, so pass the same
+            # checkpoint schedule the training loss uses.
             v = JaxleyBridge.simulate_batch(phys_b, src_cell_name,
-                                            stim_name=_STIM_NAME)
+                                            stim_name=_STIM_NAME,
+                                            checkpoint_lengths=checkpoint_lengths)
         v_np = v.detach().cpu().numpy()  # (B, n_rec, T)
         if out is None:
             n_rec = v_np.shape[1]
@@ -171,16 +182,16 @@ def generate_voltages(unit_par, batch_size, src_cell_mod, src_cell_name,
     return out
 
 
-def zscore_per_sample_per_probe(volts):
-    """Per-sample-per-probe z-score along the time axis.
+def normalize_volts_fixed_scale(volts):
+    """Fixed-scale voltage normalization matching aggregate_Kaustubh.py.
 
-    `volts` shape: (N, T, P).  Returns same shape, with each (i, :, p) slice
-    zero-mean / unit-std.
+    `volts` shape: (N, T, P).  Uses a single global mean/std
+    (`toolbox.jaxley_utils.normalize_volts_fixed`) for every sample/probe, so
+    the absolute voltage scale is preserved — the HybridLoss candidate side
+    applies the identical transform.
     """
-    mean = volts.mean(axis=1, keepdims=True)
-    std  = volts.std(axis=1, keepdims=True)
-    std  = np.where(std < 1e-6, 1e-6, std)
-    return ((volts - mean) / std).astype(np.float32)
+    from toolbox.jaxley_utils import normalize_volts_fixed
+    return normalize_volts_fixed(volts).astype(np.float32)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -243,6 +254,13 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--fp32", action="store_true",
                     help="run sims in fp32 (faster but may NaN at large t_max)")
+    ap.add_argument("--ppr-yaml", default=None,
+                    help="design .hpar.yaml whose voltage_loss.phys_par_range defines the "
+                         "unit->phys map for BOTH generation and the H5 meta. Use the SAME "
+                         "yaml the training run uses so data + loss are self-consistent.")
+    ap.add_argument("--checkpoint", default=None,
+                    help="comma-separated checkpoint_lengths for jx.integrate, e.g. 500,10 "
+                         "(needed for the ~2000-comp L5 cell or simulate_batch's vjp OOMs)")
     args = ap.parse_args()
 
     if sum(args.split) != 100:
@@ -266,26 +284,40 @@ def main():
           f"seed={args.seed}  fp64={'no' if args.fp32 else 'yes'}", flush=True)
     print(f"[gen] PARAM_KEYS = {src_cell.PARAM_KEYS}", flush=True)
 
+    # 0. resolve the unit->phys mapping (shared by gen + meta + training loss)
+    if args.ppr_yaml:
+        import yaml
+        _yd = yaml.safe_load(open(args.ppr_yaml))
+        phys_par_range = _yd["voltage_loss"]["phys_par_range"]
+        assert len(phys_par_range) == P, \
+            f"ppr-yaml has {len(phys_par_range)} entries but cell has {P} params"
+        print(f"[gen] using phys_par_range from {args.ppr_yaml} (self-consistent map)", flush=True)
+    else:
+        phys_par_range = _build_phys_par_range(src_cell.PARAM_KEYS, src_cell._DEFAULTS)
+    gen_centers, gen_logspans = phys_par_range_to_arrays(phys_par_range)
+
     # 1. unit draws
     unit_par = rng.uniform(-1.0, 1.0, size=(args.n, P)).astype(np.float32)
 
     # 2-3. simulate
+    ckpt = tuple(int(x) for x in args.checkpoint.split(",")) if args.checkpoint else None
     volts = generate_voltages(unit_par, batch_size=args.batch,
                                src_cell_mod=src_cell, src_cell_name=args.source_cell,
-                               fp64=not args.fp32)
+                               fp64=not args.fp32,
+                               centers=gen_centers, logspans=gen_logspans,
+                               checkpoint_lengths=ckpt)
     if not np.isfinite(volts).all():
         n_nan = int(np.isnan(volts).sum())
         n_inf = int(np.isinf(volts).sum())
         raise RuntimeError(f"[gen] simulator produced non-finite values: "
                            f"{n_nan} NaN, {n_inf} Inf in {volts.size} elements")
 
-    # 4. z-score
-    volts_norm = zscore_per_sample_per_probe(volts)
-    # Sanity: per-sample-per-probe std should be ~1 and mean ~0
-    m = volts_norm.mean(axis=1)
-    s = volts_norm.std(axis=1)
-    print(f"[gen] z-scored volts: mean abs={np.abs(m).mean():.2e} "
-          f"std mean={s.mean():.3f} (target: 0 / 1)", flush=True)
+    # 4. fixed-scale normalization (matches HybridLoss candidate side)
+    volts_norm = normalize_volts_fixed_scale(volts)
+    # Sanity: report the resulting global mean/std (NOT 0/1 — fixed scale
+    # preserves absolute voltage, so these vary with the cell's dynamics).
+    print(f"[gen] fixed-norm volts: global mean={volts_norm.mean():.3f} "
+          f"std={volts_norm.std():.3f}", flush=True)
 
     # 5. split
     n = args.n
@@ -306,7 +338,7 @@ def main():
         "_T_MAX": src_cell._T_MAX,
         "_V_INIT": src_cell._V_INIT,
     }
-    phys_par_range = _build_phys_par_range(src_cell.PARAM_KEYS, src_cell._DEFAULTS)
+    # phys_par_range already resolved above (from --ppr-yaml or _DEFAULTS)
     T = volts_norm.shape[1]
     n_probes = volts_norm.shape[2]
     probe_names = getattr(src_cell, "PROBE_NAMES", None)

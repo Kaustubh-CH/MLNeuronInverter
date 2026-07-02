@@ -16,6 +16,31 @@ import numpy as np
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# voltage normalization (fixed mean/std)
+# ─────────────────────────────────────────────────────────────────────────
+# Single source of truth for the fixed-scale voltage normalization, matching
+# packBBP3/aggregate_Kaustubh.py:normalize_volts() (which hard-codes these two
+# constants).  Unlike a per-sample z-score, a fixed global mean/std preserves
+# the ABSOLUTE voltage scale — resting potential, spike height, subthreshold
+# amplitude — which is exactly the information a per-trace z-score throws away.
+# Both the stored data volts (data generators) and the simulated candidate
+# volts (HybridLoss) must use this SAME transform, or the MSE compares two
+# different spaces.
+VOLT_NORM_MEAN = -60.0951997   # mV
+VOLT_NORM_STD  = 18.95055671   # mV
+
+
+def normalize_volts_fixed(volts):
+    """(volts - VOLT_NORM_MEAN) / VOLT_NORM_STD.
+
+    Works for numpy arrays and torch tensors alike (scalar arithmetic), so the
+    same transform is applied to the pack volts at data-gen time and to the
+    simulated candidate trace inside the physics loss.
+    """
+    return (volts - VOLT_NORM_MEAN) / VOLT_NORM_STD
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # unit <-> physical
 # ─────────────────────────────────────────────────────────────────────────
 

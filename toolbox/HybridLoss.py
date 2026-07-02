@@ -12,10 +12,12 @@ where ground-truth params don't exist).
 
 Voltage-space alignment
 -----------------------
-* The training pack stores per-sample-per-probe z-scored voltages
-  (`format_bbp3_for_ML.py`).  We replay the same z-score on the simulated
-  soma trace before MSE so the two sides live in the same normalized
-  units.
+* The training pack stores voltages normalized with a FIXED global
+  mean/std (`VOLT_NORM_MEAN`/`VOLT_NORM_STD`, matching
+  `packBBP3/aggregate_Kaustubh.py`).  We apply the same fixed normalization
+  to the simulated candidate trace before MSE so the two sides live in the
+  same normalized units — and, unlike a per-sample z-score, the absolute
+  voltage scale (resting level, spike height) is preserved on both sides.
 * The simulated trace and the data trace can have different lengths
   (`spec.t_max / spec.dt` vs `T_data`).  We truncate to `min(T_sim, T_data)`
   along the time axis.  Phase 3 should reconcile `_T_MAX` with the data
@@ -31,7 +33,11 @@ import torch
 import torch.nn as nn
 
 from . import JaxleyBridge
-from .jaxley_utils import phys_par_range_to_arrays
+from .jaxley_utils import (
+    phys_par_range_to_arrays, normalize_volts_fixed,
+    VOLT_NORM_MEAN, VOLT_NORM_STD,
+)
+from .soft_efel import soft_efel_features, FEATURE_SCALES, STRONG_FEATURES, FEATURES as _EFEL_FEATURES
 
 
 class HybridLoss(nn.Module):
@@ -52,6 +58,16 @@ class HybridLoss(nn.Module):
         fp64: bool = False,
         sim_t_skip_ms: float = 0.0,
         sim_dt_ms: float = 0.1,
+        pad_batch_size: Optional[int] = None,
+        probe_loss_indices=None,
+        stim_names_multi=None,
+        efel_weight: float = 0.0,
+        mse_weight: float = 1.0,
+        efel_features=None,
+        efel_huber_delta: float = 1.0,
+        efel_k: float = 2.0,
+        efel_thr: float = -20.0,
+        efel_nmax: int = 64,
     ):
         super().__init__()
         self.cell_name        = cell_name
@@ -88,8 +104,61 @@ class HybridLoss(nn.Module):
         # data bin 0 corresponds to sim t = 100 ms).  Without this, the
         # first 100 ms of jaxley's output is compared against data that
         # actually starts at sim t = 100 ms — a 100 ms misalignment.
+        self.sim_dt_ms = float(sim_dt_ms)
         self.sim_t_skip_bins = max(0, int(round(float(sim_t_skip_ms) / float(sim_dt_ms))))
+        # `pad_batch_size`: canonical per-rank batch size.  When a mini-batch is
+        # shorter than this (the last batch of an epoch when drop_last is off),
+        # `_voltage_loss` pads pred_phys up to this size before the jaxley call
+        # and slices the result back — so XLA doesn't recompile the vmapped sim
+        # for a smaller batch shape.  None disables padding.
+        self.pad_batch_size = int(pad_batch_size) if pad_batch_size else None
+        # ── Multi-channel voltage supervision (opt-in; default None = soma-only) ──
+        # `probe_loss_indices` (Exp 2 multi-probe): list of SIM-probe indices
+        #   (the cell's .record() order) to supervise.  The i-th sim probe is
+        #   compared against data channel i (true_volts[..., i]), so the list
+        #   MUST be in the same order as the data's probe axis (probsSelect order).
+        #   e.g. [0,1,2,3] for a [soma, axon, apical, dend] cell + --probsSelect 0 1 2 3.
+        # `stim_names_multi` (Exp 3 multi-stim): list of stim CSV stems.  The loss
+        #   simulates the SAME pred_phys under each stim, takes the soma trace
+        #   (sim probe 0), and compares it against data channel i — so the data
+        #   pack's channel order MUST match this stim order.
+        # COMBINED (Exp 1): if BOTH are set, the loss simulates every stim and
+        #   supervises every probe of each — producing len(stims)*len(probes)
+        #   channels in STIM-MAJOR, probe-inner order:
+        #   [s0p0, s0p1, ..., s0pK, s1p0, ...]. The data pack's channel order
+        #   MUST match (gen loops stim-outer, probe-inner).
+        self.probe_loss_indices = (
+            [int(k) for k in probe_loss_indices] if probe_loss_indices else None
+        )
+        self.stim_names_multi = (
+            [str(s) for s in stim_names_multi] if stim_names_multi else None
+        )
         self._mse = nn.MSELoss()
+
+        # ── Differentiable soft-eFEL voltage loss (opt-in; default off) ──────────
+        # The voltage term becomes a blend of the z-scored MSE anchor and a
+        # feature-matching loss on the soft-eFEL features (toolbox/soft_efel.py):
+        #     v = mse_weight * MSE(z(sim), z(data))
+        #       + efel_weight * mean_f Huber( (soft_f(sim) - soft_f(data)) / scale_f )
+        # `efel_weight=0` (default) -> pure MSE, bit-identical to prior behavior.
+        # The soft features run on RAW mV: the sim channel is jaxley's raw output;
+        # the data channel is de-normalized from the pack's fixed z-space back to
+        # mV (v_raw = v_norm * VOLT_NORM_STD + VOLT_NORM_MEAN) so both sides sit in
+        # the physical units the -20 mV spike threshold / amplitudes assume.
+        # Only STRONG_FEATURES carry the gradient by default (r>=0.79 vs real eFEL);
+        # the data-side features are a constant target (computed under no_grad).
+        self.efel_weight = float(efel_weight)
+        self.mse_weight  = float(mse_weight)
+        self.efel_huber_delta = float(efel_huber_delta)
+        self.efel_k    = float(efel_k)
+        self.efel_thr  = float(efel_thr)
+        self.efel_nmax = int(efel_nmax)
+        feats = list(efel_features) if efel_features else list(STRONG_FEATURES)
+        bad = [f for f in feats if f not in _EFEL_FEATURES]
+        if bad:
+            raise ValueError(f"unknown efel_features {bad}; valid: {_EFEL_FEATURES}")
+        self.efel_features = feats
+        self._efel_scales = {f: float(FEATURE_SCALES[f]) for f in feats}
 
         centers, logspans = phys_par_range_to_arrays(phys_par_range)
         # As buffers so .to(device) moves them with the module.
@@ -112,11 +181,37 @@ class HybridLoss(nn.Module):
                              unit * l)
 
     @staticmethod
-    def _zscore_time(x: torch.Tensor) -> torch.Tensor:
-        """Per-sample z-score along the time axis (last)."""
-        mean = x.mean(dim=-1, keepdim=True)
-        std  = x.std(dim=-1, keepdim=True) + 1e-6
-        return (x - mean) / std
+    def _normalize_volts(x: torch.Tensor) -> torch.Tensor:
+        """Fixed-scale voltage normalization, matching the data pack.
+
+        Uses the SAME global mean/std as the data generators
+        (`normalize_volts_fixed`), so the candidate and target traces are in
+        one space and absolute voltage scale is preserved on both sides.
+        """
+        return normalize_volts_fixed(x)
+
+    def _efel_feat_loss(self, v_sim_raw: torch.Tensor, v_true_raw: torch.Tensor) -> torch.Tensor:
+        """Soft-eFEL feature-matching loss between two RAW-mV (B, T) traces.
+
+        Computes the differentiable soft features on the sim side (gradient
+        flows) and on the data side under no_grad (constant target), then a
+        scale-normalized Huber penalty per feature, averaged.  Only the
+        `self.efel_features` subset is computed (cheaper backward graph).
+        """
+        fs = soft_efel_features(v_sim_raw, k=self.efel_k, thr=self.efel_thr,
+                                dt_ms=float(self.sim_dt_ms), nmax=self.efel_nmax,
+                                only=self.efel_features)
+        with torch.no_grad():
+            ft = soft_efel_features(v_true_raw, k=self.efel_k, thr=self.efel_thr,
+                                    dt_ms=float(self.sim_dt_ms), nmax=self.efel_nmax,
+                                    only=self.efel_features)
+        loss = v_sim_raw.new_zeros(())
+        for f in self.efel_features:
+            s = self._efel_scales[f]
+            loss = loss + nn.functional.huber_loss(
+                fs[f] / s, ft[f] / s, delta=self.efel_huber_delta, reduction="mean"
+            )
+        return loss / len(self.efel_features)
 
     def _voltage_loss(self, pred_unit: torch.Tensor, true_volts: torch.Tensor) -> torch.Tensor:
         """`pred_unit`  : (B, P) in unit-normalized space.
@@ -136,30 +231,74 @@ class HybridLoss(nn.Module):
         if self.fp64:
             pred_unit = pred_unit.double()
         pred_phys = self._unit_to_phys(pred_unit)
-        v_sim = JaxleyBridge.simulate_batch(
-            pred_phys, self.cell_name, self.stim_name,
-            checkpoint_lengths=self.checkpoint_lengths,
-            solver=self.solver,
-        )
-        # v_sim: (B, n_recorded, T_out).  Use first recorded compartment (soma).
-        v_sim_soma = v_sim[:, 0, :]                                  # (B, T_out)
-        # Drop the first `sim_t_skip_bins` of jaxley's trace so the
-        # z-score window matches the data H5's pre-trimmed window.
-        if self.sim_t_skip_bins > 0:
-            v_sim_soma = v_sim_soma[:, self.sim_t_skip_bins:]
-        v_sim_z    = self._zscore_time(v_sim_soma)                   # (B, T_out')
+        # C3: pad a short final mini-batch up to the canonical batch size so
+        # XLA does not recompile the vmapped jaxley sim for a smaller batch
+        # shape on the last batch of an epoch.  Padded rows repeat row 0 — an
+        # in-range, numerically-stable sample — and are sliced off before the
+        # MSE, so they contribute nothing to the loss or to its gradient.
+        cur_bs = pred_phys.shape[0]
+        do_pad = self.pad_batch_size is not None and 0 < cur_bs < self.pad_batch_size
+        if do_pad:
+            reps = self.pad_batch_size - cur_bs
+            pred_phys = torch.cat([pred_phys, pred_phys[:1].expand(reps, -1)], dim=0)
 
-        # Pick the soma probe trace from the dataloader's z-scored voltages.
-        # `true_volts` shape: (B, T, C).  `soma_probe_index` selects the
-        # column corresponding to the soma trace — the dataloader keeps the
-        # stim_select / probe_select order from the design YAML.
-        v_true_soma = true_volts[..., self.soma_probe_index].to(v_sim_z.dtype)  # (B, T)
+        def _sim(stim_name):
+            """Run the bridge for one stim and drop any padding rows."""
+            v = JaxleyBridge.simulate_batch(
+                pred_phys, self.cell_name, stim_name,
+                checkpoint_lengths=self.checkpoint_lengths,
+                solver=self.solver,
+            )                                                       # (B, n_recorded, T)
+            return v[:cur_bs] if do_pad else v
 
-        # Truncate to overlap.  The dataloader pack may be 4000 bins (400 ms)
-        # while the cell spec runs 5000 (500 ms), or vice-versa.  Until phase 3
-        # makes these equal, take the leading prefix.
-        T = min(v_sim_z.shape[-1], v_true_soma.shape[-1])
-        mse = self._mse(v_sim_z[:, :T], v_true_soma[:, :T])
+        # Build (sim_channel, data_channel) pairs depending on the mode.
+        #   * stim_names_multi -> Exp 3: one sim per stim, soma each, vs data ch i
+        #   * probe_loss_indices -> Exp 2: one sim, probe k each, vs data ch i
+        #   * else              -> default soma-only (unchanged behavior)
+        if self.stim_names_multi and self.probe_loss_indices is not None:  # Exp 1 combined
+            # For each stim, sim the multi-probe cell and supervise every probe.
+            # Channels are stim-major/probe-inner: data channel index = running count.
+            pairs = []
+            for sname in self.stim_names_multi:
+                v_sim = _sim(sname)                                # (B, n_probes, T)
+                for k in self.probe_loss_indices:
+                    pairs.append((v_sim[:, k, :], true_volts[..., len(pairs)]))
+        elif self.stim_names_multi:                                # Exp 3 multi-stim
+            pairs = []
+            for ci, sname in enumerate(self.stim_names_multi):
+                v_sim = _sim(sname)
+                pairs.append((v_sim[:, 0, :], true_volts[..., ci]))
+        elif self.probe_loss_indices is not None:                  # Exp 2 multi-probe
+            v_sim = _sim(self.stim_name)
+            pairs = [(v_sim[:, k, :], true_volts[..., ci])
+                     for ci, k in enumerate(self.probe_loss_indices)]
+        else:                                                      # soma-only default
+            v_sim = _sim(self.stim_name)
+            pairs = [(v_sim[:, 0, :], true_volts[..., self.soma_probe_index])]
+
+        # For each (sim_channel, data_channel) pair, blend the z-scored MSE
+        # anchor with the soft-eFEL feature-matching loss (efel_weight>0).
+        total = pred_phys.new_zeros(())
+        for v_sim_ch, v_true_ch in pairs:
+            # Drop the first `sim_t_skip_bins` so the window matches the data
+            # H5's pre-trimmed window (0 for the self-consistent packs).
+            if self.sim_t_skip_bins > 0:
+                v_sim_ch = v_sim_ch[:, self.sim_t_skip_bins:]
+            v_true_ch = v_true_ch.to(v_sim_ch.dtype)               # (B, T)
+            T = min(v_sim_ch.shape[-1], v_true_ch.shape[-1])
+            v_sim_ch  = v_sim_ch[:, :T]                            # raw mV (jaxley)
+            v_true_ch = v_true_ch[:, :T]                           # fixed-z-space (pack)
+            pair_loss = pred_phys.new_zeros(())
+            if self.mse_weight > 0:
+                v_sim_z = self._normalize_volts(v_sim_ch)          # into pack z-space
+                pair_loss = pair_loss + self.mse_weight * self._mse(v_sim_z, v_true_ch)
+            if self.efel_weight > 0:
+                # de-normalize the data channel back to raw mV so both sides
+                # feed the soft-eFEL layer in the physical units it assumes.
+                v_true_raw = v_true_ch * VOLT_NORM_STD + VOLT_NORM_MEAN
+                pair_loss = pair_loss + self.efel_weight * self._efel_feat_loss(v_sim_ch, v_true_raw)
+            total = total + pair_loss
+        mse = total / len(pairs)
         # Cast back to fp32 for the rest of the training graph (so AMP /
         # GradScaler / Adam state stay in their original dtype).
         return mse.float() if self.fp64 else mse
@@ -332,4 +471,19 @@ def build_hybrid_loss(params) -> nn.Module:
         fp64             = bool(vl.get("fp64", False)),
         sim_t_skip_ms    = float(vl.get("sim_t_skip_ms", 0.0)),
         sim_dt_ms        = float(vl.get("sim_dt_ms", 0.1)),
+        # Canonical per-rank batch size for C3 last-batch padding.  train_dist
+        # pops 'batch_size' into 'local_batch_size' before Trainer builds the
+        # criterion; fall back to 'batch_size' for non-DDP / test call sites.
+        pad_batch_size   = params.get("local_batch_size", params.get("batch_size")),
+        # Multi-channel supervision (opt-in; None = soma-only). See HybridLoss.
+        probe_loss_indices = vl.get("probe_loss_indices"),
+        stim_names_multi   = vl.get("stim_names_multi"),
+        # Soft-eFEL feature-matching voltage loss (opt-in; efel_weight=0 = off).
+        efel_weight      = float(vl.get("efel_weight", 0.0)),
+        mse_weight       = float(vl.get("mse_weight", 1.0)),
+        efel_features    = vl.get("efel_features"),
+        efel_huber_delta = float(vl.get("efel_huber_delta", 1.0)),
+        efel_k           = float(vl.get("efel_k", 2.0)),
+        efel_thr         = float(vl.get("efel_thr", -20.0)),
+        efel_nmax        = int(vl.get("efel_nmax", 64)),
     )
