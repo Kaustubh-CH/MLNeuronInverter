@@ -37,7 +37,10 @@ from .jaxley_utils import (
     phys_par_range_to_arrays, normalize_volts_fixed,
     VOLT_NORM_MEAN, VOLT_NORM_STD,
 )
-from .soft_efel import soft_efel_features, FEATURE_SCALES, STRONG_FEATURES, FEATURES as _EFEL_FEATURES
+from .soft_efel import (
+    soft_efel_features, FEATURE_SCALES, STRONG_FEATURES,
+    ALL_FEATURES as _EFEL_FEATURES,   # eFEL surrogates + L3 dV/dt features
+)
 from .soft_dtw import soft_dtw_loss
 
 

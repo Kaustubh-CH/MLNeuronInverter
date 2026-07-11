@@ -63,7 +63,27 @@ FEATURE_SCALES = {
     "ISI_CV":               0.24,   # unitless
     "ISI_values":           9.6,    # ms
     "adaptation_index":     0.086,  # unitless
+    # dV/dt phase-plane features (L3) -- see DVDT_FEATURES below.
+    "ap_upstroke_dvdt":     100.0,  # mV/ms  (Na-driven AP rising slope)
+    "ap_downstroke_dvdt":   60.0,   # mV/ms  (Kdr-driven repolarisation slope)
+    "depol_fraction":       0.05,   # unitless (fraction of trace above threshold)
 }
+
+# ── L3: differentiable dV/dt phase-plane features (opt-in, NOT part of eFEL) ──
+# gbar_na3 and gkdrbar_kdr are physically encoded in the AP UPSTROKE slope (Na)
+# and DOWNSTROKE / repolarisation slope + width (Kdr) -- the very channels that
+# voltage-MSE recovers worst.  eFEL's spike_half_width surrogate is too noisy
+# (r=0.07) to carry a gradient, so instead we match three smooth, spike-window-
+# free dV/dt statistics that speak directly to those two conductances:
+#   ap_upstroke_dvdt   = soft-max_t dV/dt        (Na kinetics)
+#   ap_downstroke_dvdt = |soft-min_t dV/dt|      (Kdr repolarisation)
+#   depol_fraction     = mean_t sigmoid(k(V-thr)) (time spent depolarised ~ AP width)
+# These blend through the SAME efel_weight / Huber path in HybridLoss; add any of
+# them to voltage_loss.efel_features to enable.
+DVDT_FEATURES = ["ap_upstroke_dvdt", "ap_downstroke_dvdt", "depol_fraction"]
+
+# Every name the feature-matching loss may request (eFEL surrogates + dV/dt).
+ALL_FEATURES = FEATURES + DVDT_FEATURES
 
 # Validation on the RUN1 50-sim cached traces (pooled true+pred, 3 stims):
 # Pearson r of soft vs real eFEL, and the numpy "ceiling" (exact peak-time
@@ -147,7 +167,7 @@ def _spike_times(V, k, thr, a, t_edge, nmax):
 # ---------------------------------------------------------------------------
 def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
                        a=8.0, beta_min=1.0, nmax=64, c_win=3.0,
-                       hw_sigma_ms=2.0, fast_win_ms=5.0, only=None):
+                       hw_sigma_ms=2.0, fast_win_ms=5.0, beta_dvdt=0.5, only=None):
     """Compute soft eFEL features on a ``(B, T)`` mV tensor.
 
     Returns a dict ``name -> (B,)`` differentiable tensor, keyed by eFEL names.
@@ -172,6 +192,7 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
     need_isi_ahp = bool(want & {"AHP_depth_abs_slow", "AHP_slow_time"})
     need_halfwidth = "spike_half_width" in want
     need_fast = ("fast_AHP_change" in want) or need_halfwidth
+    need_dvdt = bool(want & set(DVDT_FEATURES))
     dur_s = T * dt_ms / 1000.0
     t_ms = torch.arange(T, dtype=V.dtype, device=V.device) * dt_ms      # (T,)
     t_edge = t_ms[:-1] + 0.5 * dt_ms                                    # (T-1,) edge midpoints
@@ -193,6 +214,21 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
     soft_peak = _softplus_max(V, beta)                                # (B,)
     AP_amplitude = soft_peak - thr
 
+    # ===================== dV/dt phase-plane features (L3) ===================
+    # Smooth, spike-window-free statistics that target Na (upstroke) and Kdr
+    # (downstroke / width).  Computed only when requested (opt-in via `only`).
+    ap_upstroke_dvdt = ap_downstroke_dvdt = depol_fraction = _z
+    if need_dvdt:
+        dvdt = (V[:, 1:] - V[:, :-1]) / dt_ms                         # (B, T-1) mV/ms
+        # Soft-argmax VALUE (softmax-weighted mean of dV/dt): bounded in
+        # [min, max] and independent of trace length, unlike logsumexp/beta which
+        # overshoots the true peak by ~log(T)/beta and washes out weak slopes.
+        w_up = torch.softmax(beta_dvdt * dvdt, dim=-1)
+        w_dn = torch.softmax(-beta_dvdt * dvdt, dim=-1)
+        ap_upstroke_dvdt   = (w_up * dvdt).sum(-1)                    # ~max rise (Na)
+        ap_downstroke_dvdt = -(w_dn * dvdt).sum(-1)                   # |~min fall| (Kdr)
+        depol_fraction     = torch.sigmoid(k * (V - thr)).mean(-1)    # time above thr ~ width
+
     # ============================ ISI family =================================
     # (built only when a downstream feature needs spike-to-spike intervals)
     ISI_values = inv_first_ISI = ISI_CV = adaptation_index = _z
@@ -204,6 +240,8 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
             "AHP_slow_time": AHP_slow_time, "spike_half_width": spike_half_width,
             "time_to_first_spike": time_to_first_spike, "inv_first_ISI": inv_first_ISI,
             "ISI_CV": ISI_CV, "ISI_values": ISI_values, "adaptation_index": adaptation_index,
+            "ap_upstroke_dvdt": ap_upstroke_dvdt, "ap_downstroke_dvdt": ap_downstroke_dvdt,
+            "depol_fraction": depol_fraction,
         }
 
     # ISI_j = t_{j+1} - t_j, presence-weighted so absent spikes don't count.
@@ -308,6 +346,9 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
         "ISI_CV": ISI_CV,
         "ISI_values": ISI_values,
         "adaptation_index": adaptation_index,
+        "ap_upstroke_dvdt": ap_upstroke_dvdt,
+        "ap_downstroke_dvdt": ap_downstroke_dvdt,
+        "depol_fraction": depol_fraction,
     }
 
 
