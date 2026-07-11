@@ -331,6 +331,11 @@ class Trainer():
     #. . . . . . .  epoch loop start . . . . . . . . 
     for epoch in range(self.startEpoch, self.params['max_epochs']):
       self.epoch = epoch
+      # HybridLoss O2/L2 curriculum: anneal voltage-loss term weights (efel->mse,
+      # smooth_sigma->0, lowpass->0) per epoch.  No-op for plain MSELoss or when
+      # no `schedule` block is set, so default behaviour is unchanged.
+      if hasattr(self.criterion, "set_epoch"):
+        self.criterion.set_epoch(epoch)
       doVal= (epoch %  self.valPeriod[0]) < self.valPeriod[1]
         
       # Apply learning rate warmup     

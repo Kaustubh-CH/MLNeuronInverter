@@ -104,6 +104,8 @@ class HybridLoss(nn.Module):
         # ── O1 randomized smoothing of the objective; smooth_sigma=0 -> off ──
         smooth_sigma: float = 0.0,
         smooth_samples: int = 1,
+        # ── O2/L2 curriculum: per-epoch schedule for any of the above knobs ──
+        schedule=None,
     ):
         super().__init__()
         self.cell_name        = cell_name
@@ -187,6 +189,11 @@ class HybridLoss(nn.Module):
         self.lowpass_ms   = float(lowpass_ms)
         self.smooth_sigma   = float(smooth_sigma)
         self.smooth_samples = max(1, int(smooth_samples))
+        # Per-epoch curriculum: {attr: {start, end, epochs}} linearly ramps the
+        # named scalar attribute from `start` to `end` over `epochs` epochs, then
+        # holds at `end`.  Applied by `set_epoch`, which the Trainer calls once
+        # per epoch.  None -> weights are static (default).
+        self._schedule = dict(schedule) if schedule else None
 
         # ── Differentiable soft-eFEL voltage loss (opt-in; default off) ──────────
         # The voltage term becomes a blend of the z-scored MSE anchor and a
@@ -235,6 +242,36 @@ class HybridLoss(nn.Module):
             self.register_buffer("_grad_precond_w", w)
         else:
             self._grad_precond_w = None
+
+        # Apply epoch-0 curriculum values now that every schedulable attr exists.
+        if self._schedule:
+            self.set_epoch(0)
+
+    # ------------------------------------------------------------------
+    # curriculum
+    # ------------------------------------------------------------------
+
+    _SCHEDULABLE = ("mse_weight", "efel_weight", "dtw_weight",
+                    "lowpass_ms", "smooth_sigma", "channel_weight", "voltage_weight")
+
+    def set_epoch(self, epoch: int) -> None:
+        """Update scheduled loss-term weights for `epoch` (O2/L2 curriculum).
+
+        Each entry `{attr: {start, end, epochs}}` linearly interpolates `attr`
+        from `start` to `end` over `epochs` epochs, then holds at `end`.  Only the
+        whitelisted scalar knobs in `_SCHEDULABLE` may be scheduled.  No-op when no
+        schedule was provided.
+        """
+        if not self._schedule:
+            return
+        for attr, spec in self._schedule.items():
+            if attr not in self._SCHEDULABLE:
+                raise ValueError(f"schedule: '{attr}' is not schedulable; "
+                                 f"choose from {self._SCHEDULABLE}")
+            start = float(spec["start"]); end = float(spec["end"])
+            n = max(1, int(spec.get("epochs", 1)))
+            frac = min(max(epoch / n, 0.0), 1.0)
+            setattr(self, attr, start + (end - start) * frac)
 
     # ------------------------------------------------------------------
     # helpers
@@ -685,4 +722,5 @@ def build_hybrid_loss(params) -> nn.Module:
         lowpass_ms       = float(vl.get("lowpass_ms", 0.0)),
         smooth_sigma     = float(vl.get("smooth_sigma", 0.0)),
         smooth_samples   = int(vl.get("smooth_samples", 1)),
+        schedule         = vl.get("schedule"),
     )
