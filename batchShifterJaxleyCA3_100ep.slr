@@ -24,9 +24,12 @@
 
 set -e
 
-cellName=ca3_pyramidal_synth
+cellName=${NEUINV_CELL:-ca3_pyramidal_synth}
 design=ca3_matched
-epochs=100
+# NEUINV_EPOCHS overrides the epoch count (default 100). Combine with
+# NEUINV_WRK_SUFIX=<prior_jobid> + resume_checkpoint:True to extend a finished
+# run (e.g. NEUINV_EPOCHS=200 continues epochs 100->200 from last.pth).
+epochs=${NEUINV_EPOCHS:-100}
 data_temp=${1:-/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_synth_v1/}
 if [[ $# -ge 2 ]]; then design=$2; fi
 
@@ -60,7 +63,11 @@ export XLA_PYTHON_CLIENT_MEM_FRACTION=0.5
 nprocspn=${SLURM_NTASKS_PER_NODE}
 N=${SLURM_NNODES}
 G=$[ $N * $nprocspn ]
-export MASTER_ADDR=`hostname`
+# First COMPUTE node of the allocation. Under sbatch this equals `hostname`
+# (script runs on the head compute node); under `salloc ... bash script` the
+# body runs on the LOGIN node, so `hostname` would wrongly be the login node —
+# derive from the nodelist instead so DDP rendezvous targets rank 0's node.
+export MASTER_ADDR=$(scontrol show hostnames "${SLURM_JOB_NODELIST:-$(hostname)}" | head -n1)
 export MASTER_PORT=8881
 echo "S: job=${SLURM_JOBID} MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT G=$G N=$N"
 
@@ -76,10 +83,17 @@ mkdir -p $outPath
 # Frozen code snapshot.
 codeList="train_dist.py predict.py predictExp.py RayTune.py toolbox/ \
 batchShifterJaxleyCA3_100ep.slr evaluate_voltage.py plotJaxleyValidation.py \
-scripts/ ${design}.hpar.yaml"
+plot_exp_overlay.py scripts/ ${design}.hpar.yaml"
 cp -rp $codeList $wrkDir
 cd $wrkDir
 echo "S:lsfPWD=`pwd` outPath=$outPath"
+
+# ─── Optional fine-tune (warm-start) from a pretrained model ─────────────
+# Set NEUINV_FT_MODEL=<blank_model.pth> NEUINV_FT_CKPT=<ckpt.pth> to init from a
+# pretrained model; NEUINV_INITLR overrides the LR (e.g. 1e-4 for fine-tuning).
+FT_ARGS=""
+[[ -n "${NEUINV_FT_MODEL}" ]] && FT_ARGS="--do_fine_tune --fine_tune-blank_model ${NEUINV_FT_MODEL} --fine_tune-checkpoint_name ${NEUINV_FT_CKPT}"
+[[ -n "${NEUINV_INITLR}" ]] && FT_ARGS="$FT_ARGS --initLR ${NEUINV_INITLR}"
 
 # ─── Train ──────────────────────────────────────────────────────────────
 PY_CMD="python -u train_dist.py \
@@ -88,7 +102,7 @@ PY_CMD="python -u train_dist.py \
     --probsSelect $probsSelect --stimsSelect $stimsSelect \
     --validStimsSelect $validStimsSelect \
     --epochs $epochs --data_path_temp $data_temp \
-    --numGlobSamp 40000"
+    --numGlobSamp ${NEUINV_NUMGLOBSAMP:-40000} $FT_ARGS"
 echo "S:PY_CMD=$PY_CMD"
 
 date
@@ -98,5 +112,15 @@ mkdir -p \$JAX_COMPILATION_CACHE_DIR
 $PY_CMD" >& log.train
 echo "S:done train"
 date
+
+# ─── Auto-eval: ion-channel recovery (predict.py) + voltage traces ───────
+# Runs on 1 GPU after training; writes ./out/ (predict) and ./out/eval/
+# (per-param R², voltage MSE_z, spike-count, trace_overlays.pdf).
+echo "S:running eval on ./out"
+srun -n1 python -u predict.py --modelPath ./out --dom test -X >& log.predict || echo "S:predict FAILED"
+srun -n1 python -u evaluate_voltage.py --modelPath ./out --numSamples 200 --numOverlay 20 >& log.evalvolt || echo "S:evalvolt FAILED"
+echo "S:done eval"
+grep -E "#res,MSEloss|Average loss" log.predict 2>/dev/null | tail -2
+grep -E "overall MSE|mean R²|voltage MSE_z|spike count" log.evalvolt 2>/dev/null | tail -4
 
 tail -50 log.train

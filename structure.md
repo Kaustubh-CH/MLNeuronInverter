@@ -190,7 +190,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `toolbox/Dataloader_multiH5.py`
     - defs: get_data_loader, Dataset_multiH5_neuronInverter
 - `toolbox/HybridLoss.py` - Hybrid channel + voltage loss for the jaxley physics-supervised path.
-    - defs: HybridLoss, _ChannelOnlyAdapter, _log_jax_devices_once, _read_phys_par_range_from_h5, build_hybrid_loss
+    - defs: _GradScale, HybridLoss, _ChannelOnlyAdapter, _log_jax_devices_once, _read_phys_par_range_from_h5, _resolve_grad_precond_weights, build_hybrid_loss
 - `toolbox/JaxleyBridge.py` - Torch <-> Jaxley bridge.
     - defs: _CellHandle, _build_handle, get_handle, _torch_to_jax, _jax_to_torch, _JaxleySimulate, simulate_batch, output_shape, param_keys, clear_cache
 - `toolbox/Model.py`
@@ -282,6 +282,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages, normalize_volts_fixed_scale, write_h5, main
 - `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages_one_stim, normalize_volts_fixed_scale, write_h5, main
+- `scripts/voltage_loss_bias_probe.py` - Step-0 bias audit for the voltage-only training objective.
+    - defs: get_parser, load_split_volts, loss_at, main
 - `scripts/install_hooks.sh`
 
 ### packBBP3/

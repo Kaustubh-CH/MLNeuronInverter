@@ -243,6 +243,20 @@ class Trainer():
     else:
       self.criterion =torch.nn.MSELoss().to(self.device) # Mean Squared Loss
 
+    # Optional tanh-bounding of SUPERVISED (param-MSE) outputs.  The CNN head is
+    # a plain linear (unbounded); on out-of-distribution / experimental inputs it
+    # can extrapolate to extreme unit values (e.g. +/-40) that map to unphysical
+    # conductances.  When voltage_loss.clamp_unit_tanh is True we squash outputs
+    # through tanh -> (-1,1) before the param-MSE, mirroring the voltage-loss
+    # path.  predict.py / evaluate_voltage.py / plot_exp_overlay.py re-apply the
+    # same tanh at inference via the same flag, so train/infer stay consistent.
+    # Only active in the supervised branch (use_voltage_loss:False); the
+    # voltage-loss path applies its own tanh inside HybridLoss.
+    self.supervised_tanh = (not params.get('use_voltage_loss')) and \
+        bool(params.get('voltage_loss', {}).get('clamp_unit_tanh', False))
+    if self.supervised_tanh and self.verb:
+      logging.info('T:supervised param-MSE with tanh-bounded outputs (clamp_unit_tanh)')
+
     if params['world_size']>1:
       # if(not self.doRay):
       if True:
@@ -289,16 +303,20 @@ class Trainer():
     # (our own trusted checkpoint); newer torch defaults weights_only=True
     # and refuses to unpickle the MyModel class otherwise.
     model = torch.load(modelF, weights_only=False)
-    model2 = torch.nn.DataParallel(model)
+    # Return a PLAIN model (not DataParallel): the Trainer DDP-wraps self.model
+    # itself when world_size>1 (see the DDP block), so returning a DataParallel
+    # here would double-wrap DDP(DataParallel(...)) and break multi-rank runs.
+    if isinstance(model, torch.nn.DataParallel):
+      model = model.module
     allD=torch.load(stateF, map_location=str(device), weights_only=False)
     print('all model ok',list(allD.keys()))
     stateD=allD["model_state"]
-    keyL=list(stateD.keys())
-    if 'module' not in keyL[0]:
-      ccc={ 'module.%s'%k:stateD[k]  for k in stateD}
-      stateD=ccc
-    model2.load_state_dict(stateD)
-    return model2
+    # Strip any 'module.' prefix (checkpoints saved from a DDP-wrapped model) so
+    # the state loads into the plain model, matching the from-scratch path.
+    stateD={ (k[len('module.'):] if k.startswith('module.') else k): v
+             for k,v in stateD.items() }
+    model.load_state_dict(stateD)
+    return model
 #...!...!..................
   def train(self):
     if self.verb:
@@ -445,6 +463,8 @@ class Trainer():
         if self.params.get('use_voltage_loss'):
           loss = self.criterion(outputs, labels, images)
         else:
+          if self.supervised_tanh:
+            outputs = torch.tanh(outputs)
           loss = self.criterion(outputs, labels)
 
       # AMP: Use GradScaler to scale loss and run backward to produce scaled gradients
@@ -512,6 +532,8 @@ class Trainer():
         if self.params.get('use_voltage_loss'):
           loss += self.criterion(outputs, labels, images)
         else:
+          if self.supervised_tanh:
+            outputs = torch.tanh(outputs)
           loss += self.criterion(outputs, labels)
         
     logs = {'loss': loss/len(self.valid_loader),}

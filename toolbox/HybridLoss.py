@@ -40,6 +40,27 @@ from .jaxley_utils import (
 from .soft_efel import soft_efel_features, FEATURE_SCALES, STRONG_FEATURES, FEATURES as _EFEL_FEATURES
 
 
+class _GradScale(torch.autograd.Function):
+    """Straight-through per-parameter gradient reweighting.
+
+    Forward is the identity, so the loss VALUE is unchanged; backward
+    multiplies the incoming gradient (B, P) column-wise by a fixed weight
+    vector `w` (P,).  Used to precondition the voltage-loss gradient so that
+    each output parameter receives an ~equal-magnitude signal instead of one
+    scaled by its own sensitivity (∂V/∂θ_p).  See `HybridLoss._voltage_loss`.
+    """
+
+    @staticmethod
+    def forward(ctx, x, w):
+        ctx.save_for_backward(w)
+        return x
+
+    @staticmethod
+    def backward(ctx, g):
+        (w,) = ctx.saved_tensors
+        return g * w.to(g.dtype), None
+
+
 class HybridLoss(nn.Module):
     """See module docstring."""
 
@@ -68,6 +89,7 @@ class HybridLoss(nn.Module):
         efel_k: float = 2.0,
         efel_thr: float = -20.0,
         efel_nmax: int = 64,
+        grad_precond_weights=None,
     ):
         super().__init__()
         self.cell_name        = cell_name
@@ -165,6 +187,24 @@ class HybridLoss(nn.Module):
         self.register_buffer("_centers",  torch.from_numpy(centers))
         self.register_buffer("_logspans", torch.from_numpy(logspans))
 
+        # ── Per-parameter gradient preconditioning (opt-in; default off) ─────────
+        # `grad_precond_weights`: length-P multiplier applied to the VOLTAGE-loss
+        # gradient w.r.t. each output parameter (via `_GradScale`).  Counteracts
+        # the sensitivity-weighting of voltage-MSE — a channel that barely bends
+        # the trace (small ∂V/∂θ_p) otherwise gets a starved gradient and never
+        # converges even when it is fully identifiable.  Weights are typically
+        # w_p ∝ sensitivity_p^(-exponent), normalized to unit geometric mean so
+        # the overall step scale (and hence LR) is preserved.  None -> no-op
+        # (raw voltage gradient, bit-identical to prior behavior).  The channel
+        # term is left untouched — it is already well-conditioned (Hessian ~ I).
+        if grad_precond_weights is not None:
+            w = torch.as_tensor(grad_precond_weights, dtype=torch.float32)
+            if w.ndim != 1:
+                raise ValueError("grad_precond_weights must be a 1-D length-P vector")
+            self.register_buffer("_grad_precond_w", w)
+        else:
+            self._grad_precond_w = None
+
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
@@ -219,6 +259,14 @@ class HybridLoss(nn.Module):
                           or possibly (B, T, probes*stims) if multiple stims.
         Returns scalar voltage MSE (in z-scored mV space).
         """
+        # Per-parameter gradient preconditioning: reweight the gradient of the
+        # voltage loss w.r.t. each output parameter BEFORE any transform, so the
+        # scaling lands on ∂(voltage_loss)/∂pred_unit exactly.  Identity in the
+        # forward pass (loss value unchanged); only the backward signal to the
+        # network is rescaled.  Applied here (not in `forward`) so the channel
+        # loss keeps its untouched, well-conditioned gradient.
+        if self._grad_precond_w is not None:
+            pred_unit = _GradScale.apply(pred_unit, self._grad_precond_w)
         # Cast low-precision inputs (AMP fp16/bf16) up to fp32 before the
         # jaxley round-trip; preserve fp32/fp64 so the bridge's captured vjp
         # sees a matching grad dtype on backward.
@@ -288,6 +336,15 @@ class HybridLoss(nn.Module):
             T = min(v_sim_ch.shape[-1], v_true_ch.shape[-1])
             v_sim_ch  = v_sim_ch[:, :T]                            # raw mV (jaxley)
             v_true_ch = v_true_ch[:, :T]                           # fixed-z-space (pack)
+            # NaN-guard: drop samples whose simulated trace went non-finite (ramp
+            # stimuli crossing a spiking bifurcation can NaN the jaxley forward).
+            # A single NaN would otherwise make the whole (DDP-reduced) loss NaN.
+            finite = torch.isfinite(v_sim_ch).all(dim=1)          # (B,)
+            if not bool(finite.all()):
+                v_sim_ch  = v_sim_ch[finite]
+                v_true_ch = v_true_ch[finite]
+            if v_sim_ch.shape[0] == 0:                             # whole batch bad
+                continue
             pair_loss = pred_phys.new_zeros(())
             if self.mse_weight > 0:
                 v_sim_z = self._normalize_volts(v_sim_ch)          # into pack z-space
@@ -392,6 +449,58 @@ def _read_phys_par_range_from_h5(h5_path: str):
     return rng
 
 
+def _resolve_grad_precond_weights(vl, n_par):
+    """Turn a `voltage_loss.grad_precond` YAML block into a length-P weight
+    vector (or None if the block is absent / disabled).
+
+    Accepted keys (all optional):
+      * weights:     [w0..w_{P-1}]  -> used verbatim (skips sensitivity math).
+      * sensitivity: [s0..s_{P-1}]  -> w_p = s_p ** (-exponent).
+      * exponent:    float (default 1.0). 1.0 = "inverse sensitivity" (equalize
+                     gradient magnitude); 2.0 = diagonal Gauss-Newton / natural
+                     gradient; 0.5 = inverse-sqrt (Fisher-diag) — all tunable.
+      * normalize:   'geomean' (default) | 'mean' | 'none'. Rescales the weight
+                     vector so it does not change the overall LR scale.
+      * enabled:     set False to keep the block in the YAML but switch it off.
+    """
+    import numpy as np
+    gp = vl.get("grad_precond")
+    if not gp or gp.get("enabled", True) is False:
+        return None
+
+    if gp.get("weights") is not None:
+        w = np.asarray(gp["weights"], dtype=np.float64)
+    else:
+        sens = gp.get("sensitivity")
+        if sens is None:
+            raise ValueError(
+                "voltage_loss.grad_precond needs either 'weights' or 'sensitivity'"
+            )
+        sens = np.asarray(sens, dtype=np.float64)
+        # Guard non-positive sensitivities (a truly dead param) against div-by-0
+        # by flooring at a small fraction of the median observed sensitivity.
+        pos = sens[sens > 0]
+        floor = 1e-8 if pos.size == 0 else max(1e-12, 1e-3 * float(np.median(pos)))
+        sens = np.clip(sens, floor, None)
+        exponent = float(gp.get("exponent", 1.0))
+        w = sens ** (-exponent)
+
+    if w.shape != (n_par,):
+        raise ValueError(
+            f"voltage_loss.grad_precond weight vector has length {w.shape} "
+            f"but the model has {n_par} output parameters"
+        )
+
+    mode = str(gp.get("normalize", "geomean")).lower()
+    if mode == "geomean":
+        w = w / np.exp(np.mean(np.log(w)))
+    elif mode == "mean":
+        w = w / np.mean(w)
+    elif mode not in ("none", "off"):
+        raise ValueError(f"grad_precond.normalize must be geomean|mean|none, got {mode!r}")
+    return w.astype(np.float32)
+
+
 def build_hybrid_loss(params) -> nn.Module:
     """Return the criterion module appropriate for `params`.
 
@@ -457,9 +566,15 @@ def build_hybrid_loss(params) -> nn.Module:
             )
         phys_par_range = _read_phys_par_range_from_h5(h5_path)
 
+    grad_precond_weights = _resolve_grad_precond_weights(vl, len(phys_par_range))
+    if grad_precond_weights is not None:
+        print(f"[HybridLoss] grad_precond weights (per-param) = "
+              f"{[round(float(x), 4) for x in grad_precond_weights]}", flush=True)
+
     return HybridLoss(
         cell_name        = cell_name,
         phys_par_range   = phys_par_range,
+        grad_precond_weights = grad_precond_weights,
         channel_weight   = float(vl.get("channel_weight", 1.0)),
         voltage_weight   = float(vl.get("voltage_weight", 0.0)),
         mask_channels    = bool(vl.get("mask_channels", False)),

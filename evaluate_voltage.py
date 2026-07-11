@@ -10,7 +10,10 @@ mean/std stored alongside the data).
 Outputs (under <modelPath>/eval/):
   voltage_metrics.csv         per-sample RMSE, peak diff, spike-count diff
   voltage_loss_hist.png       histogram of z-scored voltage MSE per sample
-  trace_overlay_<i>.png       N=10 overlay plots (true vs predicted soma)
+  channel_recovery_grid.png   ion-channel recovery scatter (pred vs true, per param) — always
+  channel_recovery.csv        per-param R²/RMSE/bias
+  trace_overlay_<i>.png       overlay plots (input/data vs predicted soma); --numOverlay (default 50)
+  trace_overlays.pdf          self-contained: page 1 = ion-channel grid, then all voltage overlays
   summary.yaml                aggregate stats
 
 Usage:
@@ -48,7 +51,7 @@ def get_parser():
                    help="run dir's `out/` containing blank_model.pth + checkpoints/")
     p.add_argument("-n", "--numSamples", type=int, default=200,
                    help="evaluate on this many test-split samples")
-    p.add_argument("--numOverlay", type=int, default=10,
+    p.add_argument("--numOverlay", type=int, default=50,
                    help="how many overlay plots to save")
     p.add_argument("-o", "--outDir", default=None,
                    help="output dir (default: <modelPath>/eval)")
@@ -230,47 +233,71 @@ def main():
               f"R²={chan_r2_per_param[i]:+.3f}  bias={chan_bias_per_param[i]:+.3f}  "
               f"pred range=[{pred_u[:,i].min():+.2f}, {pred_u[:,i].max():+.2f}]")
 
-    # Run jaxley on the predicted phys params (chunked)
-    # Outputs (B, n_recorded=1, T_sim).
-    sim_chunks = []
+    # ── Per-probe simulation ─────────────────────────────────────────────
+    # For the multi-stim pack each selected "probe" is the SAME soma recorded
+    # under a DIFFERENT stimulus (stim_names_multi, order == probsSelect ==
+    # the data's probe axis, see ca3_multistim.hpar.yaml).  So we sim the SAME
+    # pred_phys under each probe's stim and compare to that probe's data channel.
+    # For a single-stim pack there is just one probe -> one stim (unchanged).
+    stim_names_multi = vl.get("stim_names_multi")
+    sel_probes = list(probs)                     # h5 probe indices, in CNN-channel order
+    if stim_names_multi and len(stim_names_multi) > 1:
+        # probe axis order == stim_names_multi order
+        sel_stims = [stim_names_multi[p] for p in sel_probes]
+    else:
+        sel_stims = [stim_name for _ in sel_probes]
+    n_probe = len(sel_probes)
+    probe_labels = [f"probe{p} ({s})" for p, s in zip(sel_probes, sel_stims)]
+    print(f"[eval] {n_probe} probe(s): {probe_labels}")
+
     sim_bs = 64
-    print(f"[eval] running jaxley on {N} predictions, batch={sim_bs}...")
-    t0 = time.time()
-    for i in range(0, N, sim_bs):
-        chunk = pred_phys[i:i+sim_bs]
-        v = JaxleyBridge.simulate_batch(chunk, cell_name, stim_name)
-        sim_chunks.append(v[:, 0, :].cpu())   # (B, T_sim)
-    v_sim = torch.cat(sim_chunks, dim=0).numpy()  # (N, T_sim)
-    t1 = time.time()
-    print(f"[eval] jaxley ran in {t1-t0:.1f}s, v_sim shape = {v_sim.shape}")
+    v_sim_pre_all = []   # per-probe (N, T) mV pre-z
+    v_sim_z_all   = []   # per-probe (N, T) z-scored
+    v_data_z_all  = []   # per-probe (N, T) z-scored data (from cnn_in)
+    err_z_all     = []   # per-probe (N,)  voltage MSE_z
+    spikes_sim_all = []; spikes_data_all = []
+    T = None
+    for j, (p_idx, s_name) in enumerate(zip(sel_probes, sel_stims)):
+        sim_chunks = []
+        print(f"[eval] running jaxley for {probe_labels[j]} on {N} preds, batch={sim_bs}...")
+        t0 = time.time()
+        for i in range(0, N, sim_bs):
+            v = JaxleyBridge.simulate_batch(pred_phys[i:i+sim_bs], cell_name, s_name)
+            sim_chunks.append(v[:, 0, :].cpu())   # (B, T_sim)
+        v_sim = torch.cat(sim_chunks, dim=0).numpy()
+        t1 = time.time()
+        # Drop the pre-stim window so the sim time axis aligns with the (already
+        # pre-trimmed) data H5.
+        if sim_skip_bins > 0:
+            v_sim = v_sim[:, sim_skip_bins:]
+        if T is None:
+            T = min(v_sim.shape[1], T_data)
+        v_sim_pre = v_sim[:, :T]                              # (N, T) mV
+        v_data_z_p = cnn_in[:, :T, j]                          # (N, T) z-scored data
+        v_sim_z = (v_sim_pre - v_sim_pre.mean(axis=1, keepdims=True)) / (
+            v_sim_pre.std(axis=1, keepdims=True) + 1e-6)
+        err_z = ((v_sim_z - v_data_z_p) ** 2).mean(axis=1)
+        sp_sim  = ((v_sim_pre[:, 1:] > 0) & (v_sim_pre[:, :-1] <= 0)).sum(axis=1)
+        sp_data = ((v_data_z_p[:, 1:] > 2.0) & (v_data_z_p[:, :-1] <= 2.0)).sum(axis=1)
+        v_sim_pre_all.append(v_sim_pre); v_sim_z_all.append(v_sim_z)
+        v_data_z_all.append(v_data_z_p); err_z_all.append(err_z)
+        spikes_sim_all.append(sp_sim); spikes_data_all.append(sp_data)
+        print(f"[eval]   {probe_labels[j]}: jaxley {t1-t0:.1f}s  "
+              f"MSE_z mean={err_z.mean():.4f} median={np.median(err_z):.4f}  "
+              f"spikes sim/data={sp_sim.mean():.1f}/{sp_data.mean():.1f}")
 
-    # Drop the pre-stim window from the simulated trace so its time axis
-    # aligns with the (already-pretrimmed) data H5.
-    if sim_skip_bins > 0:
-        v_sim = v_sim[:, sim_skip_bins:]
-        print(f"[eval] after sim_t_skip: v_sim shape = {v_sim.shape}")
-
-    # Truncate to overlap
-    T = min(v_sim.shape[1], T_data)
-    v_sim_pre = v_sim[:, :T]                          # (N, T) in mV (pre z-score)
-    v_data_z  = v_soma_norm[:, :T]                     # (N, T) z-scored
-
-    # z-score the predicted trace per-sample to compare vs data (which is z-scored)
-    v_sim_z = (v_sim_pre - v_sim_pre.mean(axis=1, keepdims=True)) / (
-        v_sim_pre.std(axis=1, keepdims=True) + 1e-6)
-
-    # Per-sample voltage MSE in z-scored space (matches training loss)
-    err_z = ((v_sim_z - v_data_z) ** 2).mean(axis=1)
+    # Primary probe (probe 0 = soma under the canonical stim) drives the headline
+    # scalar metrics / histogram / CDF so summaries stay comparable across runs.
+    v_sim_pre = v_sim_pre_all[0]; v_sim_z = v_sim_z_all[0]
+    v_data_z  = v_data_z_all[0];  err_z = err_z_all[0]
     rmse_z = np.sqrt(err_z)
-    print(f"[eval] voltage MSE_z: mean={err_z.mean():.4f} median={np.median(err_z):.4f} "
-          f"min={err_z.min():.4f} max={err_z.max():.4f}")
-    print(f"[eval] voltage RMSE_z: mean={rmse_z.mean():.3f} median={np.median(rmse_z):.3f}")
-
-    # Spike-count diff (rough: count crossings of 0 mV in v_sim_pre, and z=2 in data)
-    spikes_sim  = ((v_sim_pre[:, 1:] > 0) & (v_sim_pre[:, :-1] <= 0)).sum(axis=1)
-    spikes_data = ((v_data_z[:, 1:] > 2.0) & (v_data_z[:, :-1] <= 2.0)).sum(axis=1)
-    spike_diff  = spikes_sim - spikes_data
-    print(f"[eval] spike count: sim mean={spikes_sim.mean():.1f}, "
+    spikes_sim = spikes_sim_all[0]; spikes_data = spikes_data_all[0]
+    spike_diff = spikes_sim - spikes_data
+    print(f"[eval] [PRIMARY {probe_labels[0]}] voltage MSE_z: mean={err_z.mean():.4f} "
+          f"median={np.median(err_z):.4f} min={err_z.min():.4f} max={err_z.max():.4f}")
+    print(f"[eval] [PRIMARY {probe_labels[0]}] voltage RMSE_z: mean={rmse_z.mean():.3f} "
+          f"median={np.median(rmse_z):.3f}")
+    print(f"[eval] [PRIMARY {probe_labels[0]}] spike count: sim mean={spikes_sim.mean():.1f}, "
           f"data mean={spikes_data.mean():.1f}, |diff| mean={np.abs(spike_diff).mean():.2f}")
 
     # ─── outputs ────────────────────────────────────────────────────────────
@@ -296,6 +323,15 @@ def main():
         "spike_count_diff_mean_abs": float(np.abs(spike_diff).mean()),
         "spikes_sim_mean":  float(spikes_sim.mean()),
         "spikes_data_mean": float(spikes_data.mean()),
+        # Per-probe voltage fidelity (probe 0 == the *_mean scalars above).
+        "voltage_per_probe": [
+            {"probe": int(sel_probes[j]), "stim": sel_stims[j],
+             "mse_z_mean":   float(err_z_all[j].mean()),
+             "mse_z_median": float(np.median(err_z_all[j])),
+             "spikes_sim_mean":  float(spikes_sim_all[j].mean()),
+             "spikes_data_mean": float(spikes_data_all[j].mean())}
+            for j in range(n_probe)
+        ],
         "channel_mse_overall":  chan_mse_overall,
         "channel_rmse_overall": chan_rmse_overall,
         "channel_r2_overall":   chan_r2_overall,
@@ -346,7 +382,8 @@ def main():
         r, c = divmod(j, cols); axes[r][c].axis("off")
     fig_grid.tight_layout()
     fig_grid.savefig(os.path.join(outDir, "channel_recovery_grid.png"), dpi=120)
-    plt.close(fig_grid)
+    # NOTE: keep fig_grid open — it is re-used as page 1 of trace_overlays.pdf
+    # so the PDF is self-contained (ion channels + all voltage overlays).
     print(f"[eval] wrote summary -> {outDir}/summary.yaml")
 
     # Histogram
@@ -362,14 +399,13 @@ def main():
     plt.savefig(os.path.join(outDir, "voltage_loss_hist.png"), dpi=120)
     plt.close(fig)
 
-    # Overlay plots — pick a mix of best, median, worst samples
+    # Overlay plots — plot `numOverlay` (default 50) samples spanning the full
+    # error range (best -> worst), evenly sampled so no duplicates and the PDF
+    # shows the whole quality spectrum rather than only the extremes.
     n_overlay = min(args.numOverlay, N)
-    order = np.argsort(err_z)
-    pick = np.concatenate([
-        order[:n_overlay // 3],                              # best
-        order[len(order) // 2 - n_overlay // 6 : len(order) // 2 + n_overlay // 6],  # median
-        order[-n_overlay // 3:],                             # worst
-    ])[:n_overlay]
+    order = np.argsort(err_z)                                 # best -> worst
+    sel = np.unique(np.linspace(0, N - 1, n_overlay).astype(int))
+    pick = order[sel]
     dt = 0.1
     # x-axis starts at sim_t_skip_ms so plots show absolute simulation time
     # rather than relative-to-trim.  Easier to read against the stim CSV.
@@ -377,26 +413,40 @@ def main():
 
     pdf_path = os.path.join(outDir, "trace_overlays.pdf")
     pdf = PdfPages(pdf_path)
+    # Page 1: ion-channel recovery grid (always) so the PDF is self-contained.
+    pdf.savefig(fig_grid)
+    plt.close(fig_grid)
+    # One page per picked sample; one row per probe (data vs predicted-sim in
+    # z-scored space).  For the multi-stim pack the rows are the SAME neuron
+    # under the 4 different stimuli, so you can see whether the predicted params
+    # reproduce every stimulus condition, not just the canonical one.
     for k, idx in enumerate(pick):
-        fig, axes = plt.subplots(2, 1, figsize=(11, 5), sharex=True)
-        axes[0].plot(t_axis, v_data_z[idx], "k", lw=1.0, label="data (z-scored)")
-        axes[0].plot(t_axis, v_sim_z[idx],  "C3", lw=1.0, alpha=0.8, label="predicted (z-scored)")
-        axes[0].set_ylabel("z-scored V_soma")
-        axes[0].set_title(f"Sample #{idx}  rmse_z={rmse_z[idx]:.3f}  "
-                          f"spikes sim/data = {int(spikes_sim[idx])}/{int(spikes_data[idx])}")
-        axes[0].legend(loc="upper right")
-
-        axes[1].plot(t_axis, v_sim_pre[idx], "C3", lw=1.0, label="predicted (mV, jaxley)")
-        axes[1].set_xlabel("time (ms)")
-        axes[1].set_ylabel("V_soma (mV) — predicted only")
-        axes[1].legend(loc="upper right")
+        fig, axes = plt.subplots(n_probe, 1, figsize=(11, 2.6 * n_probe + 0.6),
+                                 sharex=True, squeeze=False)
+        for j in range(n_probe):
+            ax = axes[j][0]
+            rmse_zj = float(np.sqrt(err_z_all[j][idx]))
+            ax.plot(t_axis, v_data_z_all[j][idx], "k", lw=1.0,
+                    label="data (z-scored)")
+            ax.plot(t_axis, v_sim_z_all[j][idx], "C3", lw=1.0, alpha=0.8,
+                    label="predicted (z-scored)")
+            ax.set_ylabel("z-scored V")
+            ax.set_title(f"{probe_labels[j]}  rmse_z={rmse_zj:.3f}  "
+                         f"spikes sim/data = {int(spikes_sim_all[j][idx])}/"
+                         f"{int(spikes_data_all[j][idx])}", fontsize=9)
+            ax.legend(loc="upper right", fontsize=8)
+        axes[0][0].annotate(f"Sample #{idx}", xy=(0.01, 0.99),
+                            xycoords="axes fraction", va="top", fontsize=10,
+                            fontweight="bold")
+        axes[-1][0].set_xlabel("time (ms)")
         plt.tight_layout()
         plt.savefig(os.path.join(outDir, f"trace_overlay_{k:02d}_sample{idx}.png"), dpi=120)
         pdf.savefig(fig)
         plt.close(fig)
     pdf.close()
-    print(f"[eval] wrote {n_overlay} overlay plots to {outDir}/ "
-          f"(+ combined {pdf_path})")
+    print(f"[eval] wrote {len(pick)} overlay plots ({n_probe} probe rows each) to "
+          f"{outDir}/ (+ combined {pdf_path}: page1=ion-channel grid, then "
+          f"{len(pick)} voltage overlays)")
 
     # Aggregate accuracy plot: rmse_z sorted
     fig = plt.figure(figsize=(7, 4))

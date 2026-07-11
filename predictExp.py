@@ -89,9 +89,11 @@ def load_model(trainMD,modelPath):
     modelF = os.path.join(modelPath, trainMD['train_params']['blank_model'])
     stateF= os.path.join(modelPath, trainMD['train_params']['checkpoint_name'])
 
-    model = torch.load(modelF)
+    # weights_only=False: torch>=2.6 defaults to True, which cannot unpickle the
+    # full pickled nn.Module / checkpoint (our own trusted files). Mirrors predict.py.
+    model = torch.load(modelF, weights_only=False)
     model2 = torch.nn.DataParallel(model)
-    allD=torch.load(stateF, map_location=str(device))
+    allD=torch.load(stateF, map_location=str(device), weights_only=False)
     print('all model ok',list(allD.keys()))
     stateD=allD["model_state"]
     keyL=list(stateD.keys())

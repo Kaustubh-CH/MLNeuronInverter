@@ -221,6 +221,13 @@ class _JaxleySimulate(torch.autograd.Function):
         grad_j = _torch_to_jax(grad_out.contiguous())
         (dparams_j,) = ctx.vjp_fn(grad_j)
         dparams = _jax_to_torch(dparams_j, ctx.in_device, ctx.in_dtype)
+        # NaN-guard: some stimuli (e.g. ramps that sweep the cell across a spiking
+        # bifurcation) yield a non-finite VJP for isolated samples even when the
+        # forward trace is finite.  Left unguarded, one NaN gradient poisons the
+        # whole batch and — under DDP — NCCL all-reduce spreads it to every rank,
+        # killing the run.  Zero out non-finite per-parameter grads so those
+        # samples simply contribute nothing to this step.
+        dparams = torch.nan_to_num(dparams, nan=0.0, posinf=0.0, neginf=0.0)
         return dparams, None, None, None, None
 
 

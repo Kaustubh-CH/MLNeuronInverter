@@ -69,9 +69,12 @@ def load_model(trainMD,modelPath):
     modelF = os.path.join(modelPath, trainMD['train_params']['blank_model'])
     stateF= os.path.join(modelPath, trainMD['train_params']['checkpoint_name'])
 
-    model = torch.load(modelF)
+    # weights_only=False: torch>=2.6 defaults to True, which cannot unpickle the
+    # full-module blank_model.pth / the optimizer-bearing checkpoint. These are
+    # our own trusted artifacts (matches Trainer.py load sites).
+    model = torch.load(modelF, weights_only=False)
     model2 = torch.nn.DataParallel(model)
-    allD=torch.load(stateF, map_location=str(device))
+    allD=torch.load(stateF, map_location=str(device), weights_only=False)
     print('all model ok',list(allD.keys()))
     stateD=allD["model_state"]
     keyL=list(stateD.keys())
@@ -88,6 +91,17 @@ def model_infer(model,test_loader,trainMD):
     model.eval()
     criterion =torch.nn.MSELoss().to(device) # Mean Squared Loss
     test_loss = 0
+
+    # Mirror the supervised tanh-bounding used at train time (Trainer.py):
+    # when a supervised (use_voltage_loss:False) model was trained with
+    # voltage_loss.clamp_unit_tanh:True, the CNN's raw output was squashed
+    # through tanh before the param-MSE, so we must re-apply it here or the
+    # stored predictions / R2 will be off.  No-op for older/unclamped runs.
+    _tp = trainMD.get('train_params', {})
+    supervised_tanh = (not _tp.get('use_voltage_loss')) and \
+        bool(_tp.get('voltage_loss', {}).get('clamp_unit_tanh', False))
+    if supervised_tanh:
+        print('predict: applying tanh to supervised outputs (clamp_unit_tanh)', flush=True)
 
     # prepare output container, Thorsten's idea
     num_samp=len(test_loader.dataset)
@@ -120,6 +134,8 @@ def model_infer(model,test_loader,trainMD):
             else:
                 raise ValueError(f"Unexpected batch format from loader: type={type(batch)}")
 
+            if supervised_tanh:
+                output_dev = torch.tanh(output_dev)
             lossOp=criterion(output_dev, target_dev)
             #print('qq',lossOp,len(test_loader.dataset),len(test_loader)); ok55
             test_loss += lossOp.item()
