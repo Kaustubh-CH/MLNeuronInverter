@@ -221,6 +221,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: normalize_volts_fixed, phys_par_range_to_arrays, unit_to_phys_np, unit_to_phys_jax, load_stim_csv, upsample_stim, downsample_step
 - `toolbox/refresh_structure.py` - Regenerate the auto-appendix section of structure.md.
     - defs: FileSummary, tracked_files, summarize, collect, render, splice, main
+- `toolbox/soft_dtw.py` - Differentiable soft-DTW distance for voltage-trace matching.
+    - defs: _softmin3, soft_dtw, _downsample, soft_dtw_loss, _reference_soft_dtw
 - `toolbox/soft_efel.py` - Differentiable (PyTorch) surrogate for 11 eFEL electrophysiology features.
     - defs: _softplus_max, _softplus_min, _soft_select, _spike_times, soft_efel_features, real_efel_features, _pearson, _self_test
 - `toolbox/unitParamConvert.py`
