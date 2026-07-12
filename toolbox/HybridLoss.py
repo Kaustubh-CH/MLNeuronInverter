@@ -104,6 +104,12 @@ class HybridLoss(nn.Module):
         # ── O1 randomized smoothing of the objective; smooth_sigma=0 -> off ──
         smooth_sigma: float = 0.0,
         smooth_samples: int = 1,
+        # ── Soft range penalty (SOFT alternative to clamp_unit_tanh) ──
+        # Penalises predicted unit params that stray outside [-1, 1] WITHOUT
+        # hard-clamping, so the optimizer discovers the true [-1, 1] range from
+        # the data instead of being forced into it.  0 -> off (default).
+        range_penalty_weight: float = 0.0,
+        range_penalty_margin: float = 1.0,
         # ── O2/L2 curriculum: per-epoch schedule for any of the above knobs ──
         schedule=None,
     ):
@@ -189,6 +195,8 @@ class HybridLoss(nn.Module):
         self.lowpass_ms   = float(lowpass_ms)
         self.smooth_sigma   = float(smooth_sigma)
         self.smooth_samples = max(1, int(smooth_samples))
+        self.range_penalty_weight = float(range_penalty_weight)
+        self.range_penalty_margin = float(range_penalty_margin)
         # Per-epoch curriculum: {attr: {start, end, epochs}} linearly ramps the
         # named scalar attribute from `start` to `end` over `epochs` epochs, then
         # holds at `end`.  Applied by `set_epoch`, which the Trainer calls once
@@ -251,8 +259,9 @@ class HybridLoss(nn.Module):
     # curriculum
     # ------------------------------------------------------------------
 
-    _SCHEDULABLE = ("mse_weight", "efel_weight", "dtw_weight",
-                    "lowpass_ms", "smooth_sigma", "channel_weight", "voltage_weight")
+    _SCHEDULABLE = ("mse_weight", "efel_weight", "dtw_weight", "lowpass_ms",
+                    "smooth_sigma", "channel_weight", "voltage_weight",
+                    "range_penalty_weight")
 
     def set_epoch(self, epoch: int) -> None:
         """Update scheduled loss-term weights for `epoch` (O2/L2 curriculum).
@@ -493,7 +502,19 @@ class HybridLoss(nn.Module):
         if self.voltage_weight > 0:
             v = self._voltage_loss(pred_unit, true_volts)
 
-        return self.channel_weight * ch + self.voltage_weight * v
+        total = self.channel_weight * ch + self.voltage_weight * v
+
+        # Soft range penalty on the RAW network output (pre-tanh): a one-sided
+        # quadratic hinge outside [-margin, margin].  Zero inside the band, so it
+        # never distorts in-range predictions — it only discourages runaway
+        # values, letting the optimizer FIND the [-1, 1] range rather than being
+        # clamped into it (soft alternative to clamp_unit_tanh).
+        if self.range_penalty_weight > 0:
+            m = self.range_penalty_margin
+            over = torch.relu(pred_unit.abs() - m)
+            total = total + self.range_penalty_weight * over.pow(2).mean()
+
+        return total
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -722,5 +743,7 @@ def build_hybrid_loss(params) -> nn.Module:
         lowpass_ms       = float(vl.get("lowpass_ms", 0.0)),
         smooth_sigma     = float(vl.get("smooth_sigma", 0.0)),
         smooth_samples   = int(vl.get("smooth_samples", 1)),
+        range_penalty_weight = float(vl.get("range_penalty_weight", 0.0)),
+        range_penalty_margin = float(vl.get("range_penalty_margin", 1.0)),
         schedule         = vl.get("schedule"),
     )
