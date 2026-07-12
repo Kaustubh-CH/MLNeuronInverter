@@ -66,9 +66,14 @@ voltage_loss:
     mask_channels:     True          # voltage-only (no ground-truth params in loss)
     stim_name:         4k50kInterChaoticB
     soma_probe_index:  0
-    clamp_unit_tanh:   False          # tanh OFF: don't hard-limit to [-1,1]
-    range_penalty_weight: 2.0         # SOFT nudge instead — let the optimizer FIND [-1,1]
-    range_penalty_margin: 1.0
+    clamp_unit_tanh:   False          # tanh OFF: the voltage error IS the constraint
+    # range_penalty OFF: wrong conductance -> wrong trace -> voltage MSE already
+    # pulls params back into [-1,1], so a range prior is redundant.  Only turn
+    # this on (e.g. 1-2) as a NUMERICAL fallback if the run NaNs: phys is
+    # exponential in unit, so a far-out prediction blows up the jaxley integrator,
+    # the NaN-guard drops that sample, and the voltage loss then can't self-correct
+    # it.  Not a modeling constraint.
+    range_penalty_weight: 0.0
     t_max_override:    auto           # -> 400 ms from pack meta
     solver:            bwd_euler
     fp64:              True           # match the fp64 data generator (Step-0)

@@ -66,9 +66,8 @@ voltage_loss:
     mask_channels:     True          # voltage-only (no ground-truth params in loss)
     stim_name:         4k50kInterChaoticB
     soma_probe_index:  0
-    clamp_unit_tanh:   False          # tanh OFF: don't hard-limit to [-1,1]
-    range_penalty_weight: 2.0         # SOFT nudge instead — let the optimizer FIND [-1,1]
-    range_penalty_margin: 1.0
+    clamp_unit_tanh:   False          # tanh OFF: the voltage error IS the constraint
+    range_penalty_weight: 0.0         # OFF: voltage MSE already constrains params (NaN fallback only)
     t_max_override:    auto           # -> 400 ms from pack meta
     solver:            bwd_euler
     fp64:              True           # match the fp64 data generator (Step-0)
