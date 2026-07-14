@@ -45,6 +45,24 @@ STRONG_FEATURES = [
     "AHP_depth_abs_slow", "ISI_values", "AP_amplitude",
 ]
 
+# Sub-threshold / whole-trace features (differentiable) that the spike-centric
+# set above is BLIND to.  They are timing-ROBUST and expose the channels whose
+# main action is below spike threshold (leak, km, kd -> resting V, steady state,
+# ramp-to-threshold, sag) — precisely the information the raw-voltage variation
+# sees but count/height/ISI features cannot.  All are real eFEL names except
+# "AUC" (mean |V - baseline| over the trace, a whole-trace excursion integral
+# with no direct eFEL equivalent).  Windows are taken as fractions of the trace
+# (no explicit stim_start/stim_end); with native-tmax sims the trace ends at
+# stim end, so the tail window == steady state at stim end.
+SUBTHRESHOLD_FEATURES = [
+    "voltage_base", "steady_state_voltage_stimend", "voltage_deflection",
+    "minimum_voltage", "AUC",
+]
+# Convenience: the STRONG spike set + the sub-threshold set.  Use this as the
+# eFEL feature list in sensitivity_variation.py (--efelFeatures) / HybridLoss to
+# cover BOTH the spiking and sub-threshold regimes in one sweep.
+STRONG_PLUS_SUBTHRESHOLD = STRONG_FEATURES + SUBTHRESHOLD_FEATURES
+
 # Characteristic per-feature scale (physical units) used to make features
 # COMPARABLE inside a training loss: the feature-matching loss divides each
 # (sim - data) difference by its scale before the (Huber) penalty, so no single
@@ -63,6 +81,14 @@ FEATURE_SCALES = {
     "ISI_CV":               0.24,   # unitless
     "ISI_values":           9.6,    # ms
     "adaptation_index":     0.086,  # unitless
+    # sub-threshold / whole-trace (provisional scales ~ across-dataset mV spread;
+    # recalibrate to the real-trace std like the spike features above once wired
+    # into the offline validation).
+    "voltage_base":                   6.0,   # mV, resting membrane potential
+    "steady_state_voltage_stimend":  12.0,   # mV
+    "voltage_deflection":            12.0,   # mV, steady-state minus baseline
+    "minimum_voltage":               12.0,   # mV, deepest sag / AHP
+    "AUC":                           20.0,   # mV, mean |V - baseline| over trace
 }
 
 # Validation on the RUN1 50-sim cached traces (pooled true+pred, 3 stims):
@@ -147,7 +173,8 @@ def _spike_times(V, k, thr, a, t_edge, nmax):
 # ---------------------------------------------------------------------------
 def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
                        a=8.0, beta_min=1.0, nmax=64, c_win=3.0,
-                       hw_sigma_ms=2.0, fast_win_ms=5.0, only=None):
+                       hw_sigma_ms=2.0, fast_win_ms=5.0, base_ms=3.0,
+                       ss_frac=0.1, only=None):
     """Compute soft eFEL features on a ``(B, T)`` mV tensor.
 
     Returns a dict ``name -> (B,)`` differentiable tensor, keyed by eFEL names.
@@ -193,6 +220,32 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
     soft_peak = _softplus_max(V, beta)                                # (B,)
     AP_amplitude = soft_peak - thr
 
+    # ================= sub-threshold / whole-trace features ==================
+    # Timing-ROBUST scalars the spike-centric set is blind to.  Computed only
+    # when requested (kept as zero placeholders otherwise), so callers asking for
+    # a spike-only subset pay nothing and the default-11 self-test is unchanged.
+    _sub = {f: _z for f in SUBTHRESHOLD_FEATURES}
+    if want & set(SUBTHRESHOLD_FEATURES):
+        _nb = max(1, int(round(base_ms / dt_ms)))          # baseline window (samples)
+        _ns = max(1, int(round(T * ss_frac)))              # steady-state tail window
+        _v_base = V[:, :_nb].mean(-1)                      # (B,) resting baseline (mV)
+        _v_ss = V[:, -_ns:].mean(-1)                       # (B,) steady state at stim end
+        # soft global min (sag / AHP envelope).  A softmin over T samples carries
+        # a -log(T)/beta offset (a flat -70 mV trace reads ~ -70 - log(T)/beta);
+        # it is constant per stim so it cancels in the across-sample std and in a
+        # matched-length sim-vs-data loss.  beta=4 keeps that offset ~1-2 mV.
+        _v_min = _softplus_min(V, 4.0)                     # (B,) soft global min
+        _cand = {
+            "voltage_base": _v_base,
+            "steady_state_voltage_stimend": _v_ss,
+            "voltage_deflection": _v_ss - _v_base,         # SS minus baseline
+            "minimum_voltage": _v_min,
+            "AUC": (V - _v_base.unsqueeze(-1)).abs().mean(-1),  # mean |V-base| over trace
+        }
+        for _name, _val in _cand.items():
+            if _name in want:
+                _sub[_name] = _val
+
     # ============================ ISI family =================================
     # (built only when a downstream feature needs spike-to-spike intervals)
     ISI_values = inv_first_ISI = ISI_CV = adaptation_index = _z
@@ -204,6 +257,7 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
             "AHP_slow_time": AHP_slow_time, "spike_half_width": spike_half_width,
             "time_to_first_spike": time_to_first_spike, "inv_first_ISI": inv_first_ISI,
             "ISI_CV": ISI_CV, "ISI_values": ISI_values, "adaptation_index": adaptation_index,
+            **_sub,
         }
 
     # ISI_j = t_{j+1} - t_j, presence-weighted so absent spikes don't count.
@@ -308,6 +362,7 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
         "ISI_CV": ISI_CV,
         "ISI_values": ISI_values,
         "adaptation_index": adaptation_index,
+        **_sub,
     }
 
 
