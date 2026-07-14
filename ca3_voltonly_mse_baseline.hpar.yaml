@@ -1,0 +1,110 @@
+# CA3 Pyramidal — VOLTAGE-ONLY, cliffy-landscape attack (2026-07-10).
+#
+# Motivation (see the voltage-only plan + Step-0 bias probe): the CA3 inverse is
+# identifiable (Fisher cond 3-34) but pointwise voltage-MSE plateaus at channel
+# R^2 ~ 0.5 because V(theta) is NON-SMOOTH — spike-timing discontinuities give a
+# cliffy loss whose gradient starves Na/Kdr, and on a CHAOTIC stim the fp32
+# bwd_euler loss decorrelates from the fp64-generated data even at the TRUE
+# params (Step-0: corr 0.82, z-MSE floor 0.38).  This config attacks all of that
+# WITHOUT supervised labels:
+#   L1 soft-DTW      — aligns spikes in time before penalising (removes the cliff)
+#   O1 rand. smoothing — E[L(theta+sigma*eps)]: a descendable smoothed surface
+#   L3 dV/dt features — AP upstroke (Na) / downstroke (Kdr) / width, smooth signals
+#   fp64             — match the data generator to shrink the chaotic-stim floor
+#   O2 curriculum    — start eFEL/dV-dt dominant to seat Na/Kdr, anneal to MSE+DTW
+#
+# Run the Step-0 probe first on the pack you train on:
+#   python scripts/voltage_loss_bias_probe.py --modelPath <a voltage run>/out
+# and confirm loss(true theta) before trusting the objective.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_4kinterchaoticB_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]     # soft-eFEL diverges at 3e-4; keep grad clip on
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+# ─────────────────────────────────────────────────────────────────────────
+# VOLTAGE-ONLY loss: z-MSE anchor + soft-DTW + soft-eFEL(dV/dt) + smoothing
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True          # voltage-only (no ground-truth params in loss)
+    stim_name:         4k50kInterChaoticB
+    soma_probe_index:  0
+    clamp_unit_tanh:   False          # tanh OFF: the voltage error IS the constraint
+    range_penalty_weight: 0.0         # OFF: voltage MSE already constrains params (NaN fallback only)
+    t_max_override:    auto           # -> 400 ms from pack meta
+    solver:            bwd_euler
+    fp64:              True           # match the fp64 data generator (Step-0)
+
+    # --- term weights (epoch-0 values; ramped by the schedule below) ---
+    mse_weight:        1.0            # z-MSE anchor (small early, grows)
+    dtw_weight:        0.0            # L1 timing-robust distance
+    dtw_gamma:         0.1
+    dtw_n_points:      256            # DTW resolution (down from 4001 bins)
+    dtw_band_ms:       8.0            # Sakoe-Chiba warp band
+
+    # --- L3 soft-eFEL with dV/dt phase-plane features targeting Na/Kdr ---
+    efel_weight:       0.0
+    efel_features:     [ap_upstroke_dvdt, ap_downstroke_dvdt, depol_fraction,
+                        mean_frequency, time_to_first_spike, AP_amplitude]
+
+    # --- O1 randomized smoothing of the objective (annealed to 0) ---
+    smooth_sigma:      0.0
+    smooth_samples:    2              # M sims/step; cost is M x the jaxley solve
+
+    # --- O2/L2 curriculum: feature-dominant -> MSE/DTW-dominant; sigma -> 0 ---
+
+model:
+    myId:    ca3_voltonly_mse_baseline
+    comment: CA3 voltage-only + soft-DTW + dV/dt eFEL + randomized smoothing, 4k50kInterChaoticB
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

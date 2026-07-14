@@ -1,0 +1,100 @@
+# CA3 voltage-only ablation arm A7: 3-stim STEP BATTERY + per-channel soft-eFEL handles.
+#
+# Follow-on to A0-A5 (all single chaotic stim). Thesis: Kdr/Kap/Km fail under a
+# single chaotic stim because that stim neither EXPOSES them cleanly nor gives a
+# SMOOTH per-channel handle. A7 pairs a near-isolation STEP BATTERY with one
+# differentiable feature handle per channel:
+#   ch0 passiveReverse5k-50pA (hyperpol subthreshold) -> leak  (z-MSE)
+#   ch1 5k0step_200           (moderate tonic step)   -> kap (latency) + km (adaptation)
+#   ch2 5k0step_500           (strong step)           -> na3 (upstroke) + kdr (downstroke/width)
+# Data pack channel axis MUST match stim_names_multi order (gen'd that way).
+#
+# Data: ca3_stepbattery_v1, 50k samples, 3 stim channels, halfspan 0.5 (== A0-A5).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_stepbattery_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 96          # < A3's 128: the ISI-AHP + kdr_repol_slope handles build
+                        # (B, nmax, T) graphs x 3 stims; drop if the run OOMs.
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.00005]    # was 1e-4; efel_weight 1.0 @ LR 1e-4 DIVERGED (A7 v1,
+                                  # val 1.27->3.11 by ep7, stuck ~2.4 after LR drop) -> 5e-5
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    stim_name:         passiveReverse5k-50pA          # drives t_max_override:auto
+    stim_names_multi:  [passiveReverse5k-50pA, 5k0step_200, 5k0step_500]
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+    mse_weight:        1.0        # carries leak AND Kdr (raw MSE sees Kdr; shape feats do NOT)
+    efel_weight:       0.25       # was 1.0; 1.0 DIVERGED (soft-eFEL blow-up) -> 0.25
+    efel_nmax:         32         # cap spike slots (CA3 fires <=~10) -> smaller graph
+    # SIGNAL-CARRYING smooth features only.  The feature_channel_sensitivity gate
+    # (2026-07-12) showed spike-SHAPE feats (ap_downstroke_dvdt, kdr_repol_slope,
+    # depol_fraction) are BLIND to Kdr on this cell (S~0.05-0.2) -> DROPPED.  Kept:
+    # Na upstroke, timing (kap), adaptation/slow-AHP (km).  Kdr rides raw z-MSE.
+    efel_features:     [ap_upstroke_dvdt, AP_amplitude,
+                        time_to_first_spike, inv_first_ISI, mean_frequency,
+                        adaptation_index, AHP_depth_abs_slow,
+                        isi_adaptation_slope, slow_ahp_deepening]
+    efel_huber_delta:  1.0
+    dtw_weight:        0.0
+    smooth_sigma:      0.0
+    lowpass_ms:        0.0
+    range_penalty_weight: 0.0
+    # Per-parameter gradient preconditioning: fill `sensitivity` from
+    # feature_channel_sensitivity.py (grad_precond_sensitivity.feature_l2 on the
+    # battery). exponent 0.5 = inverse-sqrt (gentle; avoids amplifying cliffy noise).
+    # PLACEHOLDER below (uniform = off); replace after the sensitivity gate.
+    grad_precond: { sensitivity: [1, 1, 1, 1, 1, 1], exponent: 0.0, normalize: geomean }
+
+model:
+    myId:    ca3_vo_A7_hybrid
+    comment: 3-stim step battery + z-MSE + signal-carrying soft-eFEL feats (gate-pruned)
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

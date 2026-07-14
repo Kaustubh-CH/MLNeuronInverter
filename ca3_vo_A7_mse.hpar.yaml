@@ -1,0 +1,83 @@
+# CA3 voltage-only arm A7_mse: 3-stim STEP BATTERY, PURE raw z-MSE (control).
+#
+# Clean test of the "battery smoothness is the lever" hypothesis, isolated from
+# any feature. The feature_channel_sensitivity gate (2026-07-12) showed raw
+# voltage_mse observes ALL 6 channels ~equally (flat 13.6-16.3, incl Kdr=14.4) on
+# this step battery, while spike-SHAPE features are blind to Kdr. Steps are smooth
+# (no chaotic spike-timing cliffs), so raw MSE on the battery may recover the
+# channels that chaotic-MSE (A0: kdr -0.007, km -0.38) could not -- WITHOUT features.
+# Compare head-to-head with ca3_vo_A7_hybrid (same battery + smooth features).
+#
+# Data: ca3_stepbattery_v1, 50k, 3 stim channels, halfspan 0.5 (== A0-A5).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_stepbattery_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128         # no feature graphs (efel_weight 0) -> full batch fine
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    stim_name:         passiveReverse5k-50pA
+    stim_names_multi:  [passiveReverse5k-50pA, 5k0step_200, 5k0step_500]
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+    mse_weight:        1.0
+    efel_weight:       0.0        # PURE raw z-MSE control
+    dtw_weight:        0.0
+    smooth_sigma:      0.0
+    lowpass_ms:        0.0
+    range_penalty_weight: 0.0
+    grad_precond: { sensitivity: [1, 1, 1, 1, 1, 1], exponent: 0.0, normalize: geomean }
+
+model:
+    myId:    ca3_vo_A7_mse
+    comment: 3-stim step battery, pure raw z-MSE (battery-smoothness control)
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

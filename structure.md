@@ -143,6 +143,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: threadTrain, trainable, Raytune
 - `evaluate_voltage.py` - Evaluate a HybridLoss/voltage-trained model.
     - defs: get_parser, load_trained_model, load_test_data, main
+- `feature_channel_sensitivity.py` - Feature x Channel sensitivity matrix for the CA3 (or any jaxley-cell) inverse.
+    - defs: get_parser, resolve_phys_range, operating_points, feature_list, main
 - `findSpikesExpC.py` - identify spikes in experimental wave forms
     - defs: get_parser, score_me, pack_scores, M_build_metaData, M_save_tspike
 - `formatExpC4ML.py` - select subset of experimental waveforms and re-pack them for ML-predictions
@@ -219,8 +221,12 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser
 - `toolbox/jaxley_utils.py` - Helpers shared across the jaxley voltage-loss path.
     - defs: normalize_volts_fixed, phys_par_range_to_arrays, unit_to_phys_np, unit_to_phys_jax, load_stim_csv, upsample_stim, downsample_step
+- `toolbox/recal_metrics.py` - Per-channel recovery metrics that CREDIT a good-but-offset diagonal, plus a
+    - defs: _rankdata, _r2, channel_metrics, fit_affine, apply_affine, metrics_table, print_table, _load_npz, main
 - `toolbox/refresh_structure.py` - Regenerate the auto-appendix section of structure.md.
     - defs: FileSummary, tracked_files, summarize, collect, render, splice, main
+- `toolbox/soft_dtw.py` - Differentiable soft-DTW distance for voltage-trace matching.
+    - defs: _softmin3, soft_dtw, _downsample, soft_dtw_loss, _reference_soft_dtw
 - `toolbox/soft_efel.py` - Differentiable (PyTorch) surrogate for 11 eFEL electrophysiology features.
     - defs: _softplus_max, _softplus_min, _soft_select, _spike_times, soft_efel_features, real_efel_features, _pearson, _self_test
 - `toolbox/unitParamConvert.py`

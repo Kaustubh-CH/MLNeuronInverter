@@ -46,21 +46,16 @@ STRONG_FEATURES = [
 ]
 
 # Sub-threshold / whole-trace features (differentiable) that the spike-centric
-# set above is BLIND to.  They are timing-ROBUST and expose the channels whose
+# set above is BLIND to.  Timing-ROBUST scalars that expose the channels whose
 # main action is below spike threshold (leak, km, kd -> resting V, steady state,
-# ramp-to-threshold, sag) — precisely the information the raw-voltage variation
-# sees but count/height/ISI features cannot.  All are real eFEL names except
-# "AUC" (mean |V - baseline| over the trace, a whole-trace excursion integral
-# with no direct eFEL equivalent).  Windows are taken as fractions of the trace
-# (no explicit stim_start/stim_end); with native-tmax sims the trace ends at
-# stim end, so the tail window == steady state at stim end.
+# ramp-to-threshold, sag) -- the information the raw-voltage variation sees but
+# count/height/ISI features cannot.  All are real eFEL names except "AUC" (mean
+# |V - baseline| over the trace).  Windows are fractions of the trace.
 SUBTHRESHOLD_FEATURES = [
     "voltage_base", "steady_state_voltage_stimend", "voltage_deflection",
     "minimum_voltage", "AUC",
 ]
-# Convenience: the STRONG spike set + the sub-threshold set.  Use this as the
-# eFEL feature list in sensitivity_variation.py (--efelFeatures) / HybridLoss to
-# cover BOTH the spiking and sub-threshold regimes in one sweep.
+# Convenience: the STRONG spike set + the sub-threshold set (both regimes).
 STRONG_PLUS_SUBTHRESHOLD = STRONG_FEATURES + SUBTHRESHOLD_FEATURES
 
 # Characteristic per-feature scale (physical units) used to make features
@@ -81,15 +76,88 @@ FEATURE_SCALES = {
     "ISI_CV":               0.24,   # unitless
     "ISI_values":           9.6,    # ms
     "adaptation_index":     0.086,  # unitless
-    # sub-threshold / whole-trace (provisional scales ~ across-dataset mV spread;
-    # recalibrate to the real-trace std like the spike features above once wired
-    # into the offline validation).
+    # dV/dt phase-plane features (L3) -- see DVDT_FEATURES below.
+    "ap_upstroke_dvdt":     100.0,  # mV/ms  (Na-driven AP rising slope)
+    "ap_downstroke_dvdt":   60.0,   # mV/ms  (Kdr-driven repolarisation slope)
+    "depol_fraction":       0.05,   # unitless (fraction of trace above threshold)
+    # per-K-channel handles (L4) -- see KCHAN_FEATURES below.
+    "kdr_repol_slope":      55.0,   # mV/ms  (Kdr band-limited fall rate)
+    "isi_adaptation_slope": 0.04,   # frac/pair (Km late-ISI lengthening slope)
+    "slow_ahp_deepening":    4.0,   # mV      (Km early->late slow-AHP deepening; CALIBRATE)
+    # sub-threshold / whole-trace (provisional scales ~ across-dataset mV spread)
     "voltage_base":                   6.0,   # mV, resting membrane potential
     "steady_state_voltage_stimend":  12.0,   # mV
     "voltage_deflection":            12.0,   # mV, steady-state minus baseline
     "minimum_voltage":               12.0,   # mV, deepest sag / AHP
     "AUC":                           20.0,   # mV, mean |V - baseline| over trace
 }
+
+# ── L3: differentiable dV/dt phase-plane features (opt-in, NOT part of eFEL) ──
+# gbar_na3 and gkdrbar_kdr are physically encoded in the AP UPSTROKE slope (Na)
+# and DOWNSTROKE / repolarisation slope + width (Kdr) -- the very channels that
+# voltage-MSE recovers worst.  eFEL's spike_half_width surrogate is too noisy
+# (r=0.07) to carry a gradient, so instead we match three smooth, spike-window-
+# free dV/dt statistics that speak directly to those two conductances:
+#   ap_upstroke_dvdt   = soft-max_t dV/dt        (Na kinetics)
+#   ap_downstroke_dvdt = |soft-min_t dV/dt|      (Kdr repolarisation)
+#   depol_fraction     = mean_t sigmoid(k(V-thr)) (time spent depolarised ~ AP width)
+# These blend through the SAME efel_weight / Huber path in HybridLoss; add any of
+# them to voltage_loss.efel_features to enable.
+DVDT_FEATURES = ["ap_upstroke_dvdt", "ap_downstroke_dvdt", "depol_fraction"]
+
+# ── L4: per-K-channel differentiable handles (opt-in, NOT part of eFEL) ──────
+# One targeted handle per K conductance that voltage-MSE recovers worst, each a
+# smooth, spike-phase-local statistic that speaks to ONE channel:
+#   kdr_repol_slope      = fall rate in a fixed [-40,+10] mV band after each spike
+#                          (Kdr repolarisation; band-limited so it is decoupled
+#                           from na3 peak height, unlike raw ap_downstroke_dvdt)
+#   isi_adaptation_slope = late-weighted WLS slope of ISI vs spike index / mean-ISI
+#                          (Km spike-frequency adaptation; slow accumulation)
+#   slow_ahp_deepening   = early-minus-late inter-spike trough depth over a train
+#                          (Km deepening slow AHP; gated to >= ~3-4 spikes)
+# These blend through the SAME efel_weight / Huber path in HybridLoss; add any of
+# them to voltage_loss.efel_features to enable.  Best read off a sustained step.
+KCHAN_FEATURES = ["kdr_repol_slope", "isi_adaptation_slope", "slow_ahp_deepening"]
+
+# Every name the feature-matching loss may request (eFEL surrogates + dV/dt +
+# K-handles + subthreshold/whole-trace).
+ALL_FEATURES = FEATURES + DVDT_FEATURES + KCHAN_FEATURES + SUBTHRESHOLD_FEATURES
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EMPIRICAL FINDINGS — which features actually help (CA3 soma, 2026-07-13).
+# Two INDEPENDENT axes matter; a feature can pass one and fail the other.
+# ═══════════════════════════════════════════════════════════════════════════
+# (A) SURROGATE FIDELITY — does the soft feature track real eFEL?  (Pearson r vs
+#     real eFEL from _self_test; full r-table above.)
+#       WORKS (r>=0.79, == STRONG_FEATURES): time_to_first_spike 1.00,
+#             mean_frequency 0.94, inv_first_ISI 0.94, AHP_depth_abs_slow 0.89,
+#             ISI_values 0.84, AP_amplitude 0.79
+#       MODERATE: ISI_CV 0.49, adaptation_index 0.36
+#       BROKEN (too noisy to carry a gradient): spike_half_width 0.07,
+#             AHP_slow_time 0.16, fast_AHP_change -0.14
+#
+# (B) CONDUCTANCE-RECOVERY UTILITY — does using it as the TRAINING loss actually
+#     recover the channel?  (feature_channel_sensitivity.py gate + A7 arms.)
+#       WORKS:  ap_upstroke_dvdt -> Na (gbar_na3).  The ONLY clean per-channel
+#               win — it reads the AP rising slope Na sets; recovered na3 in the
+#               A3 arm; its sensitivity box lands on the na3 column.
+#       DOES NOT WORK (all confirmed by the sensitivity gate on the CA3 battery):
+#         * ap_downstroke_dvdt  -- meant for Kdr, but BLIND to Kdr (S~0.05).
+#               Kdr (kdrca1, "delayed", tau floored 2ms) is too slow to shape the
+#               fast downstroke (Na-inactivation sets it); it just re-reads Na.
+#         * kdr_repol_slope     -- BLIND to Kdr (S~0.23, Kdr is its WEAKEST
+#               column; dominated by leak/na3).  The fixed-voltage-band trick
+#               cannot manufacture a Kdr signal that the trace shape lacks.
+#         * isi_adaptation_slope-- dominated by LEAK, not Km (km only 2nd).
+#         * slow_ahp_deepening  -- dominated by Kd/leak, not Km.
+#     BOTTOM LINE: on this CA3 model, spike-SHAPE features cannot see Kdr, and the
+#     Km handles are not Km-specific.  Used AS the training loss (A7_hybrid), the
+#     soft-eFEL feature loss collapsed the CNN into a near-CONSTANT predictor and
+#     LOST to both plain z-MSE and soft-DTW.  What recovered na3/kap/km/kd (r~0.8)
+#     was soft-DTW — a warp-tolerant FULL-trace distance (toolbox/soft_dtw.py) —
+#     NOT any feature summary.  Keep ap_upstroke_dvdt for Na; treat the other
+#     dV/dt + all KCHAN_FEATURES as eval-only / experimental, not recovery levers.
+# ═══════════════════════════════════════════════════════════════════════════
 
 # Validation on the RUN1 50-sim cached traces (pooled true+pred, 3 stims):
 # Pearson r of soft vs real eFEL, and the numpy "ceiling" (exact peak-time
@@ -173,8 +241,8 @@ def _spike_times(V, k, thr, a, t_edge, nmax):
 # ---------------------------------------------------------------------------
 def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
                        a=8.0, beta_min=1.0, nmax=64, c_win=3.0,
-                       hw_sigma_ms=2.0, fast_win_ms=5.0, base_ms=3.0,
-                       ss_frac=0.1, only=None):
+                       hw_sigma_ms=2.0, fast_win_ms=5.0, beta_dvdt=0.5,
+                       base_ms=3.0, ss_frac=0.1, only=None):
     """Compute soft eFEL features on a ``(B, T)`` mV tensor.
 
     Returns a dict ``name -> (B,)`` differentiable tensor, keyed by eFEL names.
@@ -195,10 +263,14 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
     want = set(FEATURES) if only is None else set(only)
     _z = V.new_zeros(B)                                                 # placeholder
     need_isi = bool(want & {"ISI_values", "ISI_CV", "inv_first_ISI",
-                            "adaptation_index", "AHP_depth_abs_slow", "AHP_slow_time"})
-    need_isi_ahp = bool(want & {"AHP_depth_abs_slow", "AHP_slow_time"})
+                            "adaptation_index", "AHP_depth_abs_slow", "AHP_slow_time",
+                            "isi_adaptation_slope", "slow_ahp_deepening"})
+    need_isi_ahp = bool(want & {"AHP_depth_abs_slow", "AHP_slow_time",
+                                "slow_ahp_deepening"})
     need_halfwidth = "spike_half_width" in want
     need_fast = ("fast_AHP_change" in want) or need_halfwidth
+    need_dvdt = bool(want & set(DVDT_FEATURES))
+    need_kdr = "kdr_repol_slope" in want
     dur_s = T * dt_ms / 1000.0
     t_ms = torch.arange(T, dtype=V.dtype, device=V.device) * dt_ms      # (T,)
     t_edge = t_ms[:-1] + 0.5 * dt_ms                                    # (T-1,) edge midpoints
@@ -220,21 +292,53 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
     soft_peak = _softplus_max(V, beta)                                # (B,)
     AP_amplitude = soft_peak - thr
 
+    # ===================== dV/dt phase-plane features (L3) ===================
+    # Smooth, spike-window-free statistics that target Na (upstroke) and Kdr
+    # (downstroke / width).  Computed only when requested (opt-in via `only`).
+    ap_upstroke_dvdt = ap_downstroke_dvdt = depol_fraction = _z
+    if need_dvdt:
+        dvdt = (V[:, 1:] - V[:, :-1]) / dt_ms                         # (B, T-1) mV/ms
+        # Soft-argmax VALUE (softmax-weighted mean of dV/dt): bounded in
+        # [min, max] and independent of trace length, unlike logsumexp/beta which
+        # overshoots the true peak by ~log(T)/beta and washes out weak slopes.
+        w_up = torch.softmax(beta_dvdt * dvdt, dim=-1)
+        w_dn = torch.softmax(-beta_dvdt * dvdt, dim=-1)
+        ap_upstroke_dvdt   = (w_up * dvdt).sum(-1)                    # ~max rise (Na)
+        ap_downstroke_dvdt = -(w_dn * dvdt).sum(-1)                   # |~min fall| (Kdr)
+        depol_fraction     = torch.sigmoid(k * (V - thr)).mean(-1)    # time above thr ~ width
+
+    # ============ Kdr: fall-rate in a fixed voltage band (L4, na3-decoupled) ==
+    # Repolarisation (falling dV/dt) read in a controlled [-40,+10] mV band in a
+    # short window after each up-crossing, so it tracks Kdr (the repolarising
+    # conductance) and NOT na3 peak height -- unlike raw ap_downstroke_dvdt, which
+    # the verify pass flagged as na3-confounded.  present-weighted mean over spikes.
+    kdr_repol_slope = _z
+    if need_kdr:
+        dvdt_k = (V[:, 1:] - V[:, :-1]) / dt_ms                       # (B,T-1) mV/ms
+        te     = t_edge.view(1, 1, -1)                                # (1,1,T-1)
+        tsp1   = t_spk.unsqueeze(-1)                                  # (B,nmax,1) up-crossing time
+        down_win = 4.0                                                # ms window after up-crossing
+        win  = torch.clamp(torch.sigmoid(c_win * (te - tsp1))
+                           - torch.sigmoid(c_win * (te - (tsp1 + down_win))), min=0.0)
+        vmid = 0.5 * (V[:, 1:] + V[:, :-1])                           # (B,T-1) mV at edge
+        band = (torch.sigmoid(0.4 * (vmid + 40.0))
+                - torch.sigmoid(0.4 * (vmid - 10.0)))                 # ~1 in [-40,+10] mV
+        lw   = (torch.log(win + _EPS) + torch.log(band.unsqueeze(1) + _EPS)
+                - beta_dvdt * dvdt_k.unsqueeze(1))                    # softmin dvdt in band & window
+        wsel = torch.softmax(lw, dim=-1)                             # (B,nmax,T-1)
+        slope_i = -(wsel * dvdt_k.unsqueeze(1)).sum(-1)             # (B,nmax) positive fall rate
+        kdr_repol_slope = (present * slope_i).sum(-1) / (present.sum(-1) + _EPS)  # (B,)
+
     # ================= sub-threshold / whole-trace features ==================
-    # Timing-ROBUST scalars the spike-centric set is blind to.  Computed only
-    # when requested (kept as zero placeholders otherwise), so callers asking for
-    # a spike-only subset pay nothing and the default-11 self-test is unchanged.
+    # Timing-ROBUST scalars the spike-centric set is blind to (leak/km/kd).
+    # Presence-gated: absent unless requested, so spike-only callers pay nothing.
     _sub = {f: _z for f in SUBTHRESHOLD_FEATURES}
     if want & set(SUBTHRESHOLD_FEATURES):
         _nb = max(1, int(round(base_ms / dt_ms)))          # baseline window (samples)
         _ns = max(1, int(round(T * ss_frac)))              # steady-state tail window
         _v_base = V[:, :_nb].mean(-1)                      # (B,) resting baseline (mV)
         _v_ss = V[:, -_ns:].mean(-1)                       # (B,) steady state at stim end
-        # soft global min (sag / AHP envelope).  A softmin over T samples carries
-        # a -log(T)/beta offset (a flat -70 mV trace reads ~ -70 - log(T)/beta);
-        # it is constant per stim so it cancels in the across-sample std and in a
-        # matched-length sim-vs-data loss.  beta=4 keeps that offset ~1-2 mV.
-        _v_min = _softplus_min(V, 4.0)                     # (B,) soft global min
+        _v_min = _softplus_min(V, 4.0)                     # (B,) soft global min (sag/AHP)
         _cand = {
             "voltage_base": _v_base,
             "steady_state_voltage_stimend": _v_ss,
@@ -250,6 +354,7 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
     # (built only when a downstream feature needs spike-to-spike intervals)
     ISI_values = inv_first_ISI = ISI_CV = adaptation_index = _z
     AHP_depth_abs_slow = AHP_slow_time = fast_AHP_change = spike_half_width = _z
+    isi_adaptation_slope = slow_ahp_deepening = _z
     if not need_isi and not need_fast:
         return {
             "mean_frequency": mean_frequency, "AP_amplitude": AP_amplitude,
@@ -257,6 +362,10 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
             "AHP_slow_time": AHP_slow_time, "spike_half_width": spike_half_width,
             "time_to_first_spike": time_to_first_spike, "inv_first_ISI": inv_first_ISI,
             "ISI_CV": ISI_CV, "ISI_values": ISI_values, "adaptation_index": adaptation_index,
+            "ap_upstroke_dvdt": ap_upstroke_dvdt, "ap_downstroke_dvdt": ap_downstroke_dvdt,
+            "depol_fraction": depol_fraction, "kdr_repol_slope": kdr_repol_slope,
+            "isi_adaptation_slope": isi_adaptation_slope,
+            "slow_ahp_deepening": slow_ahp_deepening,
             **_sub,
         }
 
@@ -268,6 +377,21 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
     # mean ISI (ISI_values scalar reduction)
     isi_mean = (w_isi * isi).sum(-1) / sw
     ISI_values = isi_mean
+
+    # ===== Km: fractional ISI lengthening per pair, LATE-weighted (WLS slope) =====
+    # Km accumulates slowly over a train -> late ISIs lengthen.  Weighted least-
+    # squares slope of ISI vs pair-index, emphasising LATE pairs (so Kap/Kd early
+    # transients don't drive it), normalised by mean ISI (dimensionless).  Mean-ISI
+    # floored at 1 ms so a 0/1-spike trace (isi_mean~0) cannot blow the ratio up.
+    jidx  = torch.arange(isi.shape[1], dtype=V.dtype, device=V.device).view(1, -1)  # (1,P)
+    npair = w_isi.sum(-1, keepdim=True)                                             # (B,1) soft #pairs
+    wlate = w_isi * torch.sigmoid(4.0 * (jidx - 0.5 * npair))                       # emphasise late pairs
+    slw   = wlate.sum(-1, keepdim=True) + _EPS
+    xbar  = (wlate * jidx).sum(-1, keepdim=True) / slw
+    dxj   = jidx - xbar
+    dyj   = isi - isi_mean.unsqueeze(-1)
+    slope = (wlate * dxj * dyj).sum(-1) / ((wlate * dxj * dxj).sum(-1) + _EPS)      # ms/pair
+    isi_adaptation_slope = slope / torch.clamp(isi_mean, min=1.0)                   # (B,) frac/pair
 
     # ISI coefficient of variation.  Floor the mean-ISI denominator at 1 ms:
     # a near-zero soft mean-ISI (spurious coincident spike slots) otherwise makes
@@ -314,6 +438,21 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
         slow_frac = (trough_t - t_spk[:, :-1]) / (isi + _EPS)
         slow_frac = torch.clamp(slow_frac, 0.0, 1.0)
         AHP_slow_time = (w_isi * slow_frac).sum(-1) / sw
+
+        # ===== Km: slow-AHP deepening (early vs late inter-spike trough) =====
+        # Km deepens the slow AHP as it accumulates over a train: the late-ISI
+        # troughs sit LOWER than the early ones.  ew_ah/lw_ah are softmax over
+        # PRESENT ISI slots (log w_isi = -inf on absent); gated to fire only when
+        # there are >= ~3-4 spikes (a deepening needs a train).
+        P_ah  = trough_v.shape[-1]
+        sidx  = torch.arange(P_ah, dtype=V.dtype, device=V.device).view(1, -1)  # (1,P)
+        logw  = torch.log(w_isi + _EPS)                                          # -inf on absent slots
+        ew_ah = torch.softmax(logw - 3.0 * sidx, dim=-1)                         # earliest present ISIs
+        lw_ah = torch.softmax(logw + 3.0 * sidx, dim=-1)                         # latest   present ISIs
+        presence_gate = torch.sigmoid(4.0 * (w_isi.sum(-1) - 3.0))               # ~1 only when >=~3-4 ISIs
+        ahp_early = (ew_ah * trough_v).sum(-1)
+        ahp_late  = (lw_ah * trough_v).sum(-1)
+        slow_ahp_deepening = (ahp_early - ahp_late) * presence_gate              # (B,) mV, +ve = deeper late
 
     if need_fast:
         # ==================== fast AHP (per spike) ===========================
@@ -362,6 +501,12 @@ def soft_efel_features(V, k=2.0, thr=SPIKE_THR, dt_ms=DT_MS, beta=0.5,
         "ISI_CV": ISI_CV,
         "ISI_values": ISI_values,
         "adaptation_index": adaptation_index,
+        "ap_upstroke_dvdt": ap_upstroke_dvdt,
+        "ap_downstroke_dvdt": ap_downstroke_dvdt,
+        "depol_fraction": depol_fraction,
+        "kdr_repol_slope": kdr_repol_slope,
+        "isi_adaptation_slope": isi_adaptation_slope,
+        "slow_ahp_deepening": slow_ahp_deepening,
         **_sub,
     }
 

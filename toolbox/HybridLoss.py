@@ -37,7 +37,11 @@ from .jaxley_utils import (
     phys_par_range_to_arrays, normalize_volts_fixed,
     VOLT_NORM_MEAN, VOLT_NORM_STD,
 )
-from .soft_efel import soft_efel_features, FEATURE_SCALES, STRONG_FEATURES, FEATURES as _EFEL_FEATURES
+from .soft_efel import (
+    soft_efel_features, FEATURE_SCALES, STRONG_FEATURES,
+    ALL_FEATURES as _EFEL_FEATURES,   # eFEL surrogates + L3 dV/dt features
+)
+from .soft_dtw import soft_dtw_loss
 
 
 class _GradScale(torch.autograd.Function):
@@ -90,6 +94,24 @@ class HybridLoss(nn.Module):
         efel_thr: float = -20.0,
         efel_nmax: int = 64,
         grad_precond_weights=None,
+        # ── L1 soft-DTW (timing-robust distance); dtw_weight=0 -> off ──
+        dtw_weight: float = 0.0,
+        dtw_gamma: float = 0.1,
+        dtw_n_points: int = 200,
+        dtw_band_ms: float = 8.0,
+        # ── L2 low-pass MSE (subthreshold-envelope match); lowpass_ms=0 -> off ──
+        lowpass_ms: float = 0.0,
+        # ── O1 randomized smoothing of the objective; smooth_sigma=0 -> off ──
+        smooth_sigma: float = 0.0,
+        smooth_samples: int = 1,
+        # ── Soft range penalty (SOFT alternative to clamp_unit_tanh) ──
+        # Penalises predicted unit params that stray outside [-1, 1] WITHOUT
+        # hard-clamping, so the optimizer discovers the true [-1, 1] range from
+        # the data instead of being forced into it.  0 -> off (default).
+        range_penalty_weight: float = 0.0,
+        range_penalty_margin: float = 1.0,
+        # ── O2/L2 curriculum: per-epoch schedule for any of the above knobs ──
+        schedule=None,
     ):
         super().__init__()
         self.cell_name        = cell_name
@@ -157,6 +179,30 @@ class HybridLoss(nn.Module):
         )
         self._mse = nn.MSELoss()
 
+        # ── L1 soft-DTW / L2 low-pass / O1 randomized smoothing (all opt-in) ─────
+        # These attack the "cliffy" (non-smooth) V(theta) landscape that makes
+        # pointwise voltage-MSE plateau: soft-DTW aligns spikes in time before
+        # penalising, low-pass matches the smooth subthreshold envelope, and
+        # randomized smoothing averages the loss over Gaussian jitter of the
+        # predicted params so the descent direction survives spike-timing cliffs.
+        # `dtw_weight` and `smooth_sigma` may be mutated per-epoch by the Trainer
+        # (curriculum); everything is a no-op at its default so behaviour is
+        # bit-identical unless enabled.
+        self.dtw_weight   = float(dtw_weight)
+        self.dtw_gamma    = float(dtw_gamma)
+        self.dtw_n_points = int(dtw_n_points)
+        self.dtw_band_ms  = float(dtw_band_ms)
+        self.lowpass_ms   = float(lowpass_ms)
+        self.smooth_sigma   = float(smooth_sigma)
+        self.smooth_samples = max(1, int(smooth_samples))
+        self.range_penalty_weight = float(range_penalty_weight)
+        self.range_penalty_margin = float(range_penalty_margin)
+        # Per-epoch curriculum: {attr: {start, end, epochs}} linearly ramps the
+        # named scalar attribute from `start` to `end` over `epochs` epochs, then
+        # holds at `end`.  Applied by `set_epoch`, which the Trainer calls once
+        # per epoch.  None -> weights are static (default).
+        self._schedule = dict(schedule) if schedule else None
+
         # ── Differentiable soft-eFEL voltage loss (opt-in; default off) ──────────
         # The voltage term becomes a blend of the z-scored MSE anchor and a
         # feature-matching loss on the soft-eFEL features (toolbox/soft_efel.py):
@@ -205,6 +251,37 @@ class HybridLoss(nn.Module):
         else:
             self._grad_precond_w = None
 
+        # Apply epoch-0 curriculum values now that every schedulable attr exists.
+        if self._schedule:
+            self.set_epoch(0)
+
+    # ------------------------------------------------------------------
+    # curriculum
+    # ------------------------------------------------------------------
+
+    _SCHEDULABLE = ("mse_weight", "efel_weight", "dtw_weight", "lowpass_ms",
+                    "smooth_sigma", "channel_weight", "voltage_weight",
+                    "range_penalty_weight")
+
+    def set_epoch(self, epoch: int) -> None:
+        """Update scheduled loss-term weights for `epoch` (O2/L2 curriculum).
+
+        Each entry `{attr: {start, end, epochs}}` linearly interpolates `attr`
+        from `start` to `end` over `epochs` epochs, then holds at `end`.  Only the
+        whitelisted scalar knobs in `_SCHEDULABLE` may be scheduled.  No-op when no
+        schedule was provided.
+        """
+        if not self._schedule:
+            return
+        for attr, spec in self._schedule.items():
+            if attr not in self._SCHEDULABLE:
+                raise ValueError(f"schedule: '{attr}' is not schedulable; "
+                                 f"choose from {self._SCHEDULABLE}")
+            start = float(spec["start"]); end = float(spec["end"])
+            n = max(1, int(spec.get("epochs", 1)))
+            frac = min(max(epoch / n, 0.0), 1.0)
+            setattr(self, attr, start + (end - start) * frac)
+
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
@@ -230,6 +307,24 @@ class HybridLoss(nn.Module):
         """
         return normalize_volts_fixed(x)
 
+    def _lowpass(self, x: torch.Tensor) -> torch.Tensor:
+        """Differentiable moving-average low-pass of a (B, T) trace.
+
+        Window = `lowpass_ms` at the sim dt.  Smooths out the sharp AP transients
+        so the MSE early in a curriculum matches the (near-convex) subthreshold
+        envelope instead of the cliffy spike-timing detail.  `lowpass_ms<=0`
+        returns the input unchanged.
+        """
+        if self.lowpass_ms <= 0:
+            return x
+        w = max(1, int(round(self.lowpass_ms / float(self.sim_dt_ms))))
+        if w <= 1:
+            return x
+        k = x.new_ones(1, 1, w) / float(w)
+        pad = w // 2
+        y = nn.functional.conv1d(x.unsqueeze(1), k, padding=pad)
+        return y.squeeze(1)[:, : x.shape[-1]]
+
     def _efel_feat_loss(self, v_sim_raw: torch.Tensor, v_true_raw: torch.Tensor) -> torch.Tensor:
         """Soft-eFEL feature-matching loss between two RAW-mV (B, T) traces.
 
@@ -254,6 +349,24 @@ class HybridLoss(nn.Module):
         return loss / len(self.efel_features)
 
     def _voltage_loss(self, pred_unit: torch.Tensor, true_volts: torch.Tensor) -> torch.Tensor:
+        """Voltage term, optionally wrapped in O1 randomized smoothing.
+
+        With `smooth_sigma>0` the objective becomes L_sigma(theta) =
+        E_eps[L(theta + sigma*eps)] estimated with `smooth_samples` Gaussian
+        draws, so the gradient is a Gaussian-smoothed (hence descendable) version
+        of the cliffy voltage surface rather than the raw sensitivity-weighted
+        one.  `smooth_sigma=0` (default) -> a single un-perturbed call, so the
+        behaviour is bit-identical to the pre-smoothing code.
+        """
+        if self.smooth_sigma <= 0:
+            return self._voltage_loss_core(pred_unit, true_volts)
+        total = pred_unit.new_zeros(())
+        for _ in range(self.smooth_samples):
+            eps = torch.randn_like(pred_unit) * self.smooth_sigma
+            total = total + self._voltage_loss_core(pred_unit + eps, true_volts)
+        return total / float(self.smooth_samples)
+
+    def _voltage_loss_core(self, pred_unit: torch.Tensor, true_volts: torch.Tensor) -> torch.Tensor:
         """`pred_unit`  : (B, P) in unit-normalized space.
            `true_volts` : (B, T, C) with C = num_probes (after dataloader reshape)
                           or possibly (B, T, probes*stims) if multiple stims.
@@ -346,9 +459,18 @@ class HybridLoss(nn.Module):
             if v_sim_ch.shape[0] == 0:                             # whole batch bad
                 continue
             pair_loss = pred_phys.new_zeros(())
-            if self.mse_weight > 0:
+            if self.mse_weight > 0 or self.dtw_weight > 0:
                 v_sim_z = self._normalize_volts(v_sim_ch)          # into pack z-space
-                pair_loss = pair_loss + self.mse_weight * self._mse(v_sim_z, v_true_ch)
+            if self.mse_weight > 0:
+                # L2: optionally low-pass both sides before the MSE (curriculum).
+                a = self._lowpass(v_sim_z); b = self._lowpass(v_true_ch)
+                pair_loss = pair_loss + self.mse_weight * self._mse(a, b)
+            if self.dtw_weight > 0:
+                # L1: timing-robust soft-DTW in the SAME z-space as the MSE anchor.
+                pair_loss = pair_loss + self.dtw_weight * soft_dtw_loss(
+                    v_sim_z, v_true_ch, gamma=self.dtw_gamma,
+                    n_points=self.dtw_n_points, band_ms=self.dtw_band_ms,
+                    dt_ms=float(self.sim_dt_ms), orig_T=v_sim_z.shape[-1])
             if self.efel_weight > 0:
                 # de-normalize the data channel back to raw mV so both sides
                 # feed the soft-eFEL layer in the physical units it assumes.
@@ -380,7 +502,19 @@ class HybridLoss(nn.Module):
         if self.voltage_weight > 0:
             v = self._voltage_loss(pred_unit, true_volts)
 
-        return self.channel_weight * ch + self.voltage_weight * v
+        total = self.channel_weight * ch + self.voltage_weight * v
+
+        # Soft range penalty on the RAW network output (pre-tanh): a one-sided
+        # quadratic hinge outside [-margin, margin].  Zero inside the band, so it
+        # never distorts in-range predictions — it only discourages runaway
+        # values, letting the optimizer FIND the [-1, 1] range rather than being
+        # clamped into it (soft alternative to clamp_unit_tanh).
+        if self.range_penalty_weight > 0:
+            m = self.range_penalty_margin
+            over = torch.relu(pred_unit.abs() - m)
+            total = total + self.range_penalty_weight * over.pow(2).mean()
+
+        return total
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -601,4 +735,15 @@ def build_hybrid_loss(params) -> nn.Module:
         efel_k           = float(vl.get("efel_k", 2.0)),
         efel_thr         = float(vl.get("efel_thr", -20.0)),
         efel_nmax        = int(vl.get("efel_nmax", 64)),
+        # L1 soft-DTW / L2 low-pass / O1 randomized smoothing (all opt-in).
+        dtw_weight       = float(vl.get("dtw_weight", 0.0)),
+        dtw_gamma        = float(vl.get("dtw_gamma", 0.1)),
+        dtw_n_points     = int(vl.get("dtw_n_points", 200)),
+        dtw_band_ms      = float(vl.get("dtw_band_ms", 8.0)),
+        lowpass_ms       = float(vl.get("lowpass_ms", 0.0)),
+        smooth_sigma     = float(vl.get("smooth_sigma", 0.0)),
+        smooth_samples   = int(vl.get("smooth_samples", 1)),
+        range_penalty_weight = float(vl.get("range_penalty_weight", 0.0)),
+        range_penalty_margin = float(vl.get("range_penalty_margin", 1.0)),
+        schedule         = vl.get("schedule"),
     )
