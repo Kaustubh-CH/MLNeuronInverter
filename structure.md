@@ -286,6 +286,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 
 ### scripts/
 
+- `scripts/collect_vo_ledger.py` - Collect CA3 voltage-only run metrics into one comparison CSV (the "vo ledger").
+    - defs: resolve_summary, design_name, row_from_summary, load_existing, main
 - `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 from a registered jaxley cell.
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages, normalize_volts_fixed_scale, write_h5, main
 - `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).

@@ -1,0 +1,99 @@
+# CA3 Pyramidal — VOLTAGE-ONLY, soft-DTW + multi-scale van-Rossum BLUR, 5kChaoticRamp.
+#
+# R1 (top pick) = the soft-DTW baseline (ca3_vo_chaoticramp_dtw) PLUS a multi-scale
+# blurred (van-Rossum) MSE term with a coarse->fine curriculum.  Rationale: soft-DTW's
+# 8 ms Sakoe-Chiba band forgives sub-8 ms spike jitter (kills the chaotic cliff) but
+# SATURATES past its band, so it cannot supply the firing-RATE signal that identifies
+# kdr -> kdr stuck at ~0.15.  The blur term low-passes both traces to their firing-rate
+# envelope (large sigma) giving a wide near-convex gradient basin that pulls the whole
+# spike count/rate into agreement, then sharpens (sigma->0.5 ms) while blur_weight hands
+# fine alignment back to DTW so AP shape (na3/kap) returns.
+#   v = dtw_weight * softDTW(z(sim), z(data)) + blur_weight * multiscale_blur(z(sim), z(data))
+# STRICTLY VOLTAGE-ONLY: channel_weight 0, mask_channels True -> ground-truth ion
+# channels NEVER enter the loss.  DTW params (gamma/band/n_points) held at the baseline
+# so blur is the only changed variable vs ca3_vo_chaoticramp_dtw (clean ablation).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    stim_name:         5kChaoticRamp
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    range_penalty_weight: 0.0
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+    # --- soft-DTW (held at the baseline: the only changed variable is blur) ---
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    efel_weight:       0.0
+    smooth_sigma:      0.0
+    smooth_samples:    1
+    lowpass_ms:        0.0
+    # --- multi-scale blurred (van-Rossum) MSE, coarse->fine curriculum ---
+    blur_weight:       1.0
+    blur_sigmas_ms:    [16, 8, 4, 2, 1]   # * blur_sigma_scale / sim_dt_ms -> samples
+    blur_include_raw:  False              # keep the EARLY landscape smooth; DTW pins aligned amplitude
+    blur_sigma_scale:  3.0                # start coarse: effective sigma ~ [48,24,12,6,3] ms
+    schedule:
+        # coarse (firing-rate envelope, kdr's signal) -> sharp (0.5 ms) over 40 epochs
+        blur_sigma_scale: { start: 3.0, end: 0.5, epochs: 40 }
+        # hand fine timing back to DTW as the blur sharpens
+        blur_weight:      { start: 1.0, end: 0.3, epochs: 40 }
+
+model:
+    myId:    ca3_vo_dtwblur_chaoticramp
+    comment: CA3 voltage-only, soft-DTW + coarse->fine van-Rossum blur, 5kChaoticRamp
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04
