@@ -1,0 +1,126 @@
+#!/bin/bash -l
+#SBATCH -N4 --time=2:30:00 -J jaxleyCA3-100 -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# - - - E N D    O F    SLURM    C O M M A N D S
+#
+# Phase 4 — matched CA3 Pyramidal data + sim, 100-epoch regular-queue run.
+#
+# Same setup as batchShifterJaxleyCA3.slr (debug-queue 10-epoch variant)
+# but on the regular queue with epochs=100.  Each train sample is
+# revisited once per epoch (numGlobSamp=40000 == train split size).
+#
+# Wall-time projection (extrapolated from the 1-GPU 5-epoch smoke run on
+# 2026-05-07 at 59 s/epoch with B=128 and 32 steps/epoch):
+#   - 16 GPUs, const_local_batch=128 -> global_batch=2048
+#   - 40000 samples / 2048 = 20 steps/epoch
+#   - per-step warm time stays ~1.85 s (DDP comm << compute for CA3)
+#   - 20 × 1.85 + val ≈ 40-50 s/epoch warm
+#   - 100 epochs ≈ 70-90 min compute + JIT warm + checkpointing
+# 2:30:00 leaves ~50 % margin.
+#
+# Usage:
+#   sbatch batchShifterJaxleyCA3_100ep.slr [data_path] [design]
+
+set -e
+
+cellName=${NEUINV_CELL:-ca3_pyramidal_synth}
+design=ca3_matched
+# NEUINV_EPOCHS overrides the epoch count (default 100). Combine with
+# NEUINV_WRK_SUFIX=<prior_jobid> + resume_checkpoint:True to extend a finished
+# run (e.g. NEUINV_EPOCHS=200 continues epochs 100->200 from last.pth).
+epochs=${NEUINV_EPOCHS:-100}
+data_temp=${1:-/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_synth_v1/}
+if [[ $# -ge 2 ]]; then design=$2; fi
+
+probsSelect="0 1"
+stimsSelect="0"
+validStimsSelect="0"
+
+# ─── Conda env (jaxley + jax + torch) ───────────────────────────────────
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+
+# ─── JAX persistent compile cache (per-rank) ────────────────────────────
+export JAX_COMPILATION_CACHE_DIR=$SCRATCH/jax_cc/multiprobe/rank_${SLURM_PROCID:-0}
+mkdir -p $JAX_COMPILATION_CACHE_DIR
+export JAX_PLATFORMS=cuda
+# fp64 is REQUIRED for training (not just bench): under DDP, rare high-gNa
+# parameter draws produce NaN backward gradients in fp32, and NCCL all-reduce
+# propagates NaN across ranks.  See ca3_matched.hpar.yaml fp64 comment.
+export JAX_ENABLE_X64=true
+
+# ─── NCCL (Perlmutter, no shifter) ──────────────────────────────────────
+export NCCL_DEBUG=WARN
+export NCCL_NET_GDR_LEVEL=PHB
+export FI_PROVIDER=cxi
+export FI_CXI_DEFAULT_CQ_SIZE=131072
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.5
+
+# ─── DDP env ────────────────────────────────────────────────────────────
+nprocspn=${SLURM_NTASKS_PER_NODE}
+N=${SLURM_NNODES}
+G=$[ $N * $nprocspn ]
+# First COMPUTE node of the allocation. Under sbatch this equals `hostname`
+# (script runs on the head compute node); under `salloc ... bash script` the
+# body runs on the LOGIN node, so `hostname` would wrongly be the login node —
+# derive from the nodelist instead so DDP rendezvous targets rank 0's node.
+export MASTER_ADDR=$(scontrol show hostnames "${SLURM_JOB_NODELIST:-$(hostname)}" | head -n1)
+export MASTER_PORT=8881
+echo "S: job=${SLURM_JOBID} MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT G=$G N=$N"
+
+facility=perlmutter
+[[ -z "${NEUINV_WRK_SUFIX}" ]] && wrkSufix=$SLURM_JOBID || wrkSufix="${NEUINV_WRK_SUFIX}"
+[[ -z "${NEUINV_JOBID}"    ]] && jobId=j$SLURM_JOBID    || jobId="${design}_${NEUINV_JOBID}"
+
+wrkDir0=$SCRATCH/tmp_neuInv/jaxley_ca3/${design}/${cellName}/
+wrkDir=$wrkDir0/$wrkSufix
+outPath=$wrkDir/out
+mkdir -p $outPath
+
+# Frozen code snapshot.
+codeList="train_dist.py predict.py predictExp.py RayTune.py toolbox/ \
+batchShifterJaxleyCA3_100ep.slr evaluate_voltage.py plotJaxleyValidation.py \
+plot_exp_overlay.py scripts/ ${design}.hpar.yaml"
+cp -rp $codeList $wrkDir
+cd $wrkDir
+echo "S:lsfPWD=`pwd` outPath=$outPath"
+
+# ─── Optional fine-tune (warm-start) from a pretrained model ─────────────
+# Set NEUINV_FT_MODEL=<blank_model.pth> NEUINV_FT_CKPT=<ckpt.pth> to init from a
+# pretrained model; NEUINV_INITLR overrides the LR (e.g. 1e-4 for fine-tuning).
+FT_ARGS=""
+[[ -n "${NEUINV_FT_MODEL}" ]] && FT_ARGS="--do_fine_tune --fine_tune-blank_model ${NEUINV_FT_MODEL} --fine_tune-checkpoint_name ${NEUINV_FT_CKPT}"
+[[ -n "${NEUINV_INITLR}" ]] && FT_ARGS="$FT_ARGS --initLR ${NEUINV_INITLR}"
+
+# ─── Train ──────────────────────────────────────────────────────────────
+PY_CMD="python -u train_dist.py \
+    --cellName $cellName --facility $facility \
+    --outPath ./out --design $design --jobId $jobId \
+    --probsSelect $probsSelect --stimsSelect $stimsSelect \
+    --validStimsSelect $validStimsSelect \
+    --epochs $epochs --data_path_temp $data_temp \
+    --numGlobSamp ${NEUINV_NUMGLOBSAMP:-40000} $FT_ARGS"
+echo "S:PY_CMD=$PY_CMD"
+
+date
+time srun -n $G bash -c "
+export JAX_COMPILATION_CACHE_DIR=\$SCRATCH/jax_cc/multiprobe/rank_\$SLURM_PROCID
+mkdir -p \$JAX_COMPILATION_CACHE_DIR
+$PY_CMD" >& log.train
+echo "S:done train"
+date
+
+# ─── Auto-eval: ion-channel recovery (predict.py) + voltage traces ───────
+# Runs on 1 GPU after training; writes ./out/ (predict) and ./out/eval/
+# (per-param R², voltage MSE_z, spike-count, trace_overlays.pdf).
+echo "S:running eval on ./out"
+srun -n1 python -u predict.py --modelPath ./out --dom test -X >& log.predict || echo "S:predict FAILED"
+srun -n1 python -u evaluate_voltage.py --modelPath ./out --numSamples 200 --numOverlay 20 >& log.evalvolt || echo "S:evalvolt FAILED"
+echo "S:done eval"
+grep -E "#res,MSEloss|Average loss" log.predict 2>/dev/null | tail -2
+grep -E "overall MSE|mean R²|voltage MSE_z|spike count" log.evalvolt 2>/dev/null | tail -4
+
+tail -50 log.train
