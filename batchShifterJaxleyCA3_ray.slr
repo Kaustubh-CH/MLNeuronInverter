@@ -1,24 +1,20 @@
 #!/bin/bash -l
-#SBATCH -N1 --time=6:00:00 -J ca3vo-ray -q regular
+#SBATCH -N8 --time=6:00:00 -J ca3vo-ray -q regular
 #SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
 #SBATCH --ntasks-per-node=1 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=64 -C gpu -A m2043_g
 # - - - E N D    O F    SLURM    C O M M A N D S
 #
-# Phase 6 — Ray Tune ARCHITECTURE HPO for the CA3 voltage-only (soft-DTW) path.
+# Phase 6 (MULTI-NODE) — Ray Tune HPO for the CA3 voltage-only (soft-DTW) path.
 #
-# Single-node, single-task launcher: Ray manages all 4 GPUs on the node and runs
-# 4 concurrent single-GPU trials (gpus_per_trial=1 in RayTune.py). do_ray:True in
-# ca3_vo_ray.hpar.yaml forces world_size=1 in train_dist.py (NO DDP, NO srun).
-# ASHAScheduler(max_t=20, grace_period=5, reduction_factor=3) early-stops trials
-# on the per-epoch validation loss. num_samples=48 trials; each trial tunes CNN
-# depth/filters/kernels/pools, FC depth/dims, batch size, dropFrac, LR AND the
-# per-epoch dataset size (max_glob_samples_per_epoch in {2000,4000,8000}).
+# 8-node / 32-GPU Ray cluster: a Ray HEAD on node 0 + 7 WORKERS (each `ray start`
+# claims that node's 4 GPUs). gpus_per_trial=1 -> up to 32 concurrent single-GPU
+# trials. do_ray:True in ca3_vo_ray.hpar.yaml forces world_size=1 in train_dist.py
+# (no DDP inside a trial). RayTune.py does ray.init(address="auto") to join this
+# cluster and runs num_samples=128 Optuna trials under ASHA(max_t=20, grace=5, rf=3).
+# Each trial tunes CNN depth/filters/kernels/pools, FC depth/dims, batch, dropFrac,
+# LR AND per-epoch dataset size {2000,4000,8000}. STRICTLY VOLTAGE-ONLY (pure DTW).
 #
-# Trials are STRICTLY VOLTAGE-ONLY (pure soft-DTW; mse/efel/channel weights = 0).
-# Below-threshold trials dump their model: block to $wrkDir/promoted_yamls.
-#
-# Usage:
-#   sbatch batchShifterJaxleyCA3_ray.slr
+# Usage:  sbatch batchShifterJaxleyCA3_ray.slr
 
 set -e
 
@@ -27,10 +23,7 @@ design=ca3_vo_ray
 epochs=20
 data_temp=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v1/
 facility=perlmutter
-
-probsSelect="0"
-stimsSelect="0"
-validStimsSelect="0"
+probsSelect="0"; stimsSelect="0"; validStimsSelect="0"
 
 # ─── Conda env (jaxley + jax + torch + ray + optuna) ────────────────────
 module load python
@@ -41,29 +34,22 @@ export PYTHONNOUSERSITE=1
 export JAX_PLATFORMS=cuda
 export JAX_ENABLE_X64=true
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
-# Ray pins each trial to ONE GPU via CUDA_VISIBLE_DEVICES, so each of the 4
-# concurrent jax processes owns its own GPU -> 0.9 fraction is safe per-GPU.
+# Ray pins each trial to ONE GPU via CUDA_VISIBLE_DEVICES -> 0.9 fraction/GPU is safe.
 export XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
-# CRITICAL: no SHARED compile cache. 4 concurrent trials would race on a shared
-# JAX_COMPILATION_CACHE_DIR -> nondeterministic XLA crashes; compile in-memory.
+# CRITICAL: no SHARED compile cache (concurrent trials would race) -> compile in-memory.
 unset JAX_COMPILATION_CACHE_DIR
 
-# ─── Single-task launch env (no srun; Ray owns the node) ────────────────
-# train_dist.py reads SLURM_PROCID/SLURM_NTASKS/MASTER_ADDR directly; the batch
-# script is not a job step, so SLURM_PROCID may be unset -> default it.
+# train_dist.py reads SLURM_PROCID/SLURM_NTASKS/MASTER_ADDR directly (do_ray forces
+# world_size=1 so no real DDP, but the logging line needs them defined).
 export SLURM_PROCID=${SLURM_PROCID:-0}
 export SLURM_NTASKS=${SLURM_NTASKS:-1}
 export MASTER_ADDR=$(hostname)
 export MASTER_PORT=8892
-echo "S: job=${SLURM_JOBID} MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT design=$design"
 
 # ─── Run dir + frozen code snapshot ─────────────────────────────────────
 wrkDir=$SCRATCH/tmp_neuInv/jaxley_ca3_ray/$SLURM_JOBID
 outPath=$wrkDir/out
-mkdir -p $outPath
-mkdir -p $wrkDir/promoted_yamls
-
-# codeList already carries RayTune.py; ${design}.hpar.yaml == ca3_vo_ray.hpar.yaml.
+mkdir -p $outPath $wrkDir/promoted_yamls
 codeList="train_dist.py predict.py predictExp.py RayTune.py toolbox/ \
 batchShifterJaxleyCA3_ray.slr evaluate_voltage.py plotJaxleyValidation.py \
 plot_exp_overlay.py scripts/ ${design}.hpar.yaml"
@@ -71,7 +57,34 @@ cp -rp $codeList $wrkDir
 cd $wrkDir
 echo "S:lsfPWD=`pwd` outPath=$outPath"
 
-# ─── Ray Tune (single python process; Ray spawns the 4 trial workers) ───
+# ─── Start the Ray cluster across all nodes ─────────────────────────────
+nodes_array=($(scontrol show hostnames "$SLURM_JOB_NODELIST"))
+head_node=${nodes_array[0]}
+head_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
+port=6379
+ip_head=$head_ip:$port
+echo "S: ray head=$head_node ip_head=$ip_head nNodes=${#nodes_array[@]}"
+
+# Head (blocks -> background). Claims node 0's 4 GPUs.
+srun --nodes=1 --ntasks=1 -w "$head_node" \
+    ray start --head --node-ip-address="$head_ip" --port=$port \
+    --num-cpus 60 --num-gpus 4 --block &
+sleep 25
+
+# Workers (nodes 1..N-1), each claims its 4 GPUs.
+for ((i = 1; i < ${#nodes_array[@]}; i++)); do
+    node_i=${nodes_array[$i]}
+    echo "S: starting ray worker on $node_i"
+    srun --nodes=1 --ntasks=1 -w "$node_i" \
+        ray start --address "$ip_head" \
+        --num-cpus 60 --num-gpus 4 --block &
+    sleep 5
+done
+sleep 25
+echo "S: ray cluster status (expect ~32 GPUs):"
+ray status 2>&1 | head -40 || true
+
+# ─── Run the tuning driver on the head node (connects via ray.init(auto)) ─
 PY_CMD="python -u train_dist.py \
     --design $design --cellName $cellName --facility $facility \
     --outPath ./out --jobId ray$SLURM_JOBID \
@@ -80,12 +93,11 @@ PY_CMD="python -u train_dist.py \
     --epochs $epochs --data_path_temp $data_temp \
     --minLoss-RayTune-yamlPath $wrkDir/promoted_yamls"
 echo "S:PY_CMD=$PY_CMD"
-
 date
 $PY_CMD >& $wrkDir/log.ray || echo "S:ray exited non-zero (see log.ray)"
-echo "S:done ray-tune"
 date
-
+ray stop 2>&1 | head || true
+echo "S:done ray-tune"
 echo "S:promoted yamls (below minLoss):"
 ls -la $wrkDir/promoted_yamls 2>/dev/null || true
-tail -60 $wrkDir/log.ray
+tail -80 $wrkDir/log.ray

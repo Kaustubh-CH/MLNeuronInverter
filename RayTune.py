@@ -95,10 +95,20 @@ class Raytune:
 
 
     def __init__(self,params):
-        # trainer = Trainer(params)
+        # Connect to the SLURM-started multi-node Ray cluster (8 nodes / 32 GPUs).
+        # address="auto" reads the local head session; fall back to a local Ray if
+        # no external cluster was started (e.g. single-node debugging).
+        import ray
+        if not ray.is_initialized():
+            try:
+                ray.init(address="auto")
+                print("RAYTUNE: joined cluster", ray.cluster_resources())
+            except (ConnectionError, ValueError, RuntimeError) as e:
+                print("RAYTUNE: no external cluster (%s) -> local Ray" % type(e).__name__)
+                ray.init()
         max_num_epochs=10
         gpus_per_trial=1
-        num_samples=48
+        num_samples=128
         cpus_per_trail=8
         # trainer.train()
         # ASHA early-stops trials on the per-epoch validation loss that Trainer
