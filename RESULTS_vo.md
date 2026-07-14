@@ -28,9 +28,13 @@ arm — ion channels never enter the loss. **Bar: mean 0.593, kdr 0.155.** Super
 4. **Data scaling helps** (baseline DTW): 10k 0.440 → 20k 0.489 → 40k 0.593 (monotone) → not
    saturated at 40k. Testing 80k (RUNNING).
 
+5. **Step-stim FAILED** (`chaoramp_step`, mean 0.126, kdr −0.19): adding a sustained step as a
+   2nd probe POISONED training. soft-DTW is rate-invariant on tonic firing (warps any regular
+   spike train onto another) → the step gives kdr no rate gradient, and its big envelope drags
+   the CNN into a bad basin. Confirms prior "steps train worse". kdr's ~r0.44 ceiling stands.
+
 ## In flight
 - **Session 4** `dtw_80k` — baseline DTW @ 80k (v2 pack) → extend the data-scaling curve.
-- **Step-stim** `ca3_vo_dtw_chaoramp_step` — 2-stim (chaoticRamp + sustained step) voltage-only,
-  the dedicated kdr fix (adds a clean tonic-rate readout). Parallel salloc.
+- **precond2_80k** — best broad recipe (kdr-neutral precond) @ 80k = the two working levers combined.
 - **RayTune** (8-node/32-GPU, regular queue) — architecture + dataset-size HPO, 128 Optuna/ASHA
   trials, strictly voltage-only. Screens by voltage loss; winners get full channel-R² eval.
