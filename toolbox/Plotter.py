@@ -8,6 +8,7 @@ from toolbox.Plotter_Backbone import Plotter_Backbone
 from pprint import pprint
 from matplotlib.colors import LinearSegmentedColormap
 import csv
+import os
 #...!...!..................
 def get_arm_color(parName):
     armCol={'apical':'C2', 'axonal':'C3','somatic':'C4','dend':'C5','all':'C6'}
@@ -145,7 +146,9 @@ class Plotter_NeuronInverter(Plotter_Backbone):
         # self.plt.subplots_adjust(wspace=0, hspace=0)
 
         param_to_biophys = {}
-        with open('./toolbox/BiophysicalMeaningExcParams.csv', 'r') as csvfile:
+        _biophys_csv = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    'BiophysicalMeaningExcParams.csv')
+        with open(_biophys_csv, 'r') as csvfile:
             reader = csv.reader(csvfile)
             for row in reader:
                 param_to_biophys[row[0]] = row[1]
