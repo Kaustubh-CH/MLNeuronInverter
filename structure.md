@@ -229,6 +229,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _softmin3, soft_dtw, _downsample, soft_dtw_loss, _reference_soft_dtw
 - `toolbox/soft_efel.py` - Differentiable (PyTorch) surrogate for 11 eFEL electrophysiology features.
     - defs: _softplus_max, _softplus_min, _soft_select, _spike_times, soft_efel_features, real_efel_features, _pearson, _self_test
+- `toolbox/trace_metrics.py` - Differentiable full-trace distance metrics for voltage traces (torch, GPU).
+    - defs: gaussian_kernel, multiscale_blurred_mse, decimate, _softmin3, _sdtw_raw, soft_dtw, gaussian_smooth, smoothed_ensemble_std, parameter_explained_var, soft_dtw_to_ref
 - `toolbox/unitParamConvert.py`
     - defs: get_parser
 - `toolbox/unitParamConvertHdf5.py`
