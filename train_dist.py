@@ -152,7 +152,7 @@ if __name__ == '__main__':
     trainer.train()
     
   print("DONE for",params['world_rank'])
-  if params['world_rank'] == 0:
+  if params['world_rank'] == 0 and not params['do_ray']:
     sumF=args.outPath+'/sum_train.yaml'
     write_yaml(trainer.sumRec, sumF) # to be able to predict while training continus
 
