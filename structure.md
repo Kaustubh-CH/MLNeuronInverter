@@ -290,6 +290,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: resolve_summary, design_name, row_from_summary, load_existing, main
 - `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 from a registered jaxley cell.
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages, normalize_volts_fixed_scale, write_h5, main
+- `scripts/gen_ca3_sharded.py` - Sharded multi-GPU generation of a CA3 mlPack1.h5 (single- or multi-stim).
+    - defs: _phys_range, _load_cell, _slice, _draw_unit_par, worker, merge, main
 - `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages_one_stim, normalize_volts_fixed_scale, write_h5, main
 - `scripts/voltage_loss_bias_probe.py` - Step-0 bias audit for the voltage-only training objective.
