@@ -1,0 +1,34 @@
+#!/bin/bash -l
+#SBATCH -N4 --time=2:30:00 -J ca3gen-icaB -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# Generate a 200k CA3 pack on the 5k50kInterChaoticB stim (5001-point, t_max 500 ms,
+# dt 0.1 ms -- IDENTICAL length to 5kChaoticRamp, so the exact chaoticRamp recipe
+# transfers 1:1). 250k total -> 200k train / 25k valid / 25k test. Same generator /
+# seed(0) / cell as the chaoticRamp packs; ONLY the stim differs. Note: the existing
+# ca3_4kinterchaoticB_v1 pack is the 4k/40k experimental-matched one -- this is the
+# scaled 5k/200k training pack.
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+OUT=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_5kinterchaoticB_v1
+echo "GEN-icaB: start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST"
+bash scripts/run_ca3_gen.sh ca3_pyramidal_synth "$OUT" 5k50kInterChaoticB 250000
+rc=$?
+echo "GEN-icaB: run_ca3_gen exit=$rc $(date)"
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+python - "$OUT/ca3_pyramidal_synth.mlPack1.h5" <<'PY'
+import sys, h5py
+f=sys.argv[1]
+with h5py.File(f,'r') as h:
+    tr=h['train_volts_norm'].shape; tp=h['train_phys_par'].shape
+    print("GEN-icaB VALIDATE:", f)
+    print("  train_volts_norm", tr, " train_phys_par", tp)
+    assert tr[0]>=200000, f"train too small: {tr[0]}"
+    assert tr[1]>=5000,   f"expected ~5001 timepoints, got {tr[1]}"
+    assert tp[1]==6, f"expected 6 params, got {tp[1]}"
+print("GEN-icaB VALIDATE: OK")
+PY
+echo "GEN-icaB: done $(date)"

@@ -6,6 +6,28 @@ arm — ion channels never enter the loss. **NEW BEST: dtw_200k mean 0.725** (wa
 when this campaign started — +0.132, ~22% rel). Supervised ceiling (uses labels, forbidden) =
 0.995. Ledger CSV: `$SCRATCH/tmp_neuInv/jaxley_ca3/vo_ledger/results.csv`.
 
+## Transferable recipe — what worked for chaoticRamp (drop-in for InterChaoticB)
+The winning voltage-only recipe is a small, portable set of choices. To move it to another
+stim (e.g. `5k50kInterChaoticB`, which is the SAME 5001-pt / 500 ms / dt 0.1 ms length as
+`5kChaoticRamp` ⇒ 1:1 transfer, same ~221 s/epoch), change ONLY `stim_name` + the data pack.
+| # | change | value | why it worked |
+|---|---|---|---|
+| 1 | **loss = pure soft-DTW** | `dtw_weight 1`, `mse_weight 0`, `efel_weight 0`, `blur 0` | beats every loss trick; MSE/eFEL/blur all lost or diverged |
+| 2 | DTW params | `dtw_gamma 0.1`, `dtw_band_ms 8`, `dtw_n_points 256` | 8 ms Sakoe-Chiba band carries the residual rate signal; band 4 didn't help |
+| 3 | **DATA scaling** (dominant lever) | 40k→200k, curve accelerating | +0.13 mean, unlocked kdr (0.09→0.34); more helps, unsaturated |
+| 4 | **150 epochs** | was 100 | 200k val loss still dropping at ep94 (−0.0540→−0.0571), LR 9e-6 |
+| 5 | fp64 Jaxley solve | `fp64: True` | fp32 → NaN backward on high-gNa draws, NCCL propagates NaN across ranks |
+| 6 | `clamp_unit_tanh` | `True` | bounds CNN param outputs into the trained range |
+| 7 | global batch 2048 | `batch_size 64` ×32 GPU, `const_local_batch True` | matches the whole sweep; LR 1e-4 adam, `clip_grad_norm 1.0` |
+| 8 | `serialize_stims: True` | probe axis → CNN channels | standard CA3 loader path |
+| 9 | backbone (unchanged) | 2 CNN blocks [30,90,180] k4 p4; FC [512,512,512,256,128] drop 0.04 | RayTune (130 trials) found nothing better; bigger diverges |
+| — | **strictly voltage-only** | `channel_weight 0`, `mask_channels True`, `voltage_weight 1` | hard constraint — ion channels NEVER in the loss |
+| ✗ | do NOT: grad-precond at scale · van-Rossum blur · step-stim · bigger net · efel loss | — | precond helps only <80k; blur toxic to fast channels; steps poison DTW; efel diverges |
+
+**InterChaoticB job** (submitted): `ca3_vo_interchaoticB_dtw_8n.hpar.yaml` (rows 1–9 verbatim,
+`stim_name: 5k50kInterChaoticB`, pack `ca3_5kinterchaoticB_v1` 200k) + `gen_interchaoticB_v1.slr`
++ `train_interchaoticB_200k_8n.slr` (150 ep).
+
 ## Ledger (sorted by mean R²)
 | arm | recipe | data | mean R² | leak | na3 | kdr | kap | km | kd |
 |---|---|---|---|---|---|---|---|---|---|
