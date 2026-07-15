@@ -1,0 +1,10 @@
+#!/bin/bash -l
+#SBATCH -N1 --time=0:40:00 -J ca3vo-eval80k -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=1 --gpus-per-node=1 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# Score the two 80k models whose salloc timed out before auto-eval ran (1 GPU each).
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+srun -n1 bash eval_80k.sh
+echo "eval_80k.slr: SBATCH wrapper done $(date)"
