@@ -11,7 +11,11 @@ WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-
 cd "$WT" || exit 2
 V3=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v3/
 J=$SCRATCH/tmp_neuInv/jaxley_ca3
-echo "TRAIN-200k-8n: start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST"
+# Shared-FS file rendezvous (robust for multi-node sbatch; see train_dist.py).
+export NEUINV_RDZV_FILE=$SCRATCH/tmp_neuInv/rdzv/rdzv_${SLURM_JOBID}
+mkdir -p "$(dirname "$NEUINV_RDZV_FILE")"; rm -f "$NEUINV_RDZV_FILE"
+export NCCL_P2P_DISABLE=1
+echo "TRAIN-200k-8n: start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST rdzv=$NEUINV_RDZV_FILE"
 NEUINV_WRK_SUFIX=dtw_200k NEUINV_NUMGLOBSAMP=200000 \
   bash batchShifterJaxleyCA3_100ep.slr "$V3" ca3_vo_chaoticramp_dtw_8n
 echo "TRAIN-200k-8n: launcher exit=$? $(date)"
