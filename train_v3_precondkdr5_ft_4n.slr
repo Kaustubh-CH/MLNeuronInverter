@@ -1,0 +1,42 @@
+#!/bin/bash -l
+#SBATCH -N4 --time=6:00:00 -J ca3vo-pkdr5ft -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# FINE-TUNE the precond arm with an EVEN STRONGER kdr boost (weight 5.0, eff ~3.82 vs
+# precond's 2.15). Resumes from the precondkdr_200k checkpoint (blank_model + ckpt) so it
+# only re-equilibrates under the new weight -> 50 epochs, not 150. LR 3e-5 (fine-tune):
+# kdr moves hard (3.82 x 3e-5 ~= 1.1e-4) while the geomean-downweighted others barely
+# shift (0.765 x 3e-5 ~= 2.3e-5). Confirmatory probe of the weight->kdr curve
+# (40k x1.68 -> 0.044; 200k x2.15 -> 0.266; this = x3.82). 4 NODES (batch 128 x 16 =
+# same global 2048 as the checkpoint) -> schedules FAR faster than the pending 8-node jobs.
+# STRICTLY voltage-only (channel_weight 0, mask_channels True). Data = v3 200k.
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+V3=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v3/
+J=$SCRATCH/tmp_neuInv/jaxley_ca3
+SEED=$J/ca3_vo_chaoticramp_dtw_precondkdr_8n/ca3_pyramidal_synth/precondkdr_200k/out
+export NEUINV_FT_MODEL=$SEED/blank_model.pth
+export NEUINV_FT_CKPT=$SEED/checkpoints/ckpt.pth
+export NEUINV_INITLR=3e-5
+export NEUINV_RDZV_FILE=$SCRATCH/tmp_neuInv/rdzv/rdzv_${SLURM_JOBID}
+mkdir -p "$(dirname "$NEUINV_RDZV_FILE")"; rm -f "$NEUINV_RDZV_FILE"
+export NCCL_P2P_DISABLE=1
+if [ ! -f "$NEUINV_FT_MODEL" ] || [ ! -f "$NEUINV_FT_CKPT" ]; then
+  echo "TRAIN-pkdr5ft: FATAL missing seed checkpoint ($NEUINV_FT_MODEL / $NEUINV_FT_CKPT)"; exit 3
+fi
+echo "TRAIN-pkdr5ft: start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST seed=$SEED"
+NEUINV_WRK_SUFIX=precondkdr5_ft_200k NEUINV_NUMGLOBSAMP=200000 NEUINV_EPOCHS=50 \
+  bash batchShifterJaxleyCA3_100ep.slr "$V3" ca3_vo_chaoticramp_dtw_precondkdr5_ft_8n
+echo "TRAIN-pkdr5ft: launcher exit=$? $(date)"
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+RUN=$J/ca3_vo_chaoticramp_dtw_precondkdr5_ft_8n/ca3_pyramidal_synth/precondkdr5_ft_200k
+if [ -f "$RUN/out/eval/summary.yaml" ]; then
+  echo "TRAIN-pkdr5ft: ===== ledger ====="
+  python scripts/collect_vo_ledger.py "$RUN" -o "$J/vo_ledger/results.csv"
+else
+  echo "TRAIN-pkdr5ft: NO eval summary at $RUN/out/eval/ - check $RUN/log.*"
+fi
+echo "TRAIN-pkdr5ft: done $(date)"

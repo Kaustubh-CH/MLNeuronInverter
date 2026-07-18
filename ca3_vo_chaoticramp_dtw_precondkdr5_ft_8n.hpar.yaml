@@ -1,0 +1,99 @@
+# CA3 Pyramidal — VOLTAGE-ONLY soft-DTW + grad-precond, EVEN STRONGER kdr boost,
+# run as a FINE-TUNE resumed from the precondkdr_200k checkpoint. Clone of
+# ca3_vo_chaoticramp_dtw_precondkdr_8n.hpar.yaml (kdr weight 2.5, mean 0.731 but kdr
+# REGRESSED 0.338->0.266); the ONLY change is pushing the kdr grad weight 2.5 -> 5.0.
+#
+# User directive: "fine tune the precond with even higher weightage to kdr and see how
+# it goes." This is a deliberate confirmatory probe of the weight->kdr curve:
+#   40k  kdr x1.68 -> kdr R2 0.044   (crashed)
+#   200k kdr x2.15eff -> kdr R2 0.266 (below plain-DTW 0.338)
+#   200k kdr x3.82eff -> ???          (this run)
+# Prediction from that trend: higher kdr weight regresses kdr FURTHER (the boost chases
+# the km/kd confound, not kdr's real signal). Resuming from the precond checkpoint so it
+# only needs to re-equilibrate under the new weight (short run) rather than retrain.
+#
+# geomean-normalize keeps overall gradient magnitude ~fixed: weights [1,1,5,1,1,1] ->
+# effective kdr ~3.82, others ~0.765. grad_precond only rescales dL_voltage/dtheta
+# columns -- it NEVER adds an ion-channel term. STRICTLY voltage-only (channel_weight 0,
+# mask_channels True). batch_size 128 x 16 GPU (4 nodes) = SAME global batch 2048 as the
+# checkpoint's training regime; 4 nodes schedule far faster than the pending 8-node jobs.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v3/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    stim_name:         5kChaoticRamp
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    range_penalty_weight: 0.0
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+    # loss = PURE soft-DTW (no MSE anchor, efel OFF) -- same as the precond arm
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    efel_weight:       0.0
+    smooth_sigma:      0.0
+    smooth_samples:    1
+    lowpass_ms:        0.0
+    # --- grad preconditioner: EVEN STRONGER kdr boost (5.0 vs precond's 2.5), others neutral ---
+    grad_precond:
+        # direct per-channel weights, CA3 order [leak, na3, kdr, kap, km, kd]
+        weights:   [1.0, 1.0, 5.0, 1.0, 1.0, 1.0]
+        normalize: geomean
+
+model:
+    myId:    ca3_vo_chaoticramp_dtw_precondkdr5_ft_8n
+    comment: CA3 voltage-only soft-DTW + grad-precond kdr x5.0 (fine-tune from precondkdr_200k ckpt), 200k, 4-node global-batch-2048
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04
