@@ -31,7 +31,8 @@ stim (e.g. `5k50kInterChaoticB`, which is the SAME 5001-pt / 500 ms / dt 0.1 ms 
 ## Ledger (sorted by mean R²)
 | arm | recipe | data | mean R² | leak | na3 | kdr | kap | km | kd |
 |---|---|---|---|---|---|---|---|---|---|
-| **dtw_200k** | pure soft-DTW, 5× data (ep95, converged) | 200k | **0.725** | 0.86 | 0.79 | 0.34 | 0.81 | 0.75 | 0.80 |
+| precondkdr_200k | DTW + grad-precond **kdr×2.5** (150ep) | 200k | 0.731 | 0.87 | 0.77 | **0.27** ⬇ | 0.85 | 0.82 | 0.81 |
+| **dtw_200k** | pure soft-DTW, 5× data (ep95, converged) | 200k | **0.725** | 0.86 | 0.79 | **0.34** | 0.81 | 0.75 | 0.80 |
 | dtw_80k | pure soft-DTW, 2× data | 80k | 0.637 | 0.86 | 0.73 | 0.09 | 0.72 | 0.65 | 0.76 |
 | precond2_80k | refined precond @ 80k (protects kdr) | 80k | 0.611 | 0.82 | 0.68 | **0.18** | 0.63 | 0.63 | 0.73 |
 | precond | DTW + feature-sens grad-precond (kdr×1.68) | 40k | 0.610 | 0.80 | 0.73 | 0.04 | 0.69 | 0.62 | 0.77 |
@@ -61,6 +62,12 @@ stim (e.g. `5k50kInterChaoticB`, which is the SAME 5001-pt / 500 ms / dt 0.1 ms 
    0.600 > baseline 0.593) but HURT at 80k (0.611 < 0.637); with abundant signal the reweighting just
    distorts. Same story for band4/blur. **Pick the lever by data regime — and when data is available,
    spend it before engineering the loss.**
+   - **CONFIRMED at 200k (55949843):** `precondkdr_200k` (kdr grad ×2.5) scored mean 0.731 — a +0.006
+     sliver over plain dtw_200k — but **kdr itself REGRESSED 0.338 → 0.266**; the mean rose only because
+     km (+0.06) and kap (+0.05) caught the redistributed gradient. Boosting the low-sensitivity channel's
+     own gradient makes it *worse*, the identical signature as 40k (kdr×1.68 → kdr 0.044). **The kdr grad
+     boost is a dead end at every data scale; kdr's lever is data (0.09→0.34), full stop.** Plain DTW
+     remains the clean reference (higher kdr, one fewer knob).
 5. **Blur is the wrong lever** — coarse blur toxic to fast channels (kap 0.75→0.29).
 6. **Step-stim FAILED** (`chaoramp_step`, mean 0.126, kdr −0.19): soft-DTW is rate-invariant on
    tonic firing → the step gives kdr no rate gradient and its big envelope drags the CNN into a bad
