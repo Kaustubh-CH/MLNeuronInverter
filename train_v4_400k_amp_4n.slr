@@ -1,0 +1,33 @@
+#!/bin/bash -l
+#SBATCH -N4 --time=24:00:00 -J ca3vo-amp400k -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# STACK the two best levers: soft-DTW + small ramped eFEL(voltage_base,AP_amplitude) aux
+# (best recipe, dtw_amp_200k 0.763) AT 400k data (best data point, dtw_400k 0.736). Global
+# batch 2048 (128 x 16), 150 epochs. ~443 s/epoch (400k => ~195 steps/epoch; per-step fixed
+# by the sequential jaxley solve; eFEL backward is negligible) x 150 ~= 18.5h < 24h wall.
+# 4 NODES (batch 128) = same global 2048 as the whole sweep AND schedules far faster than 8
+# (8n gave no speedup). Requires the ca3_chaoticramp_v4 pack. STRICTLY voltage-only.
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+V4=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v4/
+J=$SCRATCH/tmp_neuInv/jaxley_ca3
+export NEUINV_RDZV_FILE=$SCRATCH/tmp_neuInv/rdzv/rdzv_${SLURM_JOBID}
+mkdir -p "$(dirname "$NEUINV_RDZV_FILE")"; rm -f "$NEUINV_RDZV_FILE"
+export NCCL_P2P_DISABLE=1
+echo "TRAIN-amp400k-4n: start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST rdzv=$NEUINV_RDZV_FILE"
+NEUINV_WRK_SUFIX=dtw_amp_400k NEUINV_NUMGLOBSAMP=400000 NEUINV_EPOCHS=150 \
+  bash batchShifterJaxleyCA3_100ep.slr "$V4" ca3_vo_chaoticramp_dtw_amp_v4_4n
+echo "TRAIN-amp400k-4n: launcher exit=$? $(date)"
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+RUN=$J/ca3_vo_chaoticramp_dtw_amp_v4_4n/ca3_pyramidal_synth/dtw_amp_400k
+if [ -f "$RUN/out/eval/summary.yaml" ]; then
+  echo "TRAIN-amp400k-4n: ===== ledger ====="
+  python scripts/collect_vo_ledger.py "$RUN" -o "$J/vo_ledger/results.csv"
+else
+  echo "TRAIN-amp400k-4n: NO eval summary at $RUN/out/eval/ - check $RUN/log.*"
+fi
+echo "TRAIN-amp400k-4n: done $(date)"
