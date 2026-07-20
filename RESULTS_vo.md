@@ -2,12 +2,16 @@
 
 Headline metric = `evaluate_voltage.py` `out/eval/summary.yaml` `channel_r2_overall`
 (tanh applied). STRICTLY voltage-only (`channel_weight 0`, `mask_channels True`) in EVERY
-arm — ion channels never enter the loss. **NEW BEST: dtw_400k mean 0.736** (was 0.593 @ 40k
-when this campaign started — +0.143, ~24% rel). Supervised ceiling (uses labels, forbidden) =
-0.995. Ledger CSV: `$SCRATCH/tmp_neuInv/jaxley_ca3/vo_ledger/results.csv`.
-**BUT the mean now hides a split**: 200k→400k lifted 5/6 channels (kap 0.81→0.905!, kd, leak) yet
-**kdr REGRESSED 0.338→0.219** — kdr does NOT track data (see Finding 2, corrected). And the
-InterChaoticB run exposes a stimulus/observability trade-off (Finding 8) that motivates multi-stim.
+arm — ion channels never enter the loss. **NEW BEST: dtw_amp_200k mean 0.763** — pure soft-DTW +
+a SMALL ramped soft-eFEL aux (`voltage_base`+`AP_amplitude`) at only 200k data (was 0.593 @ 40k when
+this campaign started — +0.170, ~29% rel). Supervised ceiling (uses labels, forbidden) = 0.995.
+Ledger CSV: `$SCRATCH/tmp_neuInv/jaxley_ca3/vo_ledger/results.csv`.
+**The eFEL aux is the biggest single-lever win of the campaign** (Finding 9): +0.038 over dtw_200k and
+it BEATS 400k data (0.736) with HALF the data — an OBJECTIVE change, not more data. It lifted na3
+0.79→**0.87** (AP_amplitude directly constrains Na spike height) and gave the **best kdr yet (0.366)** —
+the first thing to move kdr up, confirming kdr's lever is the objective, not data (Finding 2) or
+gradient-reweighting. Data still helps 5/6 channels but with diminishing returns and NOT kdr; the
+InterChaoticB split (Finding 8) motivates multi-stim as the next lever.
 
 ## Transferable recipe — what worked for chaoticRamp (drop-in for InterChaoticB)
 The winning voltage-only recipe is a small, portable set of choices. To move it to another
@@ -15,7 +19,7 @@ stim (e.g. `5k50kInterChaoticB`, which is the SAME 5001-pt / 500 ms / dt 0.1 ms 
 `5kChaoticRamp` ⇒ 1:1 transfer, same ~221 s/epoch), change ONLY `stim_name` + the data pack.
 | # | change | value | why it worked |
 |---|---|---|---|
-| 1 | **loss = pure soft-DTW** | `dtw_weight 1`, `mse_weight 0`, `efel_weight 0`, `blur 0` | beats every loss trick; MSE/eFEL/blur all lost or diverged |
+| 1 | **loss = soft-DTW primary + SMALL ramped eFEL aux** | `dtw_weight 1`, `mse_weight 0`, `blur 0`; `efel_weight 0.05→0.2` on `[voltage_base, AP_amplitude]` | DTW nails timing; the small eFEL aux anchors level/amplitude → BEST arm (0.763). eFEL as PRIMARY (weight 1.0) diverges; as a small ramped aux it wins. MSE/blur lost |
 | 2 | DTW params | `dtw_gamma 0.1`, `dtw_band_ms 8`, `dtw_n_points 256` | 8 ms Sakoe-Chiba band carries the residual rate signal; band 4 didn't help |
 | 3 | **DATA scaling** (dominant lever for 5/6) | 40k→400k, returns now diminishing | +0.14 mean; lifts leak/na3/kap/km/kd; **kdr does NOT track data** (Finding 2) |
 | 4 | **150 epochs** | was 100 | 200k val loss still dropping at ep94 (−0.0540→−0.0571), LR 9e-6 |
@@ -25,7 +29,7 @@ stim (e.g. `5k50kInterChaoticB`, which is the SAME 5001-pt / 500 ms / dt 0.1 ms 
 | 8 | `serialize_stims: True` | probe axis → CNN channels | standard CA3 loader path |
 | 9 | backbone (unchanged) | 2 CNN blocks [30,90,180] k4 p4; FC [512,512,512,256,128] drop 0.04 | RayTune (130 trials) found nothing better; bigger diverges |
 | — | **strictly voltage-only** | `channel_weight 0`, `mask_channels True`, `voltage_weight 1` | hard constraint — ion channels NEVER in the loss |
-| ✗ | do NOT: grad-precond at scale · van-Rossum blur · step-stim · bigger net · efel loss | — | precond helps only <80k; blur toxic to fast channels; steps poison DTW; efel diverges |
+| ✗ | do NOT: grad-precond at scale · van-Rossum blur · step-stim · bigger net · efel as PRIMARY | — | precond helps only <80k; blur toxic to fast channels; steps poison DTW; efel@weight1.0 diverges (small ramped aux is fine — row 1) |
 
 **InterChaoticB job** (submitted): `ca3_vo_interchaoticB_dtw_8n.hpar.yaml` (rows 1–9 verbatim,
 `stim_name: 5k50kInterChaoticB`, pack `ca3_5kinterchaoticB_v1` 200k) + `gen_interchaoticB_v1.slr`
@@ -34,7 +38,9 @@ stim (e.g. `5k50kInterChaoticB`, which is the SAME 5001-pt / 500 ms / dt 0.1 ms 
 ## Ledger (sorted by mean R²)
 | arm | recipe | data | mean R² | leak | na3 | kdr | kap | km | kd |
 |---|---|---|---|---|---|---|---|---|---|
-| **dtw_400k** | pure soft-DTW, 10× data (best mean, best trace) | 400k | **0.736** | 0.89 | 0.80 | **0.22** ⬇ | **0.91** | 0.76 | 0.84 |
+| **dtw_amp_200k** | DTW + soft-eFEL `voltage_base`+`AP_amplitude` (BEST) | 200k | **0.763** | 0.90 | **0.87** | **0.366** | 0.87 | 0.75 | 0.83 |
+| precondkdr5_ft_200k | DTW + grad-precond **kdr×5.0**, fine-tune from ×2.5 ckpt | 200k | 0.742 | 0.87 | 0.76 | **0.34** | 0.85 | 0.81 | 0.82 |
+| **dtw_400k** | pure soft-DTW, 10× data (best trace) | 400k | 0.736 | 0.89 | 0.80 | **0.22** ⬇ | **0.91** | 0.76 | 0.84 |
 | precondkdr_200k | DTW + grad-precond **kdr×2.5** (150ep) | 200k | 0.731 | 0.87 | 0.77 | **0.27** ⬇ | 0.85 | 0.82 | 0.81 |
 | **dtw_200k** | pure soft-DTW, 5× data (ep95, converged) | 200k | **0.725** | 0.86 | 0.79 | **0.34** | 0.81 | 0.75 | 0.80 |
 | dtw_80k | pure soft-DTW, 2× data | 80k | 0.637 | 0.86 | 0.73 | 0.09 | 0.72 | 0.65 | 0.76 |
@@ -103,6 +109,24 @@ _dtw_ica_200k is a DIFFERENT stimulus — not comparable on mean. Its per-channe
    by giving the three K currents independent views. **Resolves the user's earlier puzzle** (great trace
    overlap ↔ few spikes ↔ can't see the spiking channels; the chaos that ruins chaoticRamp's overlap is
    the very spiking that makes na3/kap observable there).
+9. **A SMALL ramped soft-eFEL aux is the biggest single-lever win — and the FIRST thing to move kdr up
+   (objective, not data).** `dtw_amp_200k` = pure DTW + `efel_weight 0.05→0.2` (ramped over 20 ep) on
+   `[voltage_base, AP_amplitude]`, at 200k → **mean 0.763 (NEW BEST)**, +0.038 over dtw_200k and beating
+   400k data (0.736) with HALF the data. Per-channel vs dtw_200k: na3 0.79→**0.87** (AP_amplitude
+   directly constrains Na-driven spike height), kdr 0.338→**0.366** (best kdr of the campaign), leak
+   0.86→0.90, kap 0.81→0.87, kd 0.80→0.83; km flat 0.75. Cost: voltage_mse_z 2.03 (a hair worse than
+   400k's 1.90 — it trades a little pointwise fit for much better identifiability, the trade we want).
+   **This VALIDATES the objective thesis (Finding 2): kdr's lever is the loss, not data/precond.** The
+   old "efel diverges" caveat was about efel as PRIMARY at weight 1.0 (A7); as a small ramped aux under
+   DTW it is the best recipe. **Next: add the rate/ISI/AHP features (`mean_frequency`, `inv_first_ISI`,
+   `AHP_depth_abs_slow`) that target kdr's actual handle, and try amp@400k (stack the two winning levers).**
+10. **Pushing the kdr grad-precond weight HIGHER did NOT crash kdr — my prediction was wrong (noted).**
+    `precondkdr5_ft_200k` = fine-tune (50 ep, LR 3e-5) from the ×2.5 checkpoint with kdr weight 5.0
+    (eff ~3.8) → mean 0.742, kdr **0.342** (RECOVERED from ×2.5's 0.266, ~= plain DTW 0.338). So higher
+    weight didn't monotonically hurt kdr as the 40k/200k trend implied. BUT confounded: the fine-tune
+    also added 50 epochs at a fresh LR, so the recovery may be the extra training, not the ×5.0 weight.
+    Either way grad-precond still does NOT beat plain DTW on kdr and is well below the eFEL aux — the
+    line stays closed as a kdr lever, but the "monotonically worse with weight" claim is retracted.
 
 ## Compute note (measured)
 8 nodes / 32 GPU gave **no speedup** over 4 nodes / 16 GPU at pinned global batch 2048 (220.8 vs
