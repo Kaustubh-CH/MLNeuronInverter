@@ -139,8 +139,14 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 
 ### Top-level scripts
 
+- `All_probes_allCells.py`
+    - defs: read_and_plot_etype_data
 - `RayTune.py`
     - defs: threadTrain, trainable, Raytune
+- `chaoticramp_variance_probe.py` - Look directly at the ChaoticRamp trace ensemble per channel and test which
+    - defs: smooth, spike_rate, main
+- `convertPred.py`
+    - defs: extract_efel_features_from_volts, normalize_volts, resample_by_interpolation
 - `evaluate_voltage.py` - Evaluate a HybridLoss/voltage-trained model.
     - defs: get_parser, load_trained_model, load_test_data, main
 - `feature_channel_sensitivity.py` - Feature x Channel sensitivity matrix for the CA3 (or any jaxley-cell) inverse.
@@ -156,6 +162,12 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser
 - `formatSimV8kHz.py` - formats packed Vyassa simu (aka production) for bbp153
     - defs: get_parser
+- `make_interpolated_stims.py` - Resample every stimulus CSV to a fixed number of time steps.
+    - defs: load_current, main
+- `ood_probe.py` - Out-of-range (extrapolation) probe for the best chaoticRamp CA3 model.
+    - defs: get_parser, main
+- `plot2Dtester.py`
+    - defs: args1
 - `plotConductDrift.py` - plot scores and waveforms w/ spikes
     - defs: get_parser, Plotter, process_one
 - `plotExpCSurvey.py` - inspect formated  experiment
@@ -174,14 +186,48 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser, Plotter, M_save_summary
 - `plotSurveyExpC.py` - inspect formated  experiment
     - defs: get_parser, print_exp_summary, Plotter
+- `plot_ball_variation.py` - Characterize voltage-trace variation across the ball-and-stick synthetic dataset.
+- `plot_ca3_default_trace.py` - CA3 pyramidal default-parameter voltage trace vs the ca3_synth_v2 dataset.
+- `plot_ca3_multistim.py` - CA3 pyramidal multi-stim per-page PDF.
+- `plot_ca3_traces.py` - Plot 100 voltage traces (raw mV) from the ca3_synth_v2 dataset.
+- `plot_default_trace.py` - Ball-and-stick voltage trace at DEFAULT ion-channel values vs the dataset.
+- `plot_efel_vs_channel.py` - Distribution of soft-eFEL features vs ion-channel value for the ball-and-stick pack.
+- `plot_exp_overlay.py` - Plot predicted unit-params + voltage overlays for EXPERIMENTAL data.
+    - defs: get_parser, zscore, main
+- `plot_halved_vs_full_inh.py` - Compare ALL_CELLS_Inhibitory error (same-cell / intrapolation / extrapolation)
+    - defs: load
+- `plot_ion_channels_compare.py` - Side-by-side ion-channel comparison figure (truth-vs-pred 2D density per channel),
+    - defs: section_cmap, load_domain, panel, main
+- `plot_stims_pdf.py` - Plot every stimulus CSV in a directory into one multipage PDF (4 per page).
+    - defs: load_current, main
+- `plot_voltage_traces.py` - Plot 100 voltage traces (raw mV) from the ball-and-stick synthetic pack.
+- `plot_voltage_traces_pdf.py` - Multi-page PDF: one voltage trace per page (raw mV) for the ball-and-stick pack.
 - `predict.py` - read trained net : model+weights
     - defs: get_parser, load_model, model_infer, compute_residual
 - `predictExp.py` - PREDiction Kaustubh
     - defs: get_parser, load_model, model_infer, compute_dummy_residual
+- `predictExpIDX.py` - PREDiction Kaustubh
+    - defs: get_parser, load_model, model_infer
+- `predictTestPlot.py` - read trained net : model+weights
+    - defs: get_parser, load_model, model_infer, compute_residual
 - `predict_exp.py` - read trained net : model+weights
     - defs: get_parser, model_infer_exper, M_get_phys_packing
+- `predict_from_hf.py` - predict_from_hf.py
+    - defs: load_model_from_hf, load_traces_from_h5, predict, get_parser, main
+- `sensitivity_analysis.py` - Identifiability / sensitivity analysis for the CA3 (or any jaxley-cell) inverse problem.
+    - defs: get_parser, main
+- `sensitivity_variation.py` - One-at-a-time (OAT) voltage-variation sensitivity analysis for jaxley cells.
+    - defs: get_parser, compute_efel_variation, compute_metric_variation, compute_variance_metrics, resolve_phys_range, discover_stims, build_unit_samples, simulate_stim, main, write_outputs, write_efel_outputs, write_scalar_metric_outputs, _plot_su...
+- `sensitivity_variation_compare.py` - Compare two sensitivity_variation runs (e.g. native vs interpolated stims),
+    - defs: read_matrix, spearman, align, parse_kv, main
+- `sensitivity_variation_merge.py` - Merge chunked sensitivity_variation.py outputs into one combined result.
+    - defs: read_matrix, main
 - `train_dist.py` - Not running on CPUs !
     - defs: get_parser
+- `upload_best_per_cell_to_hf.py` - upload_best_per_cell_to_hf.py
+    - defs: load_summary, is_complete, find_best_per_cell, slim_checkpoint, build_config, write_cell_extras, root_readme, upload_all, get_parser, main
+- `upload_to_hf.py` - upload_to_hf.py
+    - defs: load_summary, make_repo_name, make_model_card, upload_model, get_parser, main
 - `yamlMaker.py`
     - defs: get_parser
 
@@ -288,11 +334,15 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 
 - `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 from a registered jaxley cell.
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages, normalize_volts_fixed_scale, write_h5, main
+- `scripts/gen_ca3_sharded.py` - Sharded multi-GPU generation of a CA3 mlPack1.h5 (single- or multi-stim).
+    - defs: _phys_range, _load_cell, _slice, _draw_unit_par, worker, merge, main
 - `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages_one_stim, normalize_volts_fixed_scale, write_h5, main
 - `scripts/voltage_loss_bias_probe.py` - Step-0 bias audit for the voltage-only training objective.
     - defs: get_parser, load_split_volts, loss_at, main
+- `scripts/gen_best_stims_all.sh`
 - `scripts/install_hooks.sh`
+- `scripts/run_ca3_gen.sh`
 
 ### packBBP3/
 
@@ -309,6 +359,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `packBBP3/aggregate_Kaustubh2.py`
 - `packBBP3/aggregate_Kaustubh_feature.py` - re-pack samll hd5 NEURON output to one  6k-samples HD5 files
     - defs: get_parser, normalize_volts, get_h5_list, assemble_MD, import_stims_from_CVS, read_all_h5, clear_NaN_samples
+- `packBBP3/exclude_params_inplace.py` - In-place column drop on already-packed mlPack1 H5 files.
+    - defs: trim_h5, main
 - `packBBP3/format_bbp3_for_ML.py` - format samples for ML training
     - defs: get_parser, format_raw, read_meta_json
 - `packBBP3/format_bbp3_for_ML_paralelly.py` - format samples for ML training
@@ -319,6 +371,10 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser, get_normal_stim, format_raw, write_meta_json_hdf5, append_data_hdf5_index, read_meta_json_hdf5, read3_only_data_hdf5
 - `packBBP3/format_vyassa_for_ML.py` - format samples for ML training
     - defs: get_parser, rebuildMD, addStim, format_raw
+- `packBBP3/halve_inh_dataset.py` - Halve each cell's contribution in (already-shuffled) ONTRA Inhibitory datasets.
+    - defs: get_parser, keep_index, stream_copy, is_sample_dataset, halve_file, main
+- `packBBP3/ontraInhAllSubmit.py`
+    - defs: get_parser
 - `packBBP3/plotBaseVolts.py` - plot BBP3 simulation data
     - defs: get_parser, Plotter, import_stims_from_CVS
 - `packBBP3/vet_volts.py` - plot BBP3 simulation: soma volts

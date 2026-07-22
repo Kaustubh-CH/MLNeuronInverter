@@ -1,0 +1,78 @@
+#!/bin/bash -l
+#SBATCH  -N1 --time=30:00  -J ni_h5_test   -q debug
+#SBATCH --image=nersc/pytorch:ngc-21.08-v2
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH  --ntasks-per-node=1 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 --exclusive  -C gpu -A  m2043_g
+# - - - E N D    O F    SLURM    C O M M A N D S
+# Test-only re-run: skips training entirely, runs the full post-train
+# predict.py / predictExp.py / unitParamConvert chain inside an existing
+# trained wrkDir.
+#
+# Usage: sbatch batchShifterTestOnlyExclude.slr <trained_wrkDir>
+#   <trained_wrkDir> = /pscratch/sd/k/ktub1999/tmp_neuInv/bbp3/ALL_CELLS/<train_jobid>
+# That dir must already contain `out/` (with sum_train.yaml + checkpoints/).
+
+set -u
+# NOTE: no `set -e` — predictExp.py + Plotter has known bugs (e.g.
+# missing args.segmentColors) that fail individual srun calls. The
+# original batchShifter.slr lets such failures continue so later
+# srun calls still produce their outputs; mirror that here.
+
+trainWrkDir=$1
+echo "S:test-only run jobId=$SLURM_JOBID trainWrkDir=${trainWrkDir}  $(date)"
+
+if [ ! -d "${trainWrkDir}/out" ] || [ ! -f "${trainWrkDir}/out/sum_train.yaml" ] ; then
+    echo "ERROR: missing trained model under ${trainWrkDir}/out/"
+    exit 1
+fi
+
+cd "${trainWrkDir}"
+echo "S:cwd=$(pwd)"
+
+# ----- post-train predict pipeline (lifted from batchShifter.slr) -----
+saveResults=${trainWrkDir}/predictionResutlsH5
+mkdir -p $saveResults
+time srun -n1 shifter  python -u ./predict.py  --modelPath out -X --venue poster --segmentColors --sortBy axonal somatic dend apical all >& log.predictAll
+time srun -n1 shifter  python -u ./predict.py  --modelPath out -X --numSamples 51200 --saveH5 $saveResults/MLoutput.h5 >& log.predictAll50K
+time srun -n1 shifter  python -u ./predictExp.py --saveFile ./unitParamsTest  --modelPath out --test-plot-size 20 -X >& log.ExpExact
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsTest --yamlPath ./out/sum_train.yaml  >& log.ParamConvert
+
+time srun -n1 shifter python -u ./toolbox/unitParamConvertHdf5.py --h5pyPath $saveResults/MLoutput.h5 --yamlPath ./out/sum_train.yaml --numCSV 8 --saveDir $saveResults
+echo S:done predict all, per-stim now
+
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 0 --testStimsSelect 0 --showPlots a -X  >& log.predictS0
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 1 --testStimsSelect 1 --showPlots a -X  >& log.predictS1
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 2 --testStimsSelect 2 --showPlots a -X  >& log.predictS2
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 3 --testStimsSelect 3 --showPlots a -X  >& log.predictS3
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 4 --testStimsSelect 4 --showPlots a -X  >& log.predictS4
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --testStimsSelect 5 --showPlots a -X  >& log.predictS5
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 6 --testStimsSelect 6 --showPlots a -X  >& log.predictS6
+date
+
+saveResultsOntra=${trainWrkDir}/predictionlOntraNewCell
+mkdir -p $saveResultsOntra
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --showPlots a -X --cellName AllCellsTestOnly --numSamples 51200 --venue poster --segmentColors --sortBy axonal somatic dend apical all --saveH5 $saveResultsOntra/MLoutput.h5 >& log.OntraTest
+
+saveResultsOntraClone=${trainWrkDir}/predictionlOntraNewClone
+mkdir -p $saveResultsOntraClone
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --showPlots a -X --cellName ALL_CELLS_interpolated --numSamples 51200 --venue poster --segmentColors --sortBy axonal somatic dend apical all --saveH5 $saveResultsOntraClone/MLoutput.h5 >& log.OntraTestInterpolate
+
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 5 --saveFile ./unitParamsExact --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data_Exact_TotalNorm/ --modelPath out -X >& log.ExpExact
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 5 --saveFile ./unitParamsReduce --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data_Reduce_TotalNorm/  --modelPath out -X >& log.ExpReduced
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 5 --saveFile ./unitParamsStep --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Step500_Data_Reduce_TotalNorm/  --modelPath out -X >& log.ExpStep
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 0 --saveFile ./unitParamsStepBBP --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/BBP_cADpyr_Step_last4/  --modelPath out -X >& log.ExpStepBBP
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 0 --saveFile ./unitParamsSimulated --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Sim_NNrow_TotalNorm/  --modelPath out -X >& log.ExpSim
+
+srun -n1 shifter  python -u ./predictExp.py --predictStim 0 --saveFile ./unitParamsBBPCaC --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/BBP_cAc_Step_last4 --modelPath out -X
+
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsExact --yamlPath ./out/sum_train.yaml
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsReduce --yamlPath ./out/sum_train.yaml
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsStep --yamlPath ./out/sum_train.yaml
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsStepBBP --yamlPath ./out/sum_train.yaml
+time srun -n1 shifter python -u ./toolbox/unitParamConvert.py --csvPath ./unitParamsSimulated --yamlPath ./out/sum_train.yaml
+
+time srun -n1 shifter python -u ./toolbox/unitParamConvertHdf5.py --h5pyPath $saveResultsOntra/MLoutput.h5 --yamlPath ./out/sum_train.yaml --numCSV 8 --saveDir $saveResultsOntra
+time srun -n1 shifter python -u ./toolbox/unitParamConvertHdf5.py --h5pyPath $saveResultsOntraClone/MLoutput.h5 --yamlPath ./out/sum_train.yaml --numCSV 8 --saveDir $saveResultsOntraClone
+
+date
+echo S:test-only complete jobId=$SLURM_JOBID
