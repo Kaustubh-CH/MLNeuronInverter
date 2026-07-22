@@ -42,6 +42,7 @@ from .soft_efel import (
     ALL_FEATURES as _EFEL_FEATURES,   # eFEL surrogates + L3 dV/dt features
 )
 from .soft_dtw import soft_dtw_loss
+from .trace_metrics import multiscale_blurred_mse
 
 
 class _GradScale(torch.autograd.Function):
@@ -99,6 +100,16 @@ class HybridLoss(nn.Module):
         dtw_gamma: float = 0.1,
         dtw_n_points: int = 200,
         dtw_band_ms: float = 8.0,
+        # ── L1b multi-scale blurred (van-Rossum) MSE; blur_weight=0 -> off ──
+        # Low-pass both traces at several Gaussian widths and sum the MSEs: large
+        # sigma = wide gradient basin (near-miss spikes still pull together),
+        # small sigma sharpens timing once aligned; an optional raw term pins
+        # amplitude.  Differentiable, O(T) per scale, no alignment step — the
+        # recommended cure for the cliffy/plateau voltage-MSE gradient.
+        blur_weight: float = 0.0,
+        blur_sigmas_ms=None,
+        blur_include_raw: bool = True,
+        blur_sigma_scale: float = 1.0,
         # ── L2 low-pass MSE (subthreshold-envelope match); lowpass_ms=0 -> off ──
         lowpass_ms: float = 0.0,
         # ── O1 randomized smoothing of the objective; smooth_sigma=0 -> off ──
@@ -192,6 +203,14 @@ class HybridLoss(nn.Module):
         self.dtw_gamma    = float(dtw_gamma)
         self.dtw_n_points = int(dtw_n_points)
         self.dtw_band_ms  = float(dtw_band_ms)
+        # Multi-scale blurred (van-Rossum) MSE.  Sigmas in ms (scaled by the
+        # schedulable blur_sigma_scale for a coarse->fine curriculum) are
+        # converted to samples per-call via sim_dt_ms.
+        self.blur_weight      = float(blur_weight)
+        self.blur_sigmas_ms   = tuple(float(s) for s in
+                                      (blur_sigmas_ms or (8.0, 4.0, 2.0, 1.0, 0.5)))
+        self.blur_include_raw = bool(blur_include_raw)
+        self.blur_sigma_scale = float(blur_sigma_scale)
         self.lowpass_ms   = float(lowpass_ms)
         self.smooth_sigma   = float(smooth_sigma)
         self.smooth_samples = max(1, int(smooth_samples))
@@ -259,9 +278,9 @@ class HybridLoss(nn.Module):
     # curriculum
     # ------------------------------------------------------------------
 
-    _SCHEDULABLE = ("mse_weight", "efel_weight", "dtw_weight", "lowpass_ms",
-                    "smooth_sigma", "channel_weight", "voltage_weight",
-                    "range_penalty_weight")
+    _SCHEDULABLE = ("mse_weight", "efel_weight", "dtw_weight", "blur_weight",
+                    "blur_sigma_scale", "lowpass_ms", "smooth_sigma",
+                    "channel_weight", "voltage_weight", "range_penalty_weight")
 
     def set_epoch(self, epoch: int) -> None:
         """Update scheduled loss-term weights for `epoch` (O2/L2 curriculum).
@@ -459,7 +478,7 @@ class HybridLoss(nn.Module):
             if v_sim_ch.shape[0] == 0:                             # whole batch bad
                 continue
             pair_loss = pred_phys.new_zeros(())
-            if self.mse_weight > 0 or self.dtw_weight > 0:
+            if self.mse_weight > 0 or self.dtw_weight > 0 or self.blur_weight > 0:
                 v_sim_z = self._normalize_volts(v_sim_ch)          # into pack z-space
             if self.mse_weight > 0:
                 # L2: optionally low-pass both sides before the MSE (curriculum).
@@ -471,6 +490,16 @@ class HybridLoss(nn.Module):
                     v_sim_z, v_true_ch, gamma=self.dtw_gamma,
                     n_points=self.dtw_n_points, band_ms=self.dtw_band_ms,
                     dt_ms=float(self.sim_dt_ms), orig_T=v_sim_z.shape[-1])
+            if self.blur_weight > 0:
+                # L1b: multi-scale blurred (van-Rossum) MSE in the SAME z-space.
+                # Sigmas (ms -> samples, scaled by blur_sigma_scale for a
+                # coarse->fine curriculum) give a wide gradient basin that pulls
+                # near-miss spikes together where raw MSE plateaus.
+                sig = tuple(max(1.0, s * self.blur_sigma_scale / float(self.sim_dt_ms))
+                            for s in self.blur_sigmas_ms)
+                pair_loss = pair_loss + self.blur_weight * multiscale_blurred_mse(
+                    v_sim_z, v_true_ch, sigmas=sig,
+                    include_raw=self.blur_include_raw, reduce_batch=True)
             if self.efel_weight > 0:
                 # de-normalize the data channel back to raw mV so both sides
                 # feed the soft-eFEL layer in the physical units it assumes.
@@ -740,6 +769,11 @@ def build_hybrid_loss(params) -> nn.Module:
         dtw_gamma        = float(vl.get("dtw_gamma", 0.1)),
         dtw_n_points     = int(vl.get("dtw_n_points", 200)),
         dtw_band_ms      = float(vl.get("dtw_band_ms", 8.0)),
+        # L1b multi-scale blurred (van-Rossum) MSE (opt-in; blur_weight=0 = off).
+        blur_weight      = float(vl.get("blur_weight", 0.0)),
+        blur_sigmas_ms   = vl.get("blur_sigmas_ms"),
+        blur_include_raw = bool(vl.get("blur_include_raw", True)),
+        blur_sigma_scale = float(vl.get("blur_sigma_scale", 1.0)),
         lowpass_ms       = float(vl.get("lowpass_ms", 0.0)),
         smooth_sigma     = float(vl.get("smooth_sigma", 0.0)),
         smooth_samples   = int(vl.get("smooth_samples", 1)),
