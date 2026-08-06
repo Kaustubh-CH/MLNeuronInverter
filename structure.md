@@ -287,6 +287,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: test_registry_lists_both_cells, test_shapes, test_cache_hit_no_recompile, test_vmap_matches_serial_loop, test_gradcheck_tiny, test_fresh_state_per_call, test_l5ttpc_registers_but_do_not_build, main
 - `toolbox/tests/test_pooled_stim_grouping.py` - Pooled multi-stim (variant B) grouping logic, with the jaxley solve stubbed out.
     - defs: _make_loss, test_grouping, test_single_stim_matches_reference, test_weighting_is_not_per_group
+- `toolbox/tests/verify_pooled_alignment.py` - Integration check (needs the real ca3_joint4_v1 pack; run on a login node).
 
 ### scripts/
 
