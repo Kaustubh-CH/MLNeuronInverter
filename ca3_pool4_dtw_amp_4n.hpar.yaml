@@ -1,0 +1,111 @@
+# CA3 — VARIANT B: the SAME 80k battery, POOLED into single-channel samples.
+#
+# Each (param draw, stimulus) pair is an independent 1-channel sample, so the CNN
+# never sees more than one trace at a time and has no idea which protocol produced
+# it. Built from the variant-A pack by scripts/pool_multistim_pack.py, which moves
+# the battery from the probe axis to the stim axis (pure reshape, no new sim);
+# Dataloader_H5's serialize_stims branch then flattens (N,T,1,4) -> (4N,T,1) and
+# tiles unit_par to match.
+#
+# The per-sample stim identity is the whole reason this needs new code: the voltage
+# loss takes ONE global stim_name, so a pooled batch would otherwise be simulated
+# under the wrong protocol for 3 of every 4 samples. `pooled_stim_index` makes the
+# dataloader emit each sample's stim id and the Trainer forward it to HybridLoss,
+# which splits the batch by id and runs each group under its own stimulus.
+#
+# Prediction being tested (from the todo): joint (A) should approach the UNION of
+# what each stim observes; pooled (B) the AVERAGE, since each sample is still a
+# single trace and per-stim degeneracy is untouched. B's real payoff would be
+# protocol-agnostic inference on experimental data, not identifiability.
+#
+# Cost parity with A: 320k solves/epoch, 78 steps/epoch, 256 solves/rank/step.
+# Compare at equal solves / wall time, NOT equal epochs.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_joint4_v1_pooled/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+    # Emit (X, stim_idx, Y) so the voltage loss can simulate each sample's own stim.
+    pooled_stim_index: True
+
+max_epochs: 100
+# 256 traces/rank/step = 256 solves, split ~64 per stim: same solve count AND the
+# same per-group sim-graph size as variant A, so peak activation memory matches.
+batch_size: 256
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    stim_name:         5kChaoticRamp
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    range_penalty_weight: 0.0
+    t_max_override:    500.0
+    solver:            bwd_euler
+    fp64:              True
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    blur_weight:       0.0
+    smooth_sigma:      0.0
+    smooth_samples:    1
+    lowpass_ms:        0.0
+    efel_weight:       0.2
+    efel_features:     [voltage_base, AP_amplitude]
+    schedule:
+        efel_weight:  { start: 0.05, end: 0.2, epochs: 20 }
+    # Stim VOCABULARY indexed by the per-sample id. Order MUST equal the pooled
+    # pack's meta['stim_names'] (= --stimsSelect order); a mismatch silently trains
+    # every sample against the wrong protocol without ever raising.
+    pooled_stim_names: [5kChaoticRamp, 5k0chaotic4, BBP_Exp_Step1000_i4k, chirp23a_i4k]
+    # Per-stim groups pad up to a multiple of this so XLA traces only a handful of
+    # batch shapes; costs ~quantum/2 wasted solves per group (~12% at these sizes).
+    pooled_pad_quantum: 8
+
+model:
+    myId:    ca3_pool4_dtw_amp_4n
+    comment: CA3 voltage-only soft-DTW + soft-eFEL aux, 80k battery POOLED to 320k single-channel samples, 4-node
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

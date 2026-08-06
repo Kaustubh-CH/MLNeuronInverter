@@ -33,9 +33,14 @@ epochs=${NEUINV_EPOCHS:-100}
 data_temp=${1:-/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_synth_v1/}
 if [[ $# -ge 2 ]]; then design=$2; fi
 
-probsSelect="0"
-stimsSelect="0"
-validStimsSelect="0"
+# Space-separated index lists. Defaults are the single-stim soma-only case.
+# Multi-stim packs need them overridden, and WHICH axis depends on the pack:
+#   joint  (num_probs=K, num_stims=1): NEUINV_PROBS="0 1 2 3"  -> K CNN channels
+#   pooled (num_probs=1, num_stims=K): NEUINV_STIMS="0 1 2 3"  -> K*N 1-ch samples,
+#     plus NEUINV_VALIDSTIMS pinning ONE stim (pooled valid must stay 1-channel).
+probsSelect="${NEUINV_PROBS:-0}"
+stimsSelect="${NEUINV_STIMS:-0}"
+validStimsSelect="${NEUINV_VALIDSTIMS:-0}"
 
 # ─── Conda env (jaxley + jax + torch) ───────────────────────────────────
 module load python

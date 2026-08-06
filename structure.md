@@ -174,6 +174,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser, Plotter, M_save_summary
 - `plotSurveyExpC.py` - inspect formated  experiment
     - defs: get_parser, print_exp_summary, Plotter
+- `plot_exp_overlay.py` - Plot predicted unit-params + voltage overlays for EXPERIMENTAL data.
+    - defs: get_parser, zscore, main
 - `predict.py` - read trained net : model+weights
     - defs: get_parser, load_model, model_infer, compute_residual
 - `predictExp.py` - PREDiction Kaustubh
@@ -283,6 +285,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _shrink_t_max, _restore_t_max, test_zero_recovers_mse, test_adapter_is_mse, test_voltage_forward_finite, test_voltage_grad_flows, test_mask_channels_skips_channel_loss, test_unit_to_phys_matches_numpy, test_factory_channel_only_passthrou...
 - `toolbox/tests/test_jaxley_bridge.py` - Phase 1 tests for toolbox.JaxleyBridge.
     - defs: test_registry_lists_both_cells, test_shapes, test_cache_hit_no_recompile, test_vmap_matches_serial_loop, test_gradcheck_tiny, test_fresh_state_per_call, test_l5ttpc_registers_but_do_not_build, main
+- `toolbox/tests/test_pooled_stim_grouping.py` - Pooled multi-stim (variant B) grouping logic, with the jaxley solve stubbed out.
+    - defs: _make_loss, test_grouping, test_single_stim_matches_reference, test_weighting_is_not_per_group
 
 ### scripts/
 
@@ -294,6 +298,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _phys_range, _load_cell, _slice, _draw_unit_par, worker, merge, main
 - `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages_one_stim, normalize_volts_fixed_scale, write_h5, main
+- `scripts/pool_multistim_pack.py` - Turn a JOINT multi-stim pack into a POOLED one by moving the battery from the
+    - defs: main
 - `scripts/voltage_loss_bias_probe.py` - Step-0 bias audit for the voltage-only training objective.
     - defs: get_parser, load_split_volts, loss_at, main
 - `scripts/install_hooks.sh`

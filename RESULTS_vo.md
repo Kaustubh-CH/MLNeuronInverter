@@ -29,7 +29,7 @@ stim (e.g. `5k50kInterChaoticB`, which is the SAME 5001-pt / 500 ms / dt 0.1 ms 
 | 8 | `serialize_stims: True` | probe axis → CNN channels | standard CA3 loader path |
 | 9 | backbone (unchanged) | 2 CNN blocks [30,90,180] k4 p4; FC [512,512,512,256,128] drop 0.04 | RayTune (130 trials) found nothing better; bigger diverges |
 | — | **strictly voltage-only** | `channel_weight 0`, `mask_channels True`, `voltage_weight 1` | hard constraint — ion channels NEVER in the loss |
-| ✗ | do NOT: grad-precond at scale · van-Rossum blur · step-stim · bigger net · efel as PRIMARY | — | precond helps only <80k; blur toxic to fast channels; steps poison DTW; efel@weight1.0 diverges (small ramped aux is fine — row 1) |
+| ✗ | do NOT: grad-precond at scale · van-Rossum blur · step-stim **under PURE DTW** · bigger net · efel as PRIMARY · **the 7 pA-scaled stims** · **>400k data** | — | precond helps only <80k; blur toxic to fast channels; a step poisons *pure* DTW (`chaoramp_step` changed 2 things at once, so this is NOT "steps are bad" — see Finding 12); efel@weight1.0 diverges (small ramped aux is fine — row 1); `ramp_500`/`4k50kInter{ramp,step}_*` inject 1000× current (see Stimulus hygiene); 400k costs kdr (Finding 11) |
 
 **InterChaoticB job** (submitted): `ca3_vo_interchaoticB_dtw_8n.hpar.yaml` (rows 1–9 verbatim,
 `stim_name: 5k50kInterChaoticB`, pack `ca3_5kinterchaoticB_v1` 200k) + `gen_interchaoticB_v1.slr`
@@ -39,6 +39,7 @@ stim (e.g. `5k50kInterChaoticB`, which is the SAME 5001-pt / 500 ms / dt 0.1 ms 
 | arm | recipe | data | mean R² | leak | na3 | kdr | kap | km | kd |
 |---|---|---|---|---|---|---|---|---|---|
 | **dtw_amp_200k** | DTW + soft-eFEL `voltage_base`+`AP_amplitude` (BEST) | 200k | **0.763** | 0.90 | **0.87** | **0.366** | 0.87 | 0.75 | 0.83 |
+| dtw_amp_400k | DTW + eFEL aux **@400k** — the two best levers STACKED (Phase 20) | 400k | 0.750 | 0.88 | 0.86 | **0.251** ⬇ | **0.904** | 0.77 | 0.83 |
 | precondkdr5_ft_200k | DTW + grad-precond **kdr×5.0**, fine-tune from ×2.5 ckpt | 200k | 0.742 | 0.87 | 0.76 | **0.34** | 0.85 | 0.81 | 0.82 |
 | **dtw_400k** | pure soft-DTW, 10× data (best trace) | 400k | 0.736 | 0.89 | 0.80 | **0.22** ⬇ | **0.91** | 0.76 | 0.84 |
 | precondkdr_200k | DTW + grad-precond **kdr×2.5** (150ep) | 200k | 0.731 | 0.87 | 0.77 | **0.27** ⬇ | 0.85 | 0.82 | 0.81 |
@@ -128,6 +129,30 @@ _dtw_ica_200k is a DIFFERENT stimulus — not comparable on mean. Its per-channe
     Either way grad-precond still does NOT beat plain DTW on kdr and is well below the eFEL aux — the
     line stays closed as a kdr lever, but the "monotonically worse with weight" claim is retracted.
 
+11. **Phase 20 — the two best levers do NOT stack: `amp@400k` is a NEGATIVE result.** Taking the best
+    recipe (DTW + ramped eFEL aux, 0.763 @200k) to the best data point (400k) gave mean **0.750**, i.e.
+    **below** the 200k version it was built from (−0.013), and it never became the champion. The whole
+    deficit is kdr: **0.366 → 0.251**, while the four channels data helps (kap 0.866→**0.904**, km
+    0.754→0.771, kd 0.825→0.830) and leak/na3 barely move (0.898→0.883, 0.870→0.859). Voltage fit
+    genuinely improved — `voltage_mse_z` **1.897 vs 2.030**, the best of any amp arm — so the model
+    reproduces traces better while identifying kdr worse. **This is Finding 2 again, now with the best
+    objective in place: doubling data past 200k buys trace quality and kap, and costs kdr.** Two claims
+    corrected while writing this up:
+    - (a) the earlier "400k is simply better" read is wrong for the MEAN but right for the TRACE. On
+      pure DTW, 400k beats 200k on 5 of 6 channels and on `mse_z`; with the eFEL aux it splits 3–3
+      (kap/km/kd up, leak/na3/kdr down). In both pairs kdr is the channel that drags the mean down.
+    - (b) **the eFEL aux was a na3 win, not a kdr win.** dtw_200k → dtw_amp_200k in error terms:
+      na3 (1−R²) 0.206 → 0.131 = **−37%**, but kdr 0.662 → 0.634 = **−4%**. Finding 9's "first thing to
+      move kdr up" overstated a 0.028 R² wobble; `AP_amplitude` constrains Na-driven spike height, which
+      is exactly what it should do. kdr's handle (rate/ISI) is still not in the loss.
+    **Do NOT run 800k chaoticRamp:** 200k→400k bought −1.6% mean error for 2× data *and* 150 vs 95
+    epochs to prove itself, ~186 node-hours for <1% expected gain, and it makes kdr worse.
+12. **The "step-stim FAILED" verdict (Finding 6) is over-scoped and is hereby narrowed to
+    "step-stim under PURE DTW".** `chaoramp_step` changed TWO things at once — it added a stimulus AND
+    that stimulus was a step — so it cannot separate "steps are bad" from "this battery/objective is
+    bad". No step battery has ever been run under the champion objective (DTW primary + small ramped
+    eFEL aux). That is the open experiment, not a closed door.
+
 ## Compute note (measured)
 8 nodes / 32 GPU gave **no speedup** over 4 nodes / 16 GPU at pinned global batch 2048 (220.8 vs
 ~247 s/epoch): the jaxley fp64 solve is dominated by the SEQUENTIAL 5001-step time integration,
@@ -135,8 +160,28 @@ which does not parallelize over batch or GPUs. The 200k run therefore timed out 
 the 6 h limit; epoch-95 was converged and was scored directly (reconstructed `sum_train.yaml`).
 **Run future 200k+ on 4 nodes with a longer wall-clock, not more nodes.**
 
-## Next data-scaling point (not yet run — 200k is the authorized ceiling)
-- The curve has not saturated and kdr is still climbing steeply, so >200k would very likely keep
-  helping (kdr most of all). 200k was the explicit user-authorized ceiling → **do not launch beyond
-  it without confirmation.** If approved: generate a ~400k pack (gen v4) + train baseline soft-DTW on
-  4 nodes / longer wall-clock; expected next point ~0.75–0.78 mean, kdr toward ~0.45.
+## Data scaling — SETTLED, stop here (superseded; 400k has now run twice)
+The prediction in this section ("expected ~0.75–0.78 mean, kdr toward ~0.45") was **half right**:
+400k reached 0.736 pure-DTW / 0.750 with the eFEL aux, but kdr went the wrong way both times
+(0.338→0.219 and 0.366→0.251). **Data scaling is closed as a kdr lever.** See Findings 2 and 11.
+Do not launch 800k.
+
+## Stimulus hygiene — SEVEN stims are unusable (pA injected as nA)
+`jaxley_utils.load_stim_csv` reads a stim CSV as **nA** with no scaling, but seven CSVs in
+`/pscratch/sd/k/ktub1999/main/DL4neurons2/stims/` are written in **pA** — they inject 1000× too much
+current and drive the soma to **+1600 mV**, which is ohmic drive of a 50×50 µm cylinder, not a neuron:
+`ramp_500`, `4k50kInterramp_50khz`, `4k50kInterstep_500_50khz`, `4k50kInterstep_200_50khz` and their
+`_i4k` twins. All other 69 stims are ≤6.8 nA and fine.
+
+**This contaminates the two runs that motivated the whole multi-stim push.** The Jul-4 batteries that
+recovered kdr at R² 0.985/0.991 each contain one or more of them — verified in the packs:
+`ca3_best_efel_multi` probe 1 (`4k50kInterramp_50khz_i4k`) peaks at **+1604 mV**; `ca3_best_mse_multi`
+probes 2 and 3 at **+1604** and **+998 mV**. So "the long step recovers kdr" and "the overdriven probe
+recovers kdr" are **perfectly confounded** across both runs, and the OAT sweep favours the latter
+reading: kdr's top four stimuli by voltage variation are ALL contaminated (146.2 / 146.1 / 106.3 /
+74.1 mV) versus **11.9 mV** for the best clean stim, `BBP_Exp_Step1000`. Kdr's apparent observability
+is concentrated almost entirely in the artifact.
+
+Before using any stimulus, check `max|I|` — anything >20 nA is pA-scaled. Also note this invalidates
+`sensitivity_best_stims.md`'s "Kdr best = `ramp_500`" and "KA best = `4k50kInterstep_500_50khz`" rows.
+Raw OAT table: `tmp_neuInv/sensitivity_variation/ca3_pyramidal/salloc_55486075/interp4000/combined/`.

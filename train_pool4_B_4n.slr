@@ -1,0 +1,59 @@
+#!/bin/bash -l
+#SBATCH -N4 --time=24:00:00 -J ca3vo-pool4B -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# VARIANT B — the SAME 80k battery POOLED into single-channel samples, so the CNN
+# sees one trace at a time and cannot tell which protocol produced it.
+#
+# Step 1 builds the pooled pack from variant A's (pure reshape, probe axis -> stim
+# axis; no new simulation). It is CPU-only and runs on one rank while the other 15
+# idle for a few minutes — cheap enough to keep the job self-contained rather than
+# depending on a separate CPU job.
+#
+# Step 2 trains it. 64k train rows x 4 stims = 256k solves/epoch at 62 steps/epoch
+# — identical to variant A, so the A/B isolates input structure, not compute.
+# Compare at equal solves / wall time, NOT equal epochs.
+# Submit with --dependency=afterok:<gen job>.
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+SRC=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_joint4_v1/ca3_pyramidal_joint4.mlPack1.h5
+POOL=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_joint4_v1_pooled
+J=$SCRATCH/tmp_neuInv/jaxley_ca3
+
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+
+if [ ! -f "$SRC" ]; then echo "POOL4-B: FATAL missing joint pack $SRC"; exit 3; fi
+if [ ! -f "$POOL/ca3_pyramidal_pool4.mlPack1.h5" ]; then
+  echo "POOL4-B: building pooled pack $(date)"
+  srun -n1 python -u scripts/pool_multistim_pack.py \
+       --in "$SRC" --out-dir "$POOL" --cell-name ca3_pyramidal_pool4 || exit 4
+else
+  echo "POOL4-B: pooled pack already present, skipping build"
+fi
+
+export NEUINV_RDZV_FILE=$SCRATCH/tmp_neuInv/rdzv/rdzv_${SLURM_JOBID}
+mkdir -p "$(dirname "$NEUINV_RDZV_FILE")"; rm -f "$NEUINV_RDZV_FILE"
+export NCCL_P2P_DISABLE=1
+echo "POOL4-B: start train $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST"
+
+# stimsSelect 0 1 2 3 -> the battery is on the STIM axis (num_probs=1, num_stims=4),
+# which is what makes Dataloader_H5 flatten it to 4N single-channel samples.
+# validStimsSelect pins ONE stim: pooled validation must stay 1-channel, and probe 2
+# (BBP_Exp_Step1000_i4k) is the kdr-carrying stim this campaign is about.
+NEUINV_CELL=ca3_pyramidal_pool4 \
+NEUINV_PROBS="0" NEUINV_STIMS="0 1 2 3" NEUINV_VALIDSTIMS="2" \
+NEUINV_WRK_SUFIX=pool4_80k NEUINV_NUMGLOBSAMP=80000 NEUINV_EPOCHS=100 \
+  bash batchShifterJaxleyCA3_100ep.slr "$POOL/" ca3_pool4_dtw_amp_4n
+echo "POOL4-B: launcher exit=$? $(date)"
+
+RUN=$J/ca3_pool4_dtw_amp_4n/ca3_pyramidal_pool4/pool4_80k
+if [ -f "$RUN/out/eval/summary.yaml" ]; then
+  echo "POOL4-B: ===== ledger ====="
+  python scripts/collect_vo_ledger.py "$RUN" -o "$J/vo_ledger/results.csv"
+else
+  echo "POOL4-B: NO eval summary at $RUN/out/eval/ - check $RUN/log.*"
+fi
+echo "POOL4-B: done $(date)"
