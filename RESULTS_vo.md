@@ -53,10 +53,15 @@ stim (e.g. `5k50kInterChaoticB`, which is the SAME 5001-pt / 500 ms / dt 0.1 ms 
 | dtw_20k | pure DTW, half data | 20k | 0.489 | 0.72 | 0.49 | 0.17 | 0.48 | 0.38 | 0.70 |
 | r1_dtwblur | DTW + van-Rossum blur | 40k | 0.479 | 0.76 | 0.54 | 0.11 | 0.29 | 0.42 | 0.75 |
 | dtw_10k | pure DTW, quarter data | 10k | 0.440 | 0.59 | 0.50 | 0.16 | 0.42 | 0.34 | 0.63 |
+| **joint4_80k** | DTW + eFEL aux, **clean 4-stim battery** as CNN channels (Phase 21) | 80k×4 | 0.280 | **0.959** | 0.11 | **−0.277** | −0.32 | 0.31 | **0.897** |
 | dtw_ica_200k | pure DTW, **InterChaoticB** stim (≠ chaoticRamp) | 200k | 0.219 | **0.97** | −0.27 | −0.12 | 0.16 | −0.37 | **0.94** |
+| ~~pool4_80k~~ | pooled 4-stim — **VOID, training failed at epoch 4** (see Finding 14) | 80k×4 | ~~0.047~~ | — | — | — | — | — | — |
 
 _dtw_ica_200k is a DIFFERENT stimulus — not comparable on mean. Its per-channel split is the point
 (Finding 8): near-ceiling leak/kd, failed na3/kdr/km/kap._
+
+_joint4_80k and pool4_80k are a DIFFERENT (4-stim) battery. Compare them to `dtw_80k` (0.637), which
+is the same 80k sample count under one stimulus._
 
 ## Findings
 1. **DATA is the dominant broad lever for the MEAN and 5/6 channels — but returns are now
@@ -153,12 +158,49 @@ _dtw_ica_200k is a DIFFERENT stimulus — not comparable on mean. Its per-channe
     bad". No step battery has ever been run under the champion objective (DTW primary + small ramped
     eFEL aux). That is the open experiment, not a closed door.
 
+13. **Kdr does NOT survive a clean multi-stim battery — it goes NEGATIVE (−0.277).** This closes the
+    question Finding 12 opened. `joint4_80k` ran the champion objective (DTW + ramped eFEL aux) over
+    the clean 4-stim battery `[5kChaoticRamp, 5k0chaotic4, BBP_Exp_Step1000_i4k, chirp23a_i4k]`,
+    Step1000 chosen as kdr's best UNCONTAMINATED stim (11.9 mV OAT). Training was healthy —
+    val 0.810 → −0.0014 over a full 100 epochs, LR laddering 1e-4→3e-5→9e-6, best ckpt at epoch 96 —
+    so this is not an optimization failure. Yet mean R² fell to **0.280 vs `dtw_80k`'s 0.637 at the
+    same 80k sample count**, and kdr fell from +0.09 to **−0.28**.
+    **Taken with the OAT gap (11.9 mV clean vs 74–146 mV contaminated), the Jul-4 kdr results
+    (R² 0.985/0.991) are best explained as the 1000× overdrive artifact, not as a real "long step
+    recovers kdr" effect.** Treat that pair of numbers as retracted.
+    The per-channel split reproduces the `dtw_ica_200k` signature rather than the predicted UNION:
+    leak **0.959** and kd **0.897** are the best values anywhere in this ledger, while every fast
+    spiking channel collapsed (na3 0.73→0.11, kap 0.72→−0.32, kdr 0.09→−0.28). Trace fit degraded
+    too (`mse_z` 2.20 vs 2.05, spike-count error 10.0 vs 6.9). Mechanism most consistent with the
+    data: three of the four stims are comparatively quiet (chirp23a 4.7 spikes, 5k0chaotic4 7.6,
+    Step1000 11.5, vs chaoticRamp's 24.2), so the loss — averaged over four traces — is dominated by
+    subthreshold envelope matching, which is exactly what leak/kd are and what na3/kdr/kap are not.
+    **Adding stimuli to the DTW loss dilutes spike information; it does not pool it.** The prediction
+    on record ("joint should approach the union of what each stim observes") is falsified.
+14. **`pool4_80k` is VOID — a training-dynamics failure, not a result about pooled multi-stim.** Its
+    best checkpoint is **epoch 4**; zero of the remaining 95 epochs beat it, and `ckpt.pth` was last
+    written 55 minutes into a 15.2-hour job. Validation thrashed early (0.725, 0.642, 0.824, 0.868,
+    **0.217**, 0.263, 1.650, 1.002), the plateau scheduler treated the epoch-4 outlier as the
+    permanent best, and LR collapsed 1e-4 → **2.19e-08** (4600×), freezing train loss at 0.080.
+    **≈13.5 h / 54 node-hours produced nothing.** Root cause is a config mismatch: `valid_stims_select:
+    [2]` validates on ONE stim while training pools all four, so the val signal is high-variance and
+    not aligned with the objective being optimized — ideal conditions for a lucky early epoch to
+    become unbeatable. **Do not score this arm.** Before any pooled re-run: validate on the pooled
+    set (all four stims), and add an LR floor / `min_lr` so a bad early "best" cannot kill the run.
+
 ## Compute note (measured)
 8 nodes / 32 GPU gave **no speedup** over 4 nodes / 16 GPU at pinned global batch 2048 (220.8 vs
 ~247 s/epoch): the jaxley fp64 solve is dominated by the SEQUENTIAL 5001-step time integration,
 which does not parallelize over batch or GPUs. The 200k run therefore timed out at epoch 95/100 on
 the 6 h limit; epoch-95 was converged and was scored directly (reconstructed `sum_train.yaml`).
 **Run future 200k+ on 4 nodes with a longer wall-clock, not more nodes.**
+
+**Multi-stim cost, measured (4 nodes, 80k×4 = 256k solves/epoch, 100 epochs):** joint **557.8 s/epoch
+→ 15h33**; pooled **542.0 s/epoch → 15h10**. Epoch time is essentially linear in solve count — the
+single-stim references are 48.65 s/epoch at 40k×1 (32k solves) and 98.83 at 80k×1 (64k solves), so an
+8× solve increase predicts 389 s and the measured ~550 carries ~40% multi-stim overhead.
+**Correction: pooled is NOT ~25% slower than joint** — that earlier claim came from compile-inflated
+smoke epochs; at scale pooled is marginally *faster*. Budget ~16 h for a 4-stim 80k×100ep run.
 
 ## Data scaling — SETTLED, stop here (superseded; 400k has now run twice)
 The prediction in this section ("expected ~0.75–0.78 mean, kdr toward ~0.45") was **half right**:
