@@ -303,6 +303,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: main
 - `scripts/voltage_loss_bias_probe.py` - Step-0 bias audit for the voltage-only training objective.
     - defs: get_parser, load_split_volts, loss_at, main
+- `scripts/eval_all_stims.sh`
 - `scripts/install_hooks.sh`
 - `scripts/run_ca3_gen.sh`
 
