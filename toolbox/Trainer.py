@@ -231,6 +231,10 @@ class Trainer():
     if 'plateau_patience' in lrcf:
         # `verbose` kwarg was removed in torch 2.x; keep optional for old/new
         _sch_kwargs = dict(factor=lrcf['reduceFactor'], patience=lrcf['plateau_patience'], mode='min', cooldown=2)
+        # Optional LR floor: without it a lucky early val outlier can become the
+        # permanent best and ratchet LR to ~0 (pool4_80k went 1e-4 -> 2.19e-8 and
+        # froze).  Absent key keeps the old behavior (floor 0).
+        if 'min_lr' in lrcf: _sch_kwargs['min_lr'] = float(lrcf['min_lr'])
         try:
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, verbose=self.verb, **_sch_kwargs)
         except TypeError:

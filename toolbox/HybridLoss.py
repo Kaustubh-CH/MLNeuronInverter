@@ -90,6 +90,8 @@ class HybridLoss(nn.Module):
         stim_names_multi=None,
         pooled_stim_names=None,
         pooled_pad_quantum: int = 8,
+        pooled_stim_norm: Optional[str] = None,
+        pooled_stim_norm_beta: float = 0.98,
         efel_weight: float = 0.0,
         mse_weight: float = 1.0,
         efel_features=None,
@@ -203,6 +205,16 @@ class HybridLoss(nn.Module):
         # Per-stim groups are padded up to a multiple of this, trading ~quantum/2
         # wasted solves per group for a bounded number of XLA-traced batch shapes.
         self._pooled_quantum = int(pooled_pad_quantum) if pooled_pad_quantum else 0
+        # Opt-in per-stim loss normalization for the pooled path ('ema' or None).
+        # None preserves the exact pre-existing behavior (raw per-sample mean).
+        assert pooled_stim_norm in (None, "ema"), \
+            f"pooled_stim_norm must be None or 'ema', got {pooled_stim_norm!r}"
+        self.pooled_stim_norm = pooled_stim_norm
+        self.pooled_stim_norm_beta = float(pooled_stim_norm_beta)
+        # stim id -> python-float EMA of that stim's recent (detached) group loss.
+        # Per-rank under DDP (not all-reduced): every rank sees IID batches, so the
+        # EMAs agree to within batch noise; syncing would cost a collective per step.
+        self._pooled_ema = {}
         if self.pooled_stim_names:
             K = len(self.pooled_stim_names)
             per = (self.pad_batch_size / K) if self.pad_batch_size else float("nan")
@@ -427,6 +439,16 @@ class HybridLoss(nn.Module):
         dropped and none is double-counted.
         """
         losses, weights = [], []
+        # Per-stim EMA normalization (opt-in): divide each group's loss by a
+        # detached running mean of that stim's recent loss, so every stimulus
+        # contributes O(1) to the total regardless of its raw loss scale.  Without
+        # it a loss averaged over a spike-mismatched battery is dominated by
+        # whichever stim has the largest raw DTW loss, and the quiet stims'
+        # subthreshold matching swamps the spike information (joint4, Finding 13).
+        # TRAIN-ONLY (gated on grad being enabled): validation reports the RAW
+        # per-sample mean, so the plateau scheduler tracks a stationary metric and
+        # stays comparable across arms.  EMA state is per-rank under DDP (see ctor).
+        use_norm = (self.pooled_stim_norm == "ema") and torch.is_grad_enabled()
         for s in torch.unique(stim_idx).tolist():
             sel = (stim_idx == s).nonzero(as_tuple=True)[0]
             n = int(sel.numel())
@@ -437,9 +459,26 @@ class HybridLoss(nn.Module):
             pad_to = int(math.ceil(n / q) * q) if q else n
             if self.pad_batch_size:
                 pad_to = min(pad_to, self.pad_batch_size)
-            losses.append(self._voltage_loss_core(
+            l = self._voltage_loss_core(
                 pred_unit[sel], true_volts[sel], None,
-                stim_name_override=sname, pad_to=pad_to))
+                stim_name_override=sname, pad_to=pad_to)
+            if use_norm:
+                d = float(l.detach())
+                if math.isfinite(d):
+                    prev = self._pooled_ema.get(int(s))
+                    # First sight initializes the EMA at the group's own loss, so
+                    # the first normalized step is exactly scale-1.
+                    ema = d if prev is None else (
+                        self.pooled_stim_norm_beta * prev
+                        + (1.0 - self.pooled_stim_norm_beta) * d)
+                    self._pooled_ema[int(s)] = ema
+                else:
+                    ema = self._pooled_ema.get(int(s))  # NaN/inf: don't poison it
+                # Soft-DTW can dip slightly negative; normalize only against a
+                # clearly-positive scale, otherwise pass the loss through raw.
+                if ema is not None and ema > 1e-8:
+                    l = l / ema
+            losses.append(l)
             weights.append(float(n))
         if not losses:
             return pred_unit.new_zeros(())
@@ -844,6 +883,9 @@ def build_hybrid_loss(params) -> nn.Module:
         stim_names_multi   = vl.get("stim_names_multi"),
         pooled_stim_names  = vl.get("pooled_stim_names"),
         pooled_pad_quantum = vl.get("pooled_pad_quantum", 8),
+        # Opt-in per-stim EMA loss normalization for pooled batches ('ema' | absent).
+        pooled_stim_norm      = vl.get("pooled_stim_norm"),
+        pooled_stim_norm_beta = float(vl.get("pooled_stim_norm_beta", 0.98)),
         # Soft-eFEL feature-matching voltage loss (opt-in; efel_weight=0 = off).
         efel_weight      = float(vl.get("efel_weight", 0.0)),
         mse_weight       = float(vl.get("mse_weight", 1.0)),

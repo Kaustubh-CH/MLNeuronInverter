@@ -142,7 +142,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `RayTune.py`
     - defs: threadTrain, trainable, Raytune
 - `evaluate_voltage.py` - Evaluate a HybridLoss/voltage-trained model.
-    - defs: get_parser, load_trained_model, load_test_data, main
+    - defs: get_parser, load_trained_model, load_test_data, _simulate_nograd, main
 - `feature_channel_sensitivity.py` - Feature x Channel sensitivity matrix for the CA3 (or any jaxley-cell) inverse.
     - defs: get_parser, resolve_phys_range, operating_points, feature_list, main
 - `findSpikesExpC.py` - identify spikes in experimental wave forms
@@ -286,7 +286,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `toolbox/tests/test_jaxley_bridge.py` - Phase 1 tests for toolbox.JaxleyBridge.
     - defs: test_registry_lists_both_cells, test_shapes, test_cache_hit_no_recompile, test_vmap_matches_serial_loop, test_gradcheck_tiny, test_fresh_state_per_call, test_l5ttpc_registers_but_do_not_build, main
 - `toolbox/tests/test_pooled_stim_grouping.py` - Pooled multi-stim (variant B) grouping logic, with the jaxley solve stubbed out.
-    - defs: _make_loss, test_grouping, test_single_stim_matches_reference, test_weighting_is_not_per_group
+    - defs: _make_loss, test_grouping, test_single_stim_matches_reference, test_weighting_is_not_per_group, _make_loss_norm, _two_group_setup, test_stim_norm_off_is_identical, test_stim_norm_ema_equalizes, test_stim_norm_gated_off_in_validation
 - `toolbox/tests/verify_pooled_alignment.py` - Integration check (needs the real ca3_joint4_v1 pack; run on a login node).
 
 ### scripts/

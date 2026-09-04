@@ -204,14 +204,29 @@ class Dataset_h5_neuronInverter(object):
                 if self.verb : print('WS2 locSamp=%d, volts:'%locSamp,volts.shape,', parU:',parU.shape,', dom=',dom)
             else:
                 if self.verb : print('WS1 numStim=%d volts:'%(numStim),volts.shape,', parU2:',parU2.shape)
-                volts=volts[:,:,dcf['probs_select']].reshape(locSamp,timeBins,-1)
                 if pooledStimIdx:
-                    # Non-train domains load valid_stims_select instead. Pooled training
-                    # needs a 1-channel input, so validation must pin ONE stim; more
-                    # would silently reshape into extra CNN channels.
+                    # Non-train domains load valid_stims_select instead. Pooled input
+                    # must stay 1-channel, so MULTIPLE valid stims are flattened into
+                    # extra samples (stim-major, mirroring the train branch) with a
+                    # per-sample stim id. Validating on ONE stim while training pools
+                    # all of them gave pool4_80k its high-variance val signal and the
+                    # LR ratchet to 2e-8 (RESULTS_vo.md Finding 14).
                     vss=dcf['valid_stims_select']
-                    assert len(vss)==1,'pooled_stim_index needs exactly one valid_stims_select, got %s'%str(vss)
-                    stimIdx=np.full(len(volts),int(vss[0]),dtype=np.int64)
+                    nvs=len(vss)
+                    volts=volts[:,:,dcf['probs_select']]
+                    if nvs==1:
+                        volts=volts.reshape(locSamp,timeBins,-1)
+                        stimIdx=np.full(len(volts),int(vss[0]),dtype=np.int64)
+                    else:
+                        # (locSamp,T,nProb,nvs) -> stim-major (nvs*locSamp,T,nProb).
+                        # Kept UNSHUFFLED: the valid loader is sequential, so each
+                        # val batch stays single-stim (one sim graph, no pad waste).
+                        volts=np.moveaxis(volts,-1,0).reshape(nvs*locSamp,timeBins,-1)
+                        parU=np.tile(parU,(nvs,1))
+                        stimIdx=np.repeat(np.asarray(vss,dtype=np.int64),locSamp)
+                        locSamp*=nvs
+                else:
+                    volts=volts[:,:,dcf['probs_select']].reshape(locSamp,timeBins,-1)
 
                 if self.verb : print('WS2 locSamp=%d, volts:'%locSamp,volts.shape,', parU:',parU.shape,', dom=',dom)
         
