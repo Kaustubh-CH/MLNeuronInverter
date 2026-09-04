@@ -1,0 +1,114 @@
+# DTW variant (2026-08-26): same one-stim exp-only k128 as ca3_royexp_1stim_1500
+# but loss swapped MSE+eFEL -> PURE soft-DTW (dtw_w 1.0, gamma 0.1, 256 pts, 8 ms band),
+# the exact dtw_k128 champion recipe. User: 'run it with dtw'.
+# CA3 — ONE-STIM exp-only k128 model, Roy1500 family (2026-08-26, user request).
+# From-scratch twin of ca3_royexp_scratch_k128 restricted to the Roy1500 sweeps
+# only (pack RoyExp1500, ~125 train / 16 valid / 18 test; Roy100 dropped from the
+# study). Sim stim == the family's own rig-accurate Roy1500_icav2_5k (via the
+# retained stim_from_label — single-family batches route to exactly it).
+# batch_size 4 so the 16-sweep valid split still yields a step on 4 ranks.
+#
+# Pack: /pscratch/sd/k/ktub1999/RoyExpPack_ca3ft/RoyExpChaotic.mlPack1.h5
+# (805 exp traces, 44 neurons, splitByNeuron 34/4/6, 4001 bins fixed-norm,
+#  labels = 6-wide dummy with stim-family index in col 0).  Launch with
+# NEUINV_CELL=RoyExpChaotic / --cellName RoyExpChaotic.
+#
+# Per-sample stimulus: voltage_loss.stim_from_label groups each batch by the
+# label col-0 family index and simulates with that family's rig-accurate CSV
+# (Roy<amp>_icav2_5k = v2 holding -0.0496 nA + fitted slope x 5k50kInterChaoticB).
+# stim_name only anchors t_max_override:auto (all 5 CSVs are 5000 pts -> 500 ms).
+# sim_t_skip_ms 99.9 (999 bins) aligns the post-skip sim window with the pack's
+# 1-bin lead-padded 4001-bin recording window exactly.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/RoyExpPack_1stim/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 40
+batch_size: 4           # valid split is 16 -> 4/rank on 4 GPUs
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False   # warm-start is via --do_fine_tune, NOT resume
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]     # from-scratch LR (soft-eFEL diverges at 3e-4)
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+# ─────────────────────────────────────────────────────────────────────────
+# VOLTAGE-ONLY loss: PURE soft-DTW (champion dtw_k128 recipe; mse=efel=0)
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0          # OFF (exp pack has no ground-truth params)
+    voltage_weight:    1.0
+    mask_channels:     True         # voltage-only
+    mse_weight:        0.0
+    efel_weight:       0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    stim_name:         Roy1500_icav2_5k     # t_max anchor only; see stim_from_label
+    stim_from_label:
+        label_col:  0
+        stim_names: [Roy100_icav2_5k, Roy500_icav2_5k, Roy1000_icav2_5k,
+                     Roy1500_icav2_5k, Roy2000_icav2_5k]
+    soma_probe_index:  0
+    sim_t_skip_ms:     99.9         # 999 bins: sim bin i == 5k-stim bin 999+i == data bin i
+    clamp_unit_tanh:   True
+    t_max_override:    auto          # -> 500 ms from the 5000-pt stim CSV
+    solver:            bwd_euler
+    fp64:              True
+    # CA3 unit->phys mapping, verbatim from the k128 sum_train.yaml input_meta
+    # (yaml wins over the pack's meta copy).
+    phys_par_range:
+        - [3.9417e-05, 0.5, "S/cm^2"]   # CA3_g_leak
+        - [0.04,       0.5, "S/cm^2"]   # CA3_gbar_na3
+        - [0.01,       0.5, "S/cm^2"]   # CA3_gkdrbar_kdr
+        - [0.04,       0.5, "S/cm^2"]   # CA3_gkabar_kap
+        - [0.00052,    0.5, "S/cm^2"]   # CA3_gbar_km
+        - [0.00025,    0.5, "S/cm^2"]   # CA3_gkdbar_kd
+
+model:
+    myId:    ca3_royexp_1stim_1500_dtw
+    comment: CA3 voltage-only+pure-soft-DTW one-stim k128, Roy1500 exp sweeps only
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [128, 128, 128]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

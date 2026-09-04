@@ -141,8 +141,12 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 
 - `RayTune.py`
     - defs: threadTrain, trainable, Raytune
+- `build_roy_neuron5_pack.py` - Build the NEURON-level 5-sweep battery pack from RoyExpPack_ca3ft.
+- `build_roy_stimch_pack.py` - Build the STIM-AS-CHANNEL single-sweep pack from RoyExpPack_ca3ft.
 - `evaluate_voltage.py` - Evaluate a HybridLoss/voltage-trained model.
     - defs: get_parser, load_trained_model, load_test_data, _simulate_nograd, main
+- `excitability_probe_icarec.py` - Can the CA3 model fire at experimental rates under the TRUE recorded drive?
+    - defs: spikes_pos, main
 - `feature_channel_sensitivity.py` - Feature x Channel sensitivity matrix for the CA3 (or any jaxley-cell) inverse.
     - defs: get_parser, resolve_phys_range, operating_points, feature_list, main
 - `findSpikesExpC.py` - identify spikes in experimental wave forms
@@ -176,6 +180,14 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser, print_exp_summary, Plotter
 - `plot_exp_overlay.py` - Plot predicted unit-params + voltage overlays for EXPERIMENTAL data.
     - defs: get_parser, zscore, main
+- `plot_exp_overlay_neuron5.py` - Evaluate the neuron-level joint 5-sweep model on held-out neurons.
+    - defs: get_parser, zscore, zfix, spikes_pos, main
+- `plot_exp_overlay_roy.py` - Predict the Roy/Paula chaotic recordings (Apr-2026) with a DTW-era CA3 model.
+    - defs: get_parser, zscore, spikes_pos, main
+- `plot_exp_overlay_royv2_l5.py` - Cross-cell-model probe: score the L5TTPC jaxley model on Roy v2 recordings.
+    - defs: get_parser, zscore, zfix, spikes_pos, sim_family, main
+- `plot_exp_overlay_stimch.py` - Evaluate a stim-as-channel single-sweep model on held-out Roy neurons.
+    - defs: get_parser, zscore, zfix, spikes_pos, main
 - `predict.py` - read trained net : model+weights
     - defs: get_parser, load_model, model_infer, compute_residual
 - `predictExp.py` - PREDiction Kaustubh

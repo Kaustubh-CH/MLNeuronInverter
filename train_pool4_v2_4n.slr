@@ -1,0 +1,56 @@
+#!/bin/bash -l
+#SBATCH -N4 --time=20:00:00 -J ca3vo-pool4v2 -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# VARIANT B v2 — pooled 4-stim battery re-run with the Finding-13/14 fixes:
+#   1. validStimsSelect "0 1 2 3": validation covers the POOLED set (v1 validated
+#      on one stim, an epoch-4 outlier became the permanent best);
+#   2. LRsched min_lr 1e-6 (v1's LR ratcheted 1e-4 -> 2.19e-8 and froze);
+#   3. pooled_stim_norm: ema (train-only per-stim loss normalization, so quiet
+#      stims cannot swamp the spike information — the joint4 dilution).
+# Everything else = ca3_pool4_dtw_amp_4n. Same pack, same batch 256 / 60 steps/ep.
+# Cost: v1 measured 542.0 s/epoch; pooled validation adds ~7% (16,384 val solves
+# vs 245,760 train) -> ~578 s/epoch, ~16.1 h for 100 epochs + eval. Wall 20 h.
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+SRC=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_joint4_v1/ca3_pyramidal_joint4.mlPack1.h5
+POOL=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_joint4_v1_pooled
+J=$SCRATCH/tmp_neuInv/jaxley_ca3
+
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+
+if [ ! -f "$POOL/ca3_pyramidal_pool4.mlPack1.h5" ]; then
+  if [ ! -f "$SRC" ]; then echo "POOL4-v2: FATAL missing joint pack $SRC"; exit 3; fi
+  echo "POOL4-v2: building pooled pack $(date)"
+  srun -n1 python -u scripts/pool_multistim_pack.py \
+       --in "$SRC" --out-dir "$POOL" --cell-name ca3_pyramidal_pool4 || exit 4
+else
+  echo "POOL4-v2: pooled pack already present, skipping build"
+fi
+
+export NEUINV_RDZV_FILE=$SCRATCH/tmp_neuInv/rdzv/rdzv_${SLURM_JOBID}
+mkdir -p "$(dirname "$NEUINV_RDZV_FILE")"; rm -f "$NEUINV_RDZV_FILE"
+export NCCL_P2P_DISABLE=1
+echo "POOL4-v2: start train $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST"
+
+# stimsSelect 0 1 2 3 -> battery on the STIM axis (num_probs=1, num_stims=4);
+# Dataloader_H5 flattens it to 4N single-channel samples with per-sample ids.
+# validStimsSelect 0 1 2 3 -> validation ALSO flattens all four stims (fix 1);
+# the val scalar the plateau scheduler sees averages every protocol.
+NEUINV_CELL=ca3_pyramidal_pool4 \
+NEUINV_PROBS="0" NEUINV_STIMS="0 1 2 3" NEUINV_VALIDSTIMS="0 1 2 3" \
+NEUINV_WRK_SUFIX=pool4v2_80k NEUINV_NUMGLOBSAMP=80000 NEUINV_EPOCHS=100 \
+  bash batchShifterJaxleyCA3_100ep.slr "$POOL/" ca3_pool4_dtw_amp_v2_4n
+echo "POOL4-v2: launcher exit=$? $(date)"
+
+RUN=$J/ca3_pool4_dtw_amp_v2_4n/ca3_pyramidal_pool4/pool4v2_80k
+if [ -f "$RUN/out/eval/summary.yaml" ]; then
+  echo "POOL4-v2: ===== ledger ====="
+  python scripts/collect_vo_ledger.py "$RUN" -o "$J/vo_ledger/results.csv"
+else
+  echo "POOL4-v2: NO eval summary at $RUN/out/eval/ - check $RUN/log.*"
+fi
+echo "POOL4-v2: done $(date)"
