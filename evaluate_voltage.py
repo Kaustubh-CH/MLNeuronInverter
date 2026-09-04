@@ -79,6 +79,12 @@ def get_parser():
                    help="also write the individual .png figures.  Default is PDF-only: "
                         "everything lands in trace_overlays.pdf (channel grid, per-sample "
                         "overlays, loss histogram, RMSE CDF).")
+    p.add_argument("--noGrad", action="store_true",
+                   help="Forward-only jaxley (handle.simulate_batch, no jax.vjp graph). "
+                        "REQUIRED for the 19-param L5TTPC cell: the training bridge's VJP "
+                        "graph OOMs a 40 GB A100 at batch 64.  Results are identical.")
+    p.add_argument("--simBatch", type=int, default=64,
+                   help="jaxley batch size for the re-simulation (default 64).")
     return p.parse_args()
 
 
@@ -140,6 +146,26 @@ def load_test_data(trainMD, n_samples, stim_col):
     print(f"[eval] v_soma_norm shape = {v_soma_norm.shape}, "
           f"mV-stats available = {have_mvstats}")
     return v_soma_norm, unit_par, v_mean, v_std
+
+
+def _simulate_nograd(pred_phys, cell_name, stim_name, bs, solver="bwd_euler"):
+    """Forward-only jaxley on the cached handle's jitted vmap -> (N, n_rec, T_ds)
+    float64 numpy.  Skips the jax.vjp graph that JaxleyBridge.simulate_batch
+    always builds (it is the TRAINING bridge); the 19-param L5TTPC cell OOMs
+    there.  Pads the last chunk to `bs` so XLA compiles one shape."""
+    import jax.numpy as jnp
+    handle = JaxleyBridge.get_handle(cell_name, stim_name, solver=solver)
+    pp = jnp.asarray(pred_phys.detach().cpu().numpy())
+    outs = []
+    for i0 in range(0, pp.shape[0], bs):
+        pg = pp[i0:i0 + bs]
+        ng = pg.shape[0]
+        if ng < bs:
+            pg = jnp.concatenate(
+                [pg, jnp.broadcast_to(pg[:1], (bs - ng,) + pg.shape[1:])], axis=0)
+        v = handle.simulate_batch(pg)                    # (bs, n_rec, T_ds)
+        outs.append(np.asarray(v[:ng]))
+    return np.concatenate(outs, axis=0)
 
 
 def main():
@@ -325,7 +351,16 @@ def main():
     probe_labels = [f"probe{p} ({s})" for p, s in zip(sel_probes, sel_stims)]
     print(f"[eval] {n_probe} probe(s): {probe_labels}")
 
-    sim_bs = 64
+    sim_bs = int(args.simBatch)
+    # Which RECORDING of the simulated cell feeds data channel j?  Multi-probe
+    # runs (Exp 2) train with `probe_loss_indices` = the cell's .record() order
+    # per data channel; everything else compares recording 0 (soma).
+    _pli = vl.get("probe_loss_indices")
+    rec_idx = [int(_pli[j]) if (_pli and j < len(_pli)) else 0 for j in range(n_probe)]
+    if _pli:
+        print(f"[eval] probe_loss_indices={_pli} -> recording per data channel: {rec_idx}")
+    sim_solver = str(vl.get("solver", "bwd_euler"))
+    sim_cache = {}       # stim_name -> (N, n_rec, T_sim): one sim per distinct stim
     v_sim_pre_all = []   # per-probe (N, T) mV pre-z
     v_sim_z_all   = []   # per-probe (N, T) z-scored
     v_data_z_all  = []   # per-probe (N, T) z-scored data (from cnn_in)
@@ -333,13 +368,24 @@ def main():
     spikes_sim_all = []; spikes_data_all = []
     T = None
     for j, (p_idx, s_name) in enumerate(zip(sel_probes, sel_stims)):
-        sim_chunks = []
-        print(f"[eval] running jaxley for {probe_labels[j]} on {N} preds, batch={sim_bs}...")
+        rec_k = rec_idx[j]
         t0 = time.time()
-        for i in range(0, N, sim_bs):
-            v = JaxleyBridge.simulate_batch(pred_phys[i:i+sim_bs], cell_name, s_name)
-            sim_chunks.append(v[:, 0, :].cpu())   # (B, T_sim)
-        v_sim = torch.cat(sim_chunks, dim=0).numpy()
+        if s_name in sim_cache:
+            print(f"[eval] {probe_labels[j]}: reusing the {s_name} simulation, recording {rec_k}")
+            v_all = sim_cache[s_name]
+        else:
+            print(f"[eval] running jaxley for {probe_labels[j]} on {N} preds, batch={sim_bs}"
+                  f"{' (no-grad)' if args.noGrad else ''}...")
+            if args.noGrad:
+                v_all = _simulate_nograd(pred_phys, cell_name, s_name, sim_bs, sim_solver)
+            else:
+                sim_chunks = []
+                for i in range(0, N, sim_bs):
+                    v = JaxleyBridge.simulate_batch(pred_phys[i:i+sim_bs], cell_name, s_name)
+                    sim_chunks.append(v.cpu())              # (B, n_rec, T_sim)
+                v_all = torch.cat(sim_chunks, dim=0).numpy()
+            sim_cache[s_name] = v_all
+        v_sim = v_all[:, rec_k, :]                           # (N, T_sim)
         t1 = time.time()
         # Drop the pre-stim window so the sim time axis aligns with the (already
         # pre-trimmed) data H5.
@@ -549,6 +595,17 @@ def main():
         pdf.savefig(fig)
         plt.close(fig)
     pdf.close()
+    # Compact trace dump so cross-run composite figures can be built without
+    # re-simulating (float32, z-scored, all probes, all N samples).
+    np.savez_compressed(
+        os.path.join(outDir, "traces.npz"),
+        t_axis=t_axis.astype(np.float32),
+        v_sim_z=np.stack(v_sim_z_all).astype(np.float32),     # (n_probe, N, T)
+        v_data_z=np.stack(v_data_z_all).astype(np.float32),
+        err_z=np.stack(err_z_all).astype(np.float32),         # (n_probe, N)
+        spikes_sim=np.stack(spikes_sim_all), spikes_data=np.stack(spikes_data_all),
+        pick=pick, probe_labels=np.array(probe_labels), rec_idx=np.array(rec_idx))
+    print(f"[eval] wrote {os.path.join(outDir, 'traces.npz')}")
     print(f"[eval] wrote {pdf_path}: page1=ion-channel grid, page2=loss hist, "
           f"page3=rmse CDF, then {len(pick)} voltage overlays "
           f"({n_probe} probe row(s) each)"
