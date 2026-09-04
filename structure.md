@@ -311,8 +311,11 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _phys_range, _load_cell, _slice, _draw_unit_par, worker, merge, main
 - `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages_one_stim, normalize_volts_fixed_scale, write_h5, main
+- `scripts/plot_l5ttpc_curves.py` - Train / validation loss per epoch for every L5TTPC (ncomp=2) run, read from
+    - defs: read_curve
 - `scripts/pool_multistim_pack.py` - Turn a JOINT multi-stim pack into a POOLED one by moving the battery from the
     - defs: main
+- `scripts/summarize_l5ttpc_eval.py` - Summarise the L5TTPC ncomp=2 test-split evaluations in l5ttpc_eval/<run>/.
 - `scripts/voltage_loss_bias_probe.py` - Step-0 bias audit for the voltage-only training objective.
     - defs: get_parser, load_split_volts, loss_at, main
 - `scripts/eval_all_stims.sh`
