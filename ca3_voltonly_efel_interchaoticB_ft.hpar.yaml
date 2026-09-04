@@ -1,0 +1,88 @@
+# CA3 Pyramidal — VOLTAGE-ONLY + soft-eFEL, 4k50kInterChaoticB pack, FINE-TUNE.
+#
+# Fine-tune stage of the experimental-data pipeline (2026-07-07). Warm-starts
+# from the 4kChaoticRamp base model (ca3_voltonly_efel_4kchaoticramp) via the
+# SLR's NEUINV_FT_MODEL / NEUINV_FT_CKPT flags, then continues training on a
+# CA3 pack driven by the 4k50kInterChaoticB stimulus (4000 samples).
+#
+# Both stages are 4000-length -> the CNN->FC head shapes match, so the whole
+# state_dict transfers (unlike a 5000->4000 warm-start, which is impossible
+# because Model.py has no adaptive pooling and flat_dim is length-locked).
+#
+# 4k50kInterChaoticB = 4000 samples @0.1ms = 400 ms.  Gen with --t-max 400.
+# Fine-tune LR set via NEUINV_INITLR (5e-5, half the base 1e-4).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_4kinterchaoticB_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 60
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False   # warm-start is via --do_fine_tune, NOT resume
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.00005]    # fine-tune LR (overridable via NEUINV_INITLR)
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+# ─────────────────────────────────────────────────────────────────────────
+# VOLTAGE-ONLY loss (no channel supervision) + soft-eFEL feature matching
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0          # OFF
+    voltage_weight:    1.0
+    mask_channels:     True         # voltage-only
+    mse_weight:        1.0
+    efel_weight:       1.0
+    stim_name:         4k50kInterChaoticB
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto          # -> 400 ms from pack meta
+    solver:            bwd_euler
+    fp64:              True
+
+model:
+    myId:    ca3_voltonly_efel_interchaoticB_ft
+    comment: CA3 voltage-only + soft-eFEL, 4k50kInterChaoticB fine-tune of 4kChaoticRamp base
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

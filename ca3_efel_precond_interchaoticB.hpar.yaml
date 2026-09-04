@@ -1,0 +1,97 @@
+# CA3 Pyramidal — VOLTAGE-ONLY + soft-eFEL + inverse-sensitivity GRADIENT
+# PRECONDITIONER, 4k50kInterChaoticB pack, FROM SCRATCH (2026-07-08).
+#
+# Tests whether the new per-parameter gradient preconditioner (HybridLoss
+# grad_precond) lifts the channels that voltage-loss starves (Na, Kdr, KA,
+# KM).  Unlike ca3_voltonly_efel_interchaoticB_ft this is trained FROM SCRATCH
+# on the full 50k pack (40k train / 5k valid / 5k test @ 4001 bins) — NOT a
+# fine-tune — so the preconditioner effect is not confounded by warm-start
+# forgetting.  The pack is 4000-length (400 ms), matching the experimental
+# data length, so plot_exp_overlay can transfer with a 1-sample pad.
+#
+# LR 1e-4 (soft-eFEL diverges at 3e-4; keep grad clip on) + plateau sched.
+# grad_precond.weights are the voltage-only per-param test-MSE recovery
+#   [g_leak, na3, kdr, kap, km, kd] = [0.11, 0.60, 0.50, 0.40, 0.39, 0.19]
+# used DIRECTLY as multipliers (worse-recovered = more-starved = bigger boost),
+# geomean-normalized so the overall LR scale is preserved.  NOTE: Kdr's boost
+# targets starvation, but Kdr actually fails from a "cliffy" (non-smooth)
+# gradient — reweighting may not help it; watch its per-param MSE.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_4kinterchaoticB_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]     # from-scratch base LR (overridable via NEUINV_INITLR)
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+# ─────────────────────────────────────────────────────────────────────────
+# VOLTAGE-ONLY loss (no channel supervision) + soft-eFEL feature matching
+# + per-parameter inverse-sensitivity gradient preconditioning
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0          # OFF (voltage-only)
+    voltage_weight:    1.0
+    mask_channels:     True         # voltage-only
+    mse_weight:        1.0
+    efel_weight:       1.0
+    stim_name:         4k50kInterChaoticB
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto          # -> 400 ms from pack meta
+    solver:            bwd_euler
+    fp64:              True
+    grad_precond:
+        weights:   [0.11, 0.60, 0.50, 0.40, 0.39, 0.19]   # per-param multiplier
+        normalize: geomean                                # preserve overall LR
+
+model:
+    myId:    ca3_efel_precond_interchaoticB
+    comment: CA3 voltage-only + soft-eFEL + inverse-sensitivity grad precond, 4k50kInterChaoticB from scratch
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

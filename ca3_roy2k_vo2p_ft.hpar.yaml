@@ -1,0 +1,89 @@
+# CA3 — 2-param (leak, kd) voltage-only FINE-TUNE on the Roy2000-family
+# EXPERIMENTAL recordings.  Warm-starts from the ca3_roy2k_vo2p synthetic run
+# via --do_fine_tune.  Pack: /pscratch/sd/k/ktub1999/RoyExp2000_ca3ft/
+# RoyExp2000.mlPack1.h5 (123/16/18, neuron domains inherited from the full
+# ca3ft pack -> test neurons identical to every other Roy eval).
+# Single family -> single stim; no stim_from_label needed.
+# sim_t_skip_ms 99.9 aligns sim bins 999.. with the exp pack's 1-bin lead pad.
+# Run on ONE GPU (valid split is 16 samples: 16/1 rank/bs16 = 1 step).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/RoyExp2000_ca3ft/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 40
+batch_size: 16
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False   # warm-start is via --do_fine_tune, NOT resume
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.00005]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    mse_weight:        1.0
+    efel_weight:       1.0
+    stim_name:         Roy2000_icav2_5k
+    param_subset:      [0, 5]       # CA3_g_leak, CA3_gkdbar_kd
+    soma_probe_index:  0
+    sim_t_skip_ms:     99.9
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+    phys_par_range:
+        - [3.9417e-05, 0.5, "S/cm^2"]   # CA3_g_leak       <- predicted
+        - [0.04,       0.5, "S/cm^2"]   # CA3_gbar_na3        (pinned)
+        - [0.01,       0.5, "S/cm^2"]   # CA3_gkdrbar_kdr     (pinned)
+        - [0.04,       0.5, "S/cm^2"]   # CA3_gkabar_kap      (pinned)
+        - [0.00052,    0.5, "S/cm^2"]   # CA3_gbar_km         (pinned)
+        - [0.00025,    0.5, "S/cm^2"]   # CA3_gkdbar_kd    <- predicted
+
+model:
+    myId:    ca3_roy2k_vo2p_ft
+    comment: 2-param voltage-only fine-tune on Roy2000 exp recordings
+    outputSize_override: 2
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [128, 128, 128]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

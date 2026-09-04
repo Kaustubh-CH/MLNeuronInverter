@@ -39,6 +39,7 @@ ROOTS = [
     ("toolbox/tests/",          ["*.py"], "toolbox/tests"),
     ("scripts/",                ["*.py", "*.sh"], "scripts"),
     ("packBBP3/",               ["*.py"], "packBBP3"),
+    ("predicted_data_analysis/", ["*.py", "*.sh"], "predicted_data_analysis"),
 ]
 
 

@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH -J roy2k-dtw-l4
+#SBATCH -C gpu
+#SBATCH -q regular
+#SBATCH -A m2043_g
+#SBATCH -t 1:30:00
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=4
+#SBATCH --gpus-per-node=4
+#SBATCH --gpu-bind=none
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/jaxley_ca3/roy2k_vo2p/dtw_ladder_%j.log
+# Finish the DTW ladder: L1-L3 skip (done), L4 resumes from epoch 115/150,
+# then the L4 eval.  Sbatch wrapper because background salloc shells keep
+# getting killed by session teardown.
+bash /global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/roy2k_dtw_ladder_driver.sh

@@ -1,0 +1,84 @@
+# CA3 Pyramidal — VOLTAGE-ONLY + soft-eFEL loss, ALL 4 stims.
+#
+# FALLBACK for the multi-stim eFEL sweep: run this only if the 3-smooth-stim
+# variant (ca3_multistim_voltonly_efel_nochaos.hpar.yaml) is not good enough.
+# Adds the chaotic stim back so the CNN sees all 4 conditions.
+#
+# Launch with NEUINV_PROBS="0 1 2 3" (the slr default). Probe axis / stim order
+# [0=chaotic, 1=step, 2=chirp, 3=ramp] matches stim_names_multi below.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_multistim_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]     # lowered from 3e-4: soft-eFEL diverges at 3e-4
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+# ─────────────────────────────────────────────────────────────────────────
+# VOLTAGE-ONLY + soft-eFEL, all 4 stims
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    mse_weight:        1.0
+    efel_weight:       1.0
+    stim_name:         5k50kInterChaoticB
+    stim_names_multi:  [5k50kInterChaoticB, 5k0step_500, 5k0chirp, 5k0ramp]
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+
+model:
+    myId:    ca3_multistim_voltonly_efel
+    comment: CA3 voltage-only + soft-eFEL, all 4 stims
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

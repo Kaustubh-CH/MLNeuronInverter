@@ -1,0 +1,71 @@
+# CA3 — M2: multi-stim VOLTAGE-ONLY plain-MSE, on the per-channel MSE-BEST battery.
+#
+# From sensitivity_best_stims.md "MSE/voltage best per channel" (dedup): the 4
+# stims that best expose the 6 channels via voltage (mV) variation:
+#   chirp23a                 -> leak
+#   BBP_Exp_Step1000         -> Na, KM, KD
+#   ramp_500                 -> Kdr
+#   4k50kInterstep_500_50khz -> KA
+# Pairing rule (user): MSE-best battery -> pure voltage-MSE loss (efel_weight=0).
+# All interpolated 4000-sample (_i4k); t_max_override:auto -> 400 ms. LR 3e-4
+# (plain voltage-MSE is stable).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_best_mse_multi/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch: { amp: False, apex: False, autotune: False, zerograd: False }
+
+train_conf:
+    warmup_epochs: 0
+    # Switched from plain MSE to eFEL loss (user). Ramp in this battery NaN'd the
+    # jaxley backward (run 55498661) -> requires the HybridLoss/JaxleyBridge
+    # NaN-guard. 3e-5 for eFEL stability.
+    optimizer: [adam, 0.00003]    # 3e-5
+    LRsched:   { plateau_patience: 15, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    mse_weight:        1.0
+    efel_weight:       1.0          # switched to eFEL loss (was pure MSE)
+    stim_name:         BBP_Exp_Step1000_i4k
+    stim_names_multi:  [chirp23a_i4k, BBP_Exp_Step1000_i4k, ramp_500_i4k, 4k50kInterstep_500_50khz_i4k]
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+
+model:
+    myId:    ca3_best_mse_multi
+    comment: CA3 voltage-only plain-MSE, per-channel MSE-best 4-stim battery
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block: { filter: [30, 90, 180], kernel: [4, 4, 4], pool: [4, 4, 4] }
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block: { dims: [512, 512, 512, 256, 128], dropFrac: 0.04 }

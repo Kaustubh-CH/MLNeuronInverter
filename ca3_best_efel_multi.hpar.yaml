@@ -1,0 +1,71 @@
+# CA3 — M1: multi-stim VOLTAGE-ONLY + soft-eFEL, on the per-channel eFEL-BEST battery.
+#
+# From sensitivity_best_stims.md "eFEL best per channel" (dedup): the 4 stims that
+# best expose the 6 channels via spike-feature variation:
+#   5k0chaotic4          -> leak, Na, KA
+#   4k50kInterramp_50khz -> Kdr
+#   BBP_Exp_Step600      -> KM
+#   chaotic3             -> KD
+# Pairing rule (user): eFEL-best battery -> eFEL feature loss. All interpolated
+# 4000-sample (_i4k) so they stack on the probe axis; t_max_override:auto -> 400 ms.
+# LR 5e-5 (the 3-stim eFEL surface oscillated at 1e-4; run 55485555).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_best_efel_multi/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch: { amp: False, apex: False, autotune: False, zerograd: False }
+
+train_conf:
+    warmup_epochs: 0
+    # eFEL-best battery (Step600 + chaotic4 ...) -> large feature-loss gradients;
+    # single-stim Step600 diverged at 1e-4. Use 3e-5 to match the fixed S1 run.
+    optimizer: [adam, 0.00003]    # 3e-5
+    LRsched:   { plateau_patience: 15, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    mse_weight:        1.0
+    efel_weight:       1.0
+    stim_name:         5k0chaotic4_i4k
+    # ORDER MUST MATCH the data probe axis (probsSelect 0 1 2 3).
+    stim_names_multi:  [5k0chaotic4_i4k, 4k50kInterramp_50khz_i4k, BBP_Exp_Step600_i4k, chaotic3_i4k]
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+
+model:
+    myId:    ca3_best_efel_multi
+    comment: CA3 voltage-only + soft-eFEL, per-channel eFEL-best 4-stim battery
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block: { filter: [30, 90, 180], kernel: [4, 4, 4], pool: [4, 4, 4] }
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block: { dims: [512, 512, 512, 256, 128], dropFrac: 0.04 }

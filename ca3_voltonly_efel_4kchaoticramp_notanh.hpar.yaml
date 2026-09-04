@@ -1,0 +1,92 @@
+# CA3 Pyramidal — VOLTAGE-ONLY + soft-eFEL loss, single-stim 4kChaoticRamp pack.
+#
+# Base-training config for the experimental-data pipeline (2026-07-07). Exact
+# clone of the best eFEL run (ca3_voltonly_efel_chaoticramp.hpar.yaml, job
+# 55615880, R²=0.566) but on a NEW 4000-sample stim so the model input length
+# matches the 4000-sample experimental recordings (Exact/Reduce, predictStim 5).
+#   v = mse_weight * MSE(z(sim), z(data)) + efel_weight * Huber(soft_eFEL(sim) - soft_eFEL(data))
+#
+# 4kChaoticRamp = 5kChaoticRamp with the first 1000 (baseline-zero) samples
+# removed -> 4000 samples @0.1ms = 400 ms.  Gen with --t-max 400; t_max_override
+# :auto reads that back from the pack meta at train time.
+#
+# This model is subsequently FINE-TUNED on the 4k50kInterChaoticB pack
+# (ca3_voltonly_efel_interchaoticB_ft.hpar.yaml) — both are 4000-length so the
+# CNN->FC head is dimensionally compatible for the warm-start.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_4kchaoticramp_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]     # soft-eFEL diverges at 3e-4
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+# ─────────────────────────────────────────────────────────────────────────
+# VOLTAGE-ONLY loss (no channel supervision) + soft-eFEL feature matching
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0          # OFF
+    voltage_weight:    1.0
+    mask_channels:     True         # voltage-only
+    mse_weight:        1.0          # z-scored trace MSE anchor (subthreshold shape)
+    efel_weight:       1.0          # soft-eFEL feature matching (smooths the cliff)
+    # efel_features unset -> STRONG_FEATURES (time_to_first_spike, mean_frequency,
+    #   inv_first_ISI, AHP_depth_abs_slow, ISI_values, AP_amplitude).
+    stim_name:         4kChaoticRamp
+    soma_probe_index:  0
+    clamp_unit_tanh:   False         # NO-TANH ablation: unbounded unit output
+    t_max_override:    auto          # -> 400 ms from pack meta
+    solver:            bwd_euler
+    fp64:              True          # requires JAX_ENABLE_X64=true in SLR env.
+
+model:
+    myId:    ca3_voltonly_efel_4kchaoticramp_notanh
+    comment: CA3 voltage-only + soft-eFEL, 4kChaoticRamp 4000-sample, NO tanh clamp
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

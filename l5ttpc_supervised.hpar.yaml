@@ -1,0 +1,82 @@
+# L5TTPC (BBP cADpyr, 19 params) — SUPERVISED parameter regression.
+#
+# Direct analog of ca3_supervised_chaoticramp (2026-07-08): the supervised
+# param-MSE recipe that recovered ALL 6 CA3 channels at R²≈0.995, now on the
+# L5TTPC single-stim jaxley pack (5k50kInterChaoticB, ncomp=2, 16k train, 19
+# conductances/capacitances). use_voltage_loss:False -> Trainer uses plain
+# torch.nn.MSELoss on the unit params; ~1000× faster than any voltage loss.
+#
+# Pack: /pscratch/sd/k/ktub1999/l5ttpc_jaxley_nc2_data/L5TTPC_jaxley_nc2.mlPack1.h5
+# (volts (N,5001,1,1), 19-col unit_par). Launch with NEUINV_CELL=L5TTPC_jaxley_nc2.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/l5ttpc_jaxley_nc2_data/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 200
+batch_size: 32          # nc2 valid split is only 2000 -> 125/rank on 16 GPUs; 128 gives 0 steps
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0003]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 0
+
+# Pure supervised param-MSE. voltage_loss block retained only so predict.py /
+# evaluate_voltage.py have the sim config; it does NOT affect training.
+use_voltage_loss: False
+voltage_loss:
+    cell_name_for_sim: l5ttpc
+    channel_weight:    1.0
+    voltage_weight:    0.0
+    mask_channels:     False
+    stim_name:         5k50kInterChaoticB
+    soma_probe_index:  0
+    clamp_unit_tanh:   False
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+
+model:
+    myId:    l5ttpc_supervised
+    comment: L5TTPC supervised param-MSE, 5k50kInterChaoticB nc2 16k pack, 19 params, 200ep
+    outputSize_override: 19
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

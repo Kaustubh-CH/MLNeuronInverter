@@ -1,0 +1,64 @@
+# CA3 — S1: single-stim VOLTAGE-ONLY + soft-eFEL, on the eFEL-BEST stimulus.
+#
+# From sensitivity_best_stims.md: BBP_Exp_Step600 maximizes soft-eFEL feature
+# variation across channels (best eFEL single stim). Pairing rule (user): the
+# eFEL-best stim is trained with the eFEL feature loss. Interpolated 4000-sample
+# (400 ms) version (_i4k) so t_max_override:auto -> 400 ms.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_best_efel_step600/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch: { amp: False, apex: False, autotune: False, zerograd: False }
+
+train_conf:
+    warmup_epochs: 0
+    # Step600 is the eFEL-BEST stim -> large feature-loss gradients -> LR 1e-4
+    # diverged (run 55497140: val 1.3 -> 4.6). 3e-5 + gentler schedule.
+    optimizer: [adam, 0.00003]    # 3e-5
+    LRsched:   { plateau_patience: 15, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True         # voltage-only
+    mse_weight:        1.0
+    efel_weight:       1.0          # eFEL-best stim -> eFEL loss
+    stim_name:         BBP_Exp_Step600_i4k
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+
+model:
+    myId:    ca3_best_efel_step600
+    comment: CA3 voltage-only + soft-eFEL on eFEL-best stim (Step600)
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block: { filter: [30, 90, 180], kernel: [4, 4, 4], pool: [4, 4, 4] }
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block: { dims: [512, 512, 512, 256, 128], dropFrac: 0.04 }

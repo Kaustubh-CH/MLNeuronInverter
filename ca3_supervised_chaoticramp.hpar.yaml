@@ -1,0 +1,89 @@
+# CA3 Pyramidal — SUPERVISED parameter regression on the 5kChaoticRamp pack.
+#
+# The direct fix for all-channel recovery (2026-07-08). Every voltage-space
+# objective we tried (voltage-MSE, soft-eFEL, fine-tune, wider range) plateaus
+# at channel R²~0.5 with gbar_na3/gkdrbar_kdr poor, because V(theta) is non-smooth
+# and the loss never directly rewards getting the conductances right.
+#
+# This trains the CNN with a PLAIN MSE loss on the ground-truth unit conductances
+# (use_voltage_loss:False -> Trainer uses torch.nn.MSELoss on params). It optimizes
+# channel recovery directly, ignores the V(theta) cliff entirely, and is ~1000x
+# faster (NO in-loop jaxley solve). Same input as before (5kChaoticRamp voltage
+# traces); only the training signal changes to direct supervision.
+#
+# Reuses the EXISTING ca3_chaoticramp_v1 pack (50k, 5kChaoticRamp) — no regen.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 200
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0003]      # param-MSE is stable; no eFEL divergence concern
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 0
+
+# ─────────────────────────────────────────────────────────────────────────
+# SUPERVISED: pure param-MSE (no voltage term). The voltage_loss block below
+# is retained ONLY so evaluate_voltage.py can re-simulate for the trace overlay
+# / spike metrics; it does NOT affect training when use_voltage_loss:False.
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: False
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    1.0
+    voltage_weight:    0.0
+    mask_channels:     False
+    stim_name:         5kChaoticRamp
+    soma_probe_index:  0
+    clamp_unit_tanh:   False        # supervised outputs unit_par directly (no tanh)
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+
+model:
+    myId:    ca3_supervised_chaoticramp
+    comment: CA3 supervised param-MSE, 5kChaoticRamp 50k pack, 200ep
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

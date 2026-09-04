@@ -40,6 +40,20 @@ def normalize_volts_fixed(volts):
     return (volts - VOLT_NORM_MEAN) / VOLT_NORM_STD
 
 
+# Fixed-scale normalization for a STIMULUS-current input channel (packs that
+# feed the delivered stim to the CNN as probe 1).  A plain scale — no mean
+# shift — keeps zero current at 0 in normalized space, so holding (-0.0496 nA
+# -> -0.198) and the Roy amplitude ladder (Roy2000 peak ~0.5 nA -> ~2.0) stay
+# interpretable.  Both the synthetic generator (ideal Roy*_icav2_5k CSV) and
+# the exp packer (recorded Im, pA -> nA) must use this SAME constant.
+STIM_NORM_SCALE_NA = 0.25   # nA
+
+
+def normalize_stim_fixed(stim_nA):
+    """stim (nA) -> stim / STIM_NORM_SCALE_NA; numpy or torch alike."""
+    return stim_nA / STIM_NORM_SCALE_NA
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # unit <-> physical
 # ─────────────────────────────────────────────────────────────────────────

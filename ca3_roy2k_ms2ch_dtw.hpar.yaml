@@ -1,0 +1,102 @@
+# CA3 — 2-param (leak, kd) BASE training on the MULTI-STIM 2-CHANNEL pack:
+# 80k synthetic samples spanning Roy500-2000 (20k per family, exact rig stims),
+# CNN input = (volts, delivered stim) as 2 channels, per-sample stimulus in the
+# loss via stim_from_label (family idx rides in label col 0).
+# Loss = champion dtw_amp recipe (soft-DTW 1.0, gamma 0.1, 256 pts, 8 ms band;
+# scheduled light eFEL; NO MSE), 100 ep x 20k samples — same budget as the
+# single-stim DTW base (ca3_roy2k_vo2p_dtw).  Run with --probsSelect 0 1.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_roy2k_ms2ch/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: True
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    # ── champion dtw_amp loss mix ──
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    efel_weight:       0.2
+    efel_features:     [voltage_base, AP_amplitude]
+    schedule:
+        efel_weight: {start: 0.05, end: 0.2, epochs: 20}
+    # ── per-sample stimulus (family idx in label col 0, exp-pack order) ──
+    stim_name:         Roy2000_icav2_5k     # t_max anchor only
+    stim_from_label:
+        label_col:  0
+        stim_names: [Roy100_icav2_5k, Roy500_icav2_5k, Roy1000_icav2_5k,
+                     Roy1500_icav2_5k, Roy2000_icav2_5k]
+        pad_group:  64      # B=128 / 4 families -> groups ~32; pad 64 halves sim cost vs pad-to-128
+    param_subset:      [0, 5]       # CA3_g_leak, CA3_gkdbar_kd
+    soma_probe_index:  0
+    sim_t_skip_ms:     100.0
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+    phys_par_range:
+        - [3.9417e-05, 0.5, "S/cm^2"]   # CA3_g_leak       <- predicted
+        - [0.04,       0.5, "S/cm^2"]   # CA3_gbar_na3        (pinned)
+        - [0.01,       0.5, "S/cm^2"]   # CA3_gkdrbar_kdr     (pinned)
+        - [0.04,       0.5, "S/cm^2"]   # CA3_gkabar_kap      (pinned)
+        - [0.00052,    0.5, "S/cm^2"]   # CA3_gbar_km         (pinned)
+        - [0.00025,    0.5, "S/cm^2"]   # CA3_gkdbar_kd    <- predicted
+
+model:
+    myId:    ca3_roy2k_ms2ch_dtw
+    comment: 2-param DTW+efel base, multi-stim Roy500-2000, stim as 2nd input channel
+    outputSize_override: 2
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [128, 128, 128]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

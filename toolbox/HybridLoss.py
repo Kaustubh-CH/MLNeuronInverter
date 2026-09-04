@@ -87,6 +87,8 @@ class HybridLoss(nn.Module):
         pad_batch_size: Optional[int] = None,
         probe_loss_indices=None,
         stim_names_multi=None,
+        stim_from_label=None,
+        param_subset=None,
         efel_weight: float = 0.0,
         mse_weight: float = 1.0,
         efel_features=None,
@@ -188,6 +190,32 @@ class HybridLoss(nn.Module):
         self.stim_names_multi = (
             [str(s) for s in stim_names_multi] if stim_names_multi else None
         )
+        # `stim_from_label` (per-SAMPLE stimulus; exp packs mixing amplitudes):
+        #   {label_col: int, stim_names: [stem_for_idx0, stem_for_idx1, ...]}.
+        # The dataloader labels carry a stimulus-family index in column
+        # `label_col` (the pack's unit_par is dummy under mask_channels, so the
+        # column rides for free).  `_voltage_loss_core` groups the batch by that
+        # index and runs one bridge call per family present, each padded to
+        # `pad_batch_size` so XLA compiles at most len(stim_names) fixed shapes.
+        # Optional `pad_group`: per-family pad target for the grouped branch.
+        # Default (None) pads every group to pad_batch_size — correct but K x
+        # the sim cost when K families share each batch.  With B=128 over 4
+        # families a group is ~32 +- 5, so pad_group 64 halves the sim cost and
+        # is ~6 sigma above the mean (an overflowing group still runs, at the
+        # price of one extra XLA compile for that odd shape).
+        self.stim_pad_group = None
+        self.stim_label_col = None
+        self.stim_names_by_idx = None
+        if stim_from_label:
+            self.stim_label_col = int(stim_from_label.get("label_col", 0))
+            self.stim_names_by_idx = [str(s) for s in stim_from_label["stim_names"]]
+            pg = stim_from_label.get("pad_group")
+            self.stim_pad_group = int(pg) if pg else None
+        # `param_subset` (opt-in): the CNN predicts only these cell-param indices
+        # (in PARAM_KEYS order); the rest are filled at unit 0 (= cell default)
+        # before the unit->phys map, so the bridge always gets the full vector.
+        # phys_par_range must still list ALL cell params.
+        self.param_subset = [int(i) for i in param_subset] if param_subset else None
         self._mse = nn.MSELoss()
 
         # ── L1 soft-DTW / L2 low-pass / O1 randomized smoothing (all opt-in) ─────
@@ -367,7 +395,8 @@ class HybridLoss(nn.Module):
             )
         return loss / len(self.efel_features)
 
-    def _voltage_loss(self, pred_unit: torch.Tensor, true_volts: torch.Tensor) -> torch.Tensor:
+    def _voltage_loss(self, pred_unit: torch.Tensor, true_volts: torch.Tensor,
+                      stim_idx: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Voltage term, optionally wrapped in O1 randomized smoothing.
 
         With `smooth_sigma>0` the objective becomes L_sigma(theta) =
@@ -378,14 +407,15 @@ class HybridLoss(nn.Module):
         behaviour is bit-identical to the pre-smoothing code.
         """
         if self.smooth_sigma <= 0:
-            return self._voltage_loss_core(pred_unit, true_volts)
+            return self._voltage_loss_core(pred_unit, true_volts, stim_idx)
         total = pred_unit.new_zeros(())
         for _ in range(self.smooth_samples):
             eps = torch.randn_like(pred_unit) * self.smooth_sigma
-            total = total + self._voltage_loss_core(pred_unit + eps, true_volts)
+            total = total + self._voltage_loss_core(pred_unit + eps, true_volts, stim_idx)
         return total / float(self.smooth_samples)
 
-    def _voltage_loss_core(self, pred_unit: torch.Tensor, true_volts: torch.Tensor) -> torch.Tensor:
+    def _voltage_loss_core(self, pred_unit: torch.Tensor, true_volts: torch.Tensor,
+                           stim_idx: Optional[torch.Tensor] = None) -> torch.Tensor:
         """`pred_unit`  : (B, P) in unit-normalized space.
            `true_volts` : (B, T, C) with C = num_probes (after dataloader reshape)
                           or possibly (B, T, probes*stims) if multiple stims.
@@ -410,6 +440,12 @@ class HybridLoss(nn.Module):
         # start).  Required for stable backward through stiff BBP dynamics.
         if self.fp64:
             pred_unit = pred_unit.double()
+        if self.param_subset is not None:
+            # Expand the CNN's subset prediction to the full cell-param vector;
+            # non-subset entries stay at unit 0 = the cell default.
+            full = pred_unit.new_zeros(pred_unit.shape[0], self._centers.shape[0])
+            full[:, self.param_subset] = pred_unit
+            pred_unit = full
         pred_phys = self._unit_to_phys(pred_unit)
         # C3: pad a short final mini-batch up to the canonical batch size so
         # XLA does not recompile the vmapped jaxley sim for a smaller batch
@@ -432,10 +468,34 @@ class HybridLoss(nn.Module):
             return v[:cur_bs] if do_pad else v
 
         # Build (sim_channel, data_channel) pairs depending on the mode.
+        #   * stim_from_label   -> per-SAMPLE stimulus: group batch by family idx
         #   * stim_names_multi -> Exp 3: one sim per stim, soma each, vs data ch i
         #   * probe_loss_indices -> Exp 2: one sim, probe k each, vs data ch i
         #   * else              -> default soma-only (unchanged behavior)
-        if self.stim_names_multi and self.probe_loss_indices is not None:  # Exp 1 combined
+        pair_w = None
+        if self.stim_names_by_idx is not None and stim_idx is not None:
+            # One bridge call per stimulus family present in the batch.  Each
+            # group is padded to pad_batch_size (repeat row 0 of the group) so
+            # XLA compiles ONE shape per stim CSV; pads are sliced off before
+            # the loss.  Group losses are recombined weighted by group size, so
+            # the result equals a per-sample mean over the whole batch.
+            src_phys = pred_phys[:cur_bs] if do_pad else pred_phys
+            pairs, pair_w = [], []
+            for f in torch.unique(stim_idx):
+                m = stim_idx == f
+                ng = int(m.sum())
+                pg = src_phys[m]
+                tgt = max(self.stim_pad_group or self.pad_batch_size or 0, ng)
+                if ng < tgt:
+                    pg = torch.cat([pg, pg[:1].expand(tgt - ng, -1)], dim=0)
+                v = JaxleyBridge.simulate_batch(
+                    pg, self.cell_name, self.stim_names_by_idx[int(f)],
+                    checkpoint_lengths=self.checkpoint_lengths,
+                    solver=self.solver,
+                )
+                pairs.append((v[:ng, 0, :], true_volts[m][..., self.soma_probe_index]))
+                pair_w.append(ng / float(cur_bs))
+        elif self.stim_names_multi and self.probe_loss_indices is not None:  # Exp 1 combined
             # For each stim, sim the multi-probe cell and supervise every probe.
             # Channels are stim-major/probe-inner: data channel index = running count.
             pairs = []
@@ -458,8 +518,12 @@ class HybridLoss(nn.Module):
 
         # For each (sim_channel, data_channel) pair, blend the z-scored MSE
         # anchor with the soft-eFEL feature-matching loss (efel_weight>0).
+        # `pair_w`: per-pair weights (grouped stim_from_label mode); the default
+        # uniform 1/len(pairs) reproduces the historical `total / len(pairs)`.
+        if pair_w is None:
+            pair_w = [1.0 / len(pairs)] * len(pairs)
         total = pred_phys.new_zeros(())
-        for v_sim_ch, v_true_ch in pairs:
+        for (v_sim_ch, v_true_ch), w_pair in zip(pairs, pair_w):
             # Drop the first `sim_t_skip_bins` so the window matches the data
             # H5's pre-trimmed window (0 for the self-consistent packs).
             if self.sim_t_skip_bins > 0:
@@ -505,8 +569,8 @@ class HybridLoss(nn.Module):
                 # feed the soft-eFEL layer in the physical units it assumes.
                 v_true_raw = v_true_ch * VOLT_NORM_STD + VOLT_NORM_MEAN
                 pair_loss = pair_loss + self.efel_weight * self._efel_feat_loss(v_sim_ch, v_true_raw)
-            total = total + pair_loss
-        mse = total / len(pairs)
+            total = total + w_pair * pair_loss
+        mse = total
         # Cast back to fp32 for the rest of the training graph (so AMP /
         # GradScaler / Adam state stay in their original dtype).
         return mse.float() if self.fp64 else mse
@@ -529,7 +593,13 @@ class HybridLoss(nn.Module):
 
         v = pred_unit.new_zeros(())
         if self.voltage_weight > 0:
-            v = self._voltage_loss(pred_unit, true_volts)
+            stim_idx = None
+            if self.stim_names_by_idx is not None:
+                if true_unit is None:
+                    raise ValueError("voltage_loss.stim_from_label set but the "
+                                     "labels tensor (true_unit) is None")
+                stim_idx = true_unit[..., self.stim_label_col].round().long()
+            v = self._voltage_loss(pred_unit, true_volts, stim_idx)
 
         total = self.channel_weight * ch + self.voltage_weight * v
 
@@ -756,6 +826,10 @@ def build_hybrid_loss(params) -> nn.Module:
         # Multi-channel supervision (opt-in; None = soma-only). See HybridLoss.
         probe_loss_indices = vl.get("probe_loss_indices"),
         stim_names_multi   = vl.get("stim_names_multi"),
+        # Per-sample stimulus via a label column (opt-in). See HybridLoss.
+        stim_from_label    = vl.get("stim_from_label"),
+        # CNN predicts only these cell-param indices; rest pinned at default.
+        param_subset       = vl.get("param_subset"),
         # Soft-eFEL feature-matching voltage loss (opt-in; efel_weight=0 = off).
         efel_weight      = float(vl.get("efel_weight", 0.0)),
         mse_weight       = float(vl.get("mse_weight", 1.0)),
