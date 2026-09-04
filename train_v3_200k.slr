@@ -1,0 +1,28 @@
+#!/bin/bash -l
+#SBATCH -N4 --time=10:00:00 -J ca3vo-200k -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# Data-scaling ceiling run: baseline soft-DTW (the winning voltage-only recipe) @ 200k train
+# on the v3 pack. ~250 s/epoch x 100 epochs ~= 7h + JIT + auto-eval -> 10h limit is safe.
+# STRICTLY voltage-only (ca3_vo_chaoticramp_dtw: channel_weight 0, mask_channels True).
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+V3=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v3/
+J=$SCRATCH/tmp_neuInv/jaxley_ca3
+echo "TRAIN-200k: start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST"
+# batchShifterJaxleyCA3_100ep.slr auto-chains predict.py + evaluate_voltage.py into out/eval/
+NEUINV_WRK_SUFIX=dtw_200k NEUINV_NUMGLOBSAMP=200000 \
+  bash batchShifterJaxleyCA3_100ep.slr "$V3" ca3_vo_chaoticramp_dtw
+echo "TRAIN-200k: launcher exit=$? $(date)"
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+RUN=$J/ca3_vo_chaoticramp_dtw/ca3_pyramidal_synth/dtw_200k
+if [ -f "$RUN/out/eval/summary.yaml" ]; then
+  echo "TRAIN-200k: ===== ledger ====="
+  python scripts/collect_vo_ledger.py "$RUN" -o "$J/vo_ledger/results.csv"
+else
+  echo "TRAIN-200k: NO eval summary at $RUN/out/eval/ - check $RUN/log.*"
+fi
+echo "TRAIN-200k: done $(date)"

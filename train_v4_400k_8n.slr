@@ -1,0 +1,33 @@
+#!/bin/bash -l
+#SBATCH -N8 --time=22:00:00 -J ca3vo-400k8n -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# Next data-scaling point: pure soft-DTW @ 400k train (v4 pack), global batch 2048
+# (64 x 32), 150 epochs. The 200k point (0.725) had NOT saturated (curve accelerating;
+# kdr still climbing) and its loss was still dropping at ep94 -> 150 epochs here too.
+# ~443 s/epoch (steps/epoch double vs 200k; per-step fixed by the sequential jaxley
+# solve) x 150 ~= 18.5h < 22h wall. More nodes do NOT help (8n = 4n at fixed global
+# batch). STRICTLY voltage-only. Requires the ca3_chaoticramp_v4 pack (gen_v4_400k.slr).
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+V4=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v4/
+J=$SCRATCH/tmp_neuInv/jaxley_ca3
+export NEUINV_RDZV_FILE=$SCRATCH/tmp_neuInv/rdzv/rdzv_${SLURM_JOBID}
+mkdir -p "$(dirname "$NEUINV_RDZV_FILE")"; rm -f "$NEUINV_RDZV_FILE"
+export NCCL_P2P_DISABLE=1
+echo "TRAIN-400k-8n: start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST rdzv=$NEUINV_RDZV_FILE"
+NEUINV_WRK_SUFIX=dtw_400k NEUINV_NUMGLOBSAMP=400000 NEUINV_EPOCHS=150 \
+  bash batchShifterJaxleyCA3_100ep.slr "$V4" ca3_vo_chaoticramp_dtw_v4_8n
+echo "TRAIN-400k-8n: launcher exit=$? $(date)"
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+RUN=$J/ca3_vo_chaoticramp_dtw_v4_8n/ca3_pyramidal_synth/dtw_400k
+if [ -f "$RUN/out/eval/summary.yaml" ]; then
+  echo "TRAIN-400k-8n: ===== ledger ====="
+  python scripts/collect_vo_ledger.py "$RUN" -o "$J/vo_ledger/results.csv"
+else
+  echo "TRAIN-400k-8n: NO eval summary at $RUN/out/eval/ - check $RUN/log.*"
+fi
+echo "TRAIN-400k-8n: done $(date)"

@@ -1,0 +1,92 @@
+# CA3 Pyramidal — VOLTAGE-ONLY soft-DTW + REFINED grad-preconditioner, 5kChaoticRamp.
+#
+# Arm C. Baseline soft-DTW + grad_precond, refined after arm A. Arm A boosted kdr's
+# gradient 1.68x and CRASHED its calibration (kdr r held ~0.44 but R^2 0.155->0), while
+# lifting na3/km/kd/leak. Lesson: do NOT boost kdr (it can't use a bigger gradient) and
+# protect kap (regresses under any perturbation). This uses verbatim weights that only
+# DOWN-weight the two strongest/easy channels (leak, kd) to free capacity for the weak
+# recoverable channel km, keeping kdr, na3, kap NEUTRAL. Goal: keep arm A's na3/km/kd
+# broad gain without the kdr/kap regression. grad_precond only rescales dL_voltage/dtheta
+# columns; STRICTLY VOLTAGE-ONLY (channel_weight 0, mask_channels True).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    stim_name:         5kChaoticRamp
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    range_penalty_weight: 0.0
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+    # --- pure soft-DTW, IDENTICAL to the baseline ---
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    efel_weight:       0.0
+    blur_weight:       0.0
+    smooth_sigma:      0.0
+    smooth_samples:    1
+    lowpass_ms:        0.0
+    # --- refined precond: down-weight strong (leak,kd), free km; kdr/na3/kap neutral ---
+    grad_precond:
+        # verbatim per-channel weights, CA3 order [leak,na3,kdr,kap,km,kd]
+        weights:   [0.85, 1.00, 1.00, 1.00, 1.15, 0.85]
+        normalize: geomean
+        enabled:   True
+
+model:
+    myId:    ca3_vo_dtw_precond2_chaoticramp
+    comment: CA3 voltage-only soft-DTW + refined grad-precond (kdr-neutral), 5kChaoticRamp
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

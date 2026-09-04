@@ -1,0 +1,96 @@
+# CA3 Pyramidal — VOLTAGE-ONLY soft-DTW (primary) + a SMALL differentiable
+# baseline/amplitude term, 8-NODE (32-GPU) variant. Clone of the design that scored
+# dtw_200k mean R2 0.725; the ONLY change is adding two soft-eFEL features to the loss.
+#
+# Motivation (user): DTW gets spike TIMES pixel-perfect but tolerates absolute LEVEL,
+# so the resting baseline and AP amplitude of the reconstruction drift. Fix: add the
+# two differentiable soft-eFEL surrogates that ARE those quantities --
+#   voltage_base  = resting membrane potential (scale 6 mV)
+#   AP_amplitude  = spike height             (scale 26 mV)
+# computed from the voltage traces only (STRICTLY voltage-only -- no ion channels in
+# the loss). Kept SMALL so DTW still drives timing: soft-DTW loss is length-normalized
+# (~0.05) while the eFEL Huber is ~10x larger, and efel_weight 1.0 @ LR 1e-4 has
+# DIVERGED before (A7) -> efel_weight ramps 0.05 -> 0.2 over 20 epochs (early DTW locks
+# timing -> features in-range -> soft-eFEL gradient stays tame). grad clip 1.0 kept.
+# Same data (v3 200k), global batch 2048 (64 x 32), LR 1e-4, 150 epochs as dtw_200k.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v3/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 64
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    stim_name:         5kChaoticRamp
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    range_penalty_weight: 0.0
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+    # PRIMARY = soft-DTW (timing). AUX = 2 soft-eFEL features (level/amplitude).
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    blur_weight:       0.0
+    smooth_sigma:      0.0
+    smooth_samples:    1
+    lowpass_ms:        0.0
+    # --- differentiable resting-potential + AP-amplitude anchor (voltage-only) ---
+    efel_weight:       0.2
+    efel_features:     [voltage_base, AP_amplitude]
+    schedule:
+        # ramp UP: tiny early (DTW locks timing, avoids soft-eFEL blow-up), grows to 0.2
+        efel_weight:  { start: 0.05, end: 0.2, epochs: 20 }
+
+model:
+    myId:    ca3_vo_chaoticramp_dtw_amp_8n
+    comment: CA3 voltage-only soft-DTW + soft-eFEL(voltage_base,AP_amplitude) aux, 200k, 8-node global-batch-2048
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

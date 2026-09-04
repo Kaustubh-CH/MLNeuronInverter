@@ -1,0 +1,120 @@
+# CA3 — VARIANT B v2: pooled 4-stim battery RE-RUN with the three Finding-13/14
+# fixes. v1 (pool4_80k, job 56379086) is VOID: it validated on ONE stim
+# (valid_stims_select [2]) while training pooled all four, an epoch-4 val outlier
+# became the permanent best and ReduceLROnPlateau ratcheted LR 1e-4 -> 2.19e-8.
+#
+# The three changes vs ca3_pool4_dtw_amp_4n.hpar.yaml (everything else verbatim):
+#   1. Validation covers the POOLED set: launch with --validStimsSelect 0 1 2 3.
+#      Dataloader_H5 now flattens multiple valid stims into stim-major samples
+#      with per-sample ids, so the val scalar averages all four protocols.
+#   2. LR floor: min_lr 1e-6 in LRsched, so a lucky early "best" cannot freeze
+#      the run (the ratchet above).
+#   3. pooled_stim_norm: ema — divide each stim group's loss by a detached EMA of
+#      that stim's recent loss (train-only; validation stays the raw per-sample
+#      mean). Equalizes per-stim gradient so the quiet stims' subthreshold
+#      matching cannot swamp the spike information (the joint4 dilution).
+#
+# batch_size stays 256 (global 4096, 60 steps/epoch, per-stim sim groups of ~64 =
+# variant A's graph size): identical to v1 so this A/B isolates the three fixes,
+# and epoch time stays at the measured ~542 s (+~7% pooled-val) -> ~16 h/100 ep.
+# Champion-parity global 2048 would need batch_size 128, which DOUBLES the
+# optimizer steps and epoch time (sequential fp64 solve dominates; batch width is
+# nearly free) — flip only if optimization fidelity is worth ~31 h.
+#
+# Each (param draw, stimulus) pair is an independent 1-channel sample; the
+# per-sample stim id routes it to its own protocol in HybridLoss (variant B).
+# Pooled is the protocol-agnostic architecture for heterogeneous experimental
+# batteries (Allen-style: each sweep under its own stimulus).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_joint4_v1_pooled/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+    # Emit (X, stim_idx, Y) so the voltage loss can simulate each sample's own stim.
+    pooled_stim_index: True
+
+max_epochs: 100
+# 256 traces/rank/step = 256 solves, split ~64 per stim: same solve count AND the
+# same per-group sim-graph size as variant A, so peak activation memory matches.
+batch_size: 256
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    # min_lr floors the plateau ratchet (v1 collapsed to 2.19e-8 and froze).
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3, min_lr: 1.0e-6 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    stim_name:         5kChaoticRamp
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    range_penalty_weight: 0.0
+    t_max_override:    500.0
+    solver:            bwd_euler
+    fp64:              True
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    blur_weight:       0.0
+    smooth_sigma:      0.0
+    smooth_samples:    1
+    lowpass_ms:        0.0
+    efel_weight:       0.2
+    efel_features:     [voltage_base, AP_amplitude]
+    schedule:
+        efel_weight:  { start: 0.05, end: 0.2, epochs: 20 }
+    # Stim VOCABULARY indexed by the per-sample id. Order MUST equal the pooled
+    # pack's meta['stim_names'] (= --stimsSelect order); a mismatch silently trains
+    # every sample against the wrong protocol without ever raising.
+    pooled_stim_names: [5kChaoticRamp, 5k0chaotic4, BBP_Exp_Step1000_i4k, chirp23a_i4k]
+    # Per-stim groups pad up to a multiple of this so XLA traces only a handful of
+    # batch shapes; costs ~quantum/2 wasted solves per group (~12% at these sizes).
+    pooled_pad_quantum: 8
+    # Fix 3: per-stim EMA loss normalization (train-only; val stays raw).
+    pooled_stim_norm:      ema
+    pooled_stim_norm_beta: 0.98
+
+model:
+    myId:    ca3_pool4_dtw_amp_v2_4n
+    comment: CA3 voltage-only pooled 4-stim v2 — pooled validation + min_lr floor + per-stim EMA loss norm
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

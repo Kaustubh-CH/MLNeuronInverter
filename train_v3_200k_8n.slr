@@ -1,0 +1,32 @@
+#!/bin/bash -l
+#SBATCH -N8 --time=6:00:00 -J ca3vo-200k8n -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# Data-scaling CEILING run on 8 nodes / 32 GPU: baseline soft-DTW @ 200k train (v3 pack).
+# Uses design ca3_vo_chaoticramp_dtw_8n (batch_size 64 -> const_local_batch keeps GLOBAL
+# batch = 64*32 = 2048, identical effective training to the 16-GPU 40k/80k runs, ~2x faster).
+# ~130-150 s/epoch x 100 + JIT + auto-eval -> 6h limit is safe. STRICTLY voltage-only.
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+V3=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v3/
+J=$SCRATCH/tmp_neuInv/jaxley_ca3
+# Shared-FS file rendezvous (robust for multi-node sbatch; see train_dist.py).
+export NEUINV_RDZV_FILE=$SCRATCH/tmp_neuInv/rdzv/rdzv_${SLURM_JOBID}
+mkdir -p "$(dirname "$NEUINV_RDZV_FILE")"; rm -f "$NEUINV_RDZV_FILE"
+export NCCL_P2P_DISABLE=1
+echo "TRAIN-200k-8n: start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST rdzv=$NEUINV_RDZV_FILE"
+NEUINV_WRK_SUFIX=dtw_200k NEUINV_NUMGLOBSAMP=200000 \
+  bash batchShifterJaxleyCA3_100ep.slr "$V3" ca3_vo_chaoticramp_dtw_8n
+echo "TRAIN-200k-8n: launcher exit=$? $(date)"
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+RUN=$J/ca3_vo_chaoticramp_dtw_8n/ca3_pyramidal_synth/dtw_200k
+if [ -f "$RUN/out/eval/summary.yaml" ]; then
+  echo "TRAIN-200k-8n: ===== ledger ====="
+  python scripts/collect_vo_ledger.py "$RUN" -o "$J/vo_ledger/results.csv"
+else
+  echo "TRAIN-200k-8n: NO eval summary at $RUN/out/eval/ - check $RUN/log.*"
+fi
+echo "TRAIN-200k-8n: done $(date)"

@@ -231,17 +231,26 @@ class Trainer():
     if 'plateau_patience' in lrcf:
         # `verbose` kwarg was removed in torch 2.x; keep optional for old/new
         _sch_kwargs = dict(factor=lrcf['reduceFactor'], patience=lrcf['plateau_patience'], mode='min', cooldown=2)
+        # Optional LR floor: without it a lucky early val outlier can become the
+        # permanent best and ratchet LR to ~0 (pool4_80k went 1e-4 -> 2.19e-8 and
+        # froze).  Absent key keeps the old behavior (floor 0).
+        if 'min_lr' in lrcf: _sch_kwargs['min_lr'] = float(lrcf['min_lr'])
         try:
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, verbose=self.verb, **_sch_kwargs)
         except TypeError:
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, **_sch_kwargs)
     
+    # Pooled multi-stim (variant B): the dataloader yields (X, stim_idx, Y) so the
+    # voltage loss can simulate each sample under its own stimulus.
+    self.pooled_stim_index = bool(params['data_conf'].get('pooled_stim_index', False))
+
     if params.get('use_voltage_loss'):
       from toolbox.HybridLoss import build_hybrid_loss
       self.criterion = build_hybrid_loss(params).to(self.device)
       if self.verb: logging.info('T:criterion=HybridLoss %s'%pformat(params['voltage_loss']))
     else:
       self.criterion =torch.nn.MSELoss().to(self.device) # Mean Squared Loss
+      assert not self.pooled_stim_index,'pooled_stim_index requires use_voltage_loss'
 
     # Optional tanh-bounding of SUPERVISED (param-MSE) outputs.  The CNN head is
     # a plain linear (unbounded); on out-of-distribution / experimental inputs it
@@ -442,13 +451,19 @@ class Trainer():
     for step, data in enumerate(self.train_loader, 0):
       self.iters += 1
       
+      stim_idx = None
       if self.params.get('use_manual_features', False):
           images, extras, labels = map(lambda x: x.to(self.device), data)
           model_input = (images, extras)
+      elif self.pooled_stim_index:
+          # Pooled multi-stim: every sample is one trace from one stimulus, so the
+          # loss needs its stim id to simulate the matching protocol.
+          images, stim_idx, labels = map(lambda x: x.to(self.device), data)
+          model_input = (images,)
       else:
           images, labels = map(lambda x: x.to(self.device), data)
           model_input = (images,)
-        
+
       # Move our images and labels to GPU
       # images, labels = map(lambda x: x.to(self.device), data)
       # if(self.params['model_type']=="Transformers"):
@@ -468,7 +483,7 @@ class Trainer():
         # outputs = self.model(images)
         outputs = self.model(*model_input)
         if self.params.get('use_voltage_loss'):
-          loss = self.criterion(outputs, labels, images)
+          loss = self.criterion(outputs, labels, images, stim_idx)
         else:
           if self.supervised_tanh:
             outputs = torch.tanh(outputs)
@@ -526,9 +541,13 @@ class Trainer():
     with torch.no_grad():
       for data in self.valid_loader:
         # Move our images and labels to GPU
+        stim_idx = None
         if self.params.get('use_manual_features', False):
             images, extras, labels = map(lambda x: x.to(self.device), data)
             model_input = (images, extras)
+        elif self.pooled_stim_index:
+            images, stim_idx, labels = map(lambda x: x.to(self.device), data)
+            model_input = (images,)
         else:
             images, labels = map(lambda x: x.to(self.device), data)
             model_input = (images,)
@@ -537,7 +556,7 @@ class Trainer():
         #   images=torch.squeeze(images)
         outputs = self.model(*model_input)
         if self.params.get('use_voltage_loss'):
-          loss += self.criterion(outputs, labels, images)
+          loss += self.criterion(outputs, labels, images, stim_idx)
         else:
           if self.supervised_tanh:
             outputs = torch.tanh(outputs)

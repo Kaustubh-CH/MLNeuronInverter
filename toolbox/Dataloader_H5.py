@@ -169,6 +169,15 @@ class Dataset_h5_neuronInverter(object):
             volts=volts[:,:,cf['probs_select']].reshape(locSamp,timeBins,-1)
         
 
+        # Per-sample stim identity (pooled / variant-B training).  The voltage loss
+        # takes ONE global stim_name; a pooled batch mixes stims, so HybridLoss must
+        # be told which stimulus produced each sample or it simulates the wrong
+        # protocol.  The serialize flatten below is deterministic -- stim-major, so
+        # pre-shuffle flat index j came from stims_select[j // locSamp] -- which is
+        # what we reconstruct here and carry through the SAME permutation.
+        pooledStimIdx=dcf.get('pooled_stim_index',False)
+        stimIdx=None
+
         if serializedStim: # stacking stims as independent samples requires clonning of parU as well
             shp=parU.shape+(numStim,)
             parU2=np.zeros(shp,dtype=np.float32)  # WARN: slightly increases RAM usage
@@ -183,13 +192,41 @@ class Dataset_h5_neuronInverter(object):
                 # volts=volts.view(-1)[rand_idx].view(volts.size())
                 # parU = parU.view(-1)[rand_idx].view(volts.size())
                 rand_idx=np.random.permutation(len(volts))
+                if pooledStimIdx:
+                    # stim-major before the shuffle: locSamp//numStim rows per stim.
+                    stimIdx=np.repeat(np.asarray(dcf['stims_select'],dtype=np.int64),
+                                      locSamp//numStim)
+                    assert len(stimIdx)==len(volts),'stimIdx %d vs volts %d'%(len(stimIdx),len(volts))
+                    stimIdx=stimIdx[rand_idx]
                 volts=volts[rand_idx]
                 parU=parU[rand_idx]
 
                 if self.verb : print('WS2 locSamp=%d, volts:'%locSamp,volts.shape,', parU:',parU.shape,', dom=',dom)
             else:
                 if self.verb : print('WS1 numStim=%d volts:'%(numStim),volts.shape,', parU2:',parU2.shape)
-                volts=volts[:,:,dcf['probs_select']].reshape(locSamp,timeBins,-1)
+                if pooledStimIdx:
+                    # Non-train domains load valid_stims_select instead. Pooled input
+                    # must stay 1-channel, so MULTIPLE valid stims are flattened into
+                    # extra samples (stim-major, mirroring the train branch) with a
+                    # per-sample stim id. Validating on ONE stim while training pools
+                    # all of them gave pool4_80k its high-variance val signal and the
+                    # LR ratchet to 2e-8 (RESULTS_vo.md Finding 14).
+                    vss=dcf['valid_stims_select']
+                    nvs=len(vss)
+                    volts=volts[:,:,dcf['probs_select']]
+                    if nvs==1:
+                        volts=volts.reshape(locSamp,timeBins,-1)
+                        stimIdx=np.full(len(volts),int(vss[0]),dtype=np.int64)
+                    else:
+                        # (locSamp,T,nProb,nvs) -> stim-major (nvs*locSamp,T,nProb).
+                        # Kept UNSHUFFLED: the valid loader is sequential, so each
+                        # val batch stays single-stim (one sim graph, no pad waste).
+                        volts=np.moveaxis(volts,-1,0).reshape(nvs*locSamp,timeBins,-1)
+                        parU=np.tile(parU,(nvs,1))
+                        stimIdx=np.repeat(np.asarray(vss,dtype=np.int64),locSamp)
+                        locSamp*=nvs
+                else:
+                    volts=volts[:,:,dcf['probs_select']].reshape(locSamp,timeBins,-1)
 
                 if self.verb : print('WS2 locSamp=%d, volts:'%locSamp,volts.shape,', parU:',parU.shape,', dom=',dom)
         
@@ -201,8 +238,15 @@ class Dataset_h5_neuronInverter(object):
             
         self.data_frames=volts
         self.data_parU=parU
+        self.data_stimIdx=stimIdx
+        self.pooled_stim_index=pooledStimIdx
+        if pooledStimIdx:
+            assert stimIdx is not None,'pooled_stim_index requires serialize_stims:True'
+            assert volts.shape[-1]==1,'pooled input must be 1-channel, got %s'%str(volts.shape)
 
         self.use_manual_features = cf.get('use_manual_features', False)
+        assert not (self.use_manual_features and pooledStimIdx), \
+            'use_manual_features and pooled_stim_index both claim the 3-tuple slot'
 
         if self.use_manual_features:
             if self.verb:
@@ -464,6 +508,10 @@ class Dataset_h5_neuronInverter(object):
             # Return preloaded and normalized manual features from memory
             Z=self.data_extras[idx]
             return (X, Z, Y)
+        elif self.pooled_stim_index:
+            # (X, stim_idx, Y): the Trainer forwards stim_idx to HybridLoss so the
+            # voltage loss re-simulates each sample under its OWN stimulus.
+            return (X, self.data_stimIdx[idx], Y)
         else:
             return (X, Y)
 

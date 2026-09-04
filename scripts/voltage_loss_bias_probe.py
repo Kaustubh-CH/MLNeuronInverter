@@ -82,6 +82,13 @@ def get_parser():
                    help="which pack split to read")
     p.add_argument("--no-model", action="store_true",
                    help="skip loading the CNN (only measures loss at true theta + sweeps)")
+    p.add_argument("--fp64", dest="fp64", action="store_true", default=None,
+                   help="force the in-loop jaxley solve to fp64, overriding the run's "
+                        "voltage_loss.fp64.  Use with --no-fp64 to A/B the solver precision: "
+                        "on self-consistent data (fp64-generated) the fp32 loss at TRUE theta "
+                        "is the solver-mismatch FLOOR the objective can never get below.")
+    p.add_argument("--no-fp64", dest="fp64", action="store_false",
+                   help="force the in-loop jaxley solve to fp32 (see --fp64).")
     p.add_argument("-o", "--outDir", default=None,
                    help="output dir (default: <modelPath>/bias_probe)")
     return p.parse_args()
@@ -124,6 +131,15 @@ def main():
     vl = tp.get("voltage_loss")
     if not tp.get("use_voltage_loss") or vl is None:
         sys.exit("[bias] this run has no voltage_loss block; point --modelPath at a voltage run.")
+
+    # Solver-precision override.  Mutates the config BEFORE build_hybrid_loss so
+    # the criterion is built exactly as training would have built it at that
+    # precision -- nothing else about the run changes.
+    if args.fp64 is not None:
+        was = bool(vl.get("fp64", False))
+        vl["fp64"] = bool(args.fp64)
+        print(f"[bias] fp64 OVERRIDE: run trained with fp64={was}, "
+              f"probing with fp64={vl['fp64']}")
 
     clamp_tanh = bool(vl.get("clamp_unit_tanh", False))
     cell_name  = vl["cell_name_for_sim"]

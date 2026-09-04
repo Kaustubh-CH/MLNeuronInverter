@@ -95,18 +95,30 @@ class Raytune:
 
 
     def __init__(self,params):
-        # trainer = Trainer(params)
+        # Connect to the SLURM-started multi-node Ray cluster (8 nodes / 32 GPUs).
+        # address="auto" reads the local head session; fall back to a local Ray if
+        # no external cluster was started (e.g. single-node debugging).
+        import ray
+        if not ray.is_initialized():
+            try:
+                ray.init(address="auto")
+                print("RAYTUNE: joined cluster", ray.cluster_resources())
+            except (ConnectionError, ValueError, RuntimeError) as e:
+                print("RAYTUNE: no external cluster (%s) -> local Ray" % type(e).__name__)
+                ray.init()
         max_num_epochs=10
         gpus_per_trial=1
-        num_samples=10000
+        num_samples=128
         cpus_per_trail=8
         # trainer.train()
+        # ASHA early-stops trials on the per-epoch validation loss that Trainer
+        # reports (Trainer.py session.report). max_t matches the design's
+        # max_epochs (20); grace_period gives every trial >=5 epochs before it
+        # can be culled; reduction_factor=3 keeps ~1/3 of trials at each rung.
         scheduler = ASHAScheduler(
-            # metric="loss",
-            # mode="min"
-            # max_t=max_num_epochs,
-            # grace_period=1,
-            # reduction_factor=2
+            max_t=20,
+            grace_period=5,
+            reduction_factor=3
             )
         # algo  = AxSearch()
         algo = OptunaSearch()
@@ -129,8 +141,12 @@ class Raytune:
         # params['max_epochs']= tune.choice([50,100,150])
         params['local_batch_size'] =tune.choice([128,256,512])
         params['model']['fc_block']['dropFrac']=tune.choice([0.02,0.04,0.06,0.08,0.1])
-        params['train_conf']['optimizer']=tune.choice([['adam', 0.00001],['adam', 0.0005],['adam', 0.001],['adam', 0.005]]) 
-        
+        params['train_conf']['optimizer']=tune.choice([['adam', 0.00001],['adam', 0.0005],['adam', 0.001],['adam', 0.005]])
+        # Tune the per-epoch dataset size too (user directive): single-GPU
+        # voltage-only trials are ~16x slower/epoch than the 16-GPU runs, so
+        # keep steps/epoch small and let the search pick a good sample budget.
+        params['data_conf']['max_glob_samples_per_epoch']=tune.choice([2000, 4000, 8000])
+
         # params['model']['conv_block']['filter']=[tune.choice([30, 60, 90, 120]) for _ in range(8)]
         # params['model']['conv_block']['kernel']=[tune.choice([3,4,5,6]) for _ in range(8)]
         # params['model']['conv_block']['pool']=[tune.choice([3,4,5,6]) for _ in range(8)]
@@ -158,7 +174,10 @@ class Raytune:
                         num_samples=num_samples
                         ),
                       run_config = air.RunConfig(
-                        local_dir="./out"
+                        # ray>=2.7 removed local_dir (it now raises); storage_path
+                        # is the replacement and needs an absolute path for the
+                        # local-filesystem backend.
+                        storage_path=os.path.abspath("./out")
                         ),
                       param_space = params
                       

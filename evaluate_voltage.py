@@ -8,19 +8,32 @@ soma trace.  Compares simulated vs ground-truth traces in z-scored space
 mean/std stored alongside the data).
 
 Outputs (under <modelPath>/eval/):
+  trace_overlays.pdf          THE figure artifact, self-contained:
+                                page 1 = ion-channel recovery grid
+                                page 2 = z-scored voltage-MSE histogram
+                                page 3 = voltage-RMSE CDF
+                                page 4+ = per-sample overlays (--numOverlay, default 50)
   voltage_metrics.csv         per-sample RMSE, peak diff, spike-count diff
-  voltage_loss_hist.png       histogram of z-scored voltage MSE per sample
-  channel_recovery_grid.png   ion-channel recovery scatter (pred vs true, per param) — always
   channel_recovery.csv        per-param R²/RMSE/bias
-  trace_overlay_<i>.png       overlay plots (input/data vs predicted soma); --numOverlay (default 50)
-  trace_overlays.pdf          self-contained: page 1 = ion-channel grid, then all voltage overlays
   summary.yaml                aggregate stats
+
+Figures are PDF-only by default.  Pass --savePng to additionally emit the old
+per-figure .png files (channel_recovery_grid, voltage_loss_hist,
+voltage_rmse_cdf, trace_overlay_<i>_sample<j>) — 50 overlay PNGs is ~12 MB per
+run, which is why they are now opt-in.
 
 Usage:
     python evaluate_voltage.py --modelPath <run_dir>/out [--numSamples 200]
+
+    # POOLED runs: score the model separately on each stimulus in the battery.
+    # A pooled model sees one untagged trace, so per-stim recovery differs and
+    # the default (stims_select[0]) reports only the first protocol.
+    for k in 0 1 2 3; do
+        python evaluate_voltage.py --modelPath <run_dir>/out --stimIndex $k
+    done
 """
 
-import os, sys, time, argparse, json
+import os, sys, time, argparse, json, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # JAX env must be set BEFORE jax/jaxley import.
@@ -55,6 +68,30 @@ def get_parser():
                    help="how many overlay plots to save")
     p.add_argument("-o", "--outDir", default=None,
                    help="output dir (default: <modelPath>/eval)")
+    p.add_argument("--stimIndex", type=int, default=None,
+                   help="POOLED runs only: which entry of data_conf.stims_select to "
+                        "evaluate on (0-based into that list).  A pooled model sees one "
+                        "trace at a time and does not know which protocol produced it, so "
+                        "each stim is a separate test set.  Default (None) = stims_select[0], "
+                        "the historical behaviour.  Changes the default outDir to "
+                        "<modelPath>/eval_stim<K>_<stimName> so runs do not clobber each other.")
+    p.add_argument("--savePng", action="store_true",
+                   help="also write the individual .png figures.  Default is PDF-only: "
+                        "everything lands in trace_overlays.pdf (channel grid, per-sample "
+                        "overlays, loss histogram, RMSE CDF).")
+    p.add_argument("--cellSim", default=None,
+                   help="jaxley cell for the re-simulation when the run has no voltage_loss "
+                        "block (param-only training), e.g. l5ttpc / ca3_pyramidal.")
+    p.add_argument("--stimNames", default=None,
+                   help="comma list of stimulus CSV stems in PROBE order for --cellSim runs.")
+    p.add_argument("--clampTanh", action="store_true",
+                   help="apply tanh to the CNN output before unit->phys for --cellSim runs.")
+    p.add_argument("--noGrad", action="store_true",
+                   help="Forward-only jaxley (handle.simulate_batch, no jax.vjp graph). "
+                        "REQUIRED for the 19-param L5TTPC cell: the training bridge's VJP "
+                        "graph OOMs a 40 GB A100 at batch 64.  Results are identical.")
+    p.add_argument("--simBatch", type=int, default=64,
+                   help="jaxley batch size for the re-simulation (default 64).")
     return p.parse_args()
 
 
@@ -75,31 +112,40 @@ def load_trained_model(modelPath: str, device: torch.device):
     # Strip "module." prefix if present (saved from DDP).
     if any(k.startswith("module.") for k in state):
         state = {k[len("module."):]: v for k, v in state.items()}
+    # blank_model.pth may itself be a DataParallel / DDP wrapper (1-GPU runs
+    # wrap in DataParallel); unwrap so the stripped keys match.
+    if model.__class__.__name__ in ("DataParallel", "DistributedDataParallel"):
+        model = model.module
     model.load_state_dict(state)
     model.to(device).eval()
     return model, trainMD
 
 
-def load_test_data(trainMD, n_samples):
+def load_test_data(trainMD, n_samples, stim_col):
     """Read first `n_samples` test-split voltages + per-sample mean/std so we
-    can de-normalize the z-scored data back to mV."""
+    can de-normalize the z-scored data back to mV.
+
+    `stim_col` is the H5 stim-axis index to slice.  For a joint/single-stim pack
+    that is always stims_select[0]; for a POOLED pack the stim axis carries the
+    battery, so the caller picks which protocol to evaluate on."""
     h5_path = trainMD["train_params"]["full_h5name"]
     probs = trainMD["train_params"]["data_conf"]["probs_select"]
     stims = trainMD["train_params"]["data_conf"]["stims_select"]
     soma_idx_in_select = 0  # design YAML pins soma_probe_index=0
-    print(f"[eval] reading test split from {h5_path}, probs={probs}, stims={stims}")
+    print(f"[eval] reading test split from {h5_path}, probs={probs}, stims={stims}, "
+          f"stim_col={stim_col}")
 
     with h5py.File(h5_path, "r") as f:
         # (N, T, P, S) fp16
-        v_norm = f["test_volts_norm"][:n_samples, :, :, stims[0]].astype(np.float32)
+        v_norm = f["test_volts_norm"][:n_samples, :, :, stim_col].astype(np.float32)
         # raw phys/unit params (for reference; CNN won't use them with mask_channels=True)
         unit_par = f["test_unit_par"][:n_samples].astype(np.float32)
         # Reconstruct per-sample mean/std from the original raw voltages would
         # require the simRaw.h5 file; for now we only show z-scored comparison.
         # If `<dom>_volts_mean` / `<dom>_volts_std` exist, use them.
         try:
-            v_mean = f["test_volts_mean"][:n_samples, :, stims[0]].astype(np.float32)
-            v_std  = f["test_volts_std"][:n_samples, :, stims[0]].astype(np.float32)
+            v_mean = f["test_volts_mean"][:n_samples, :, stim_col].astype(np.float32)
+            v_std  = f["test_volts_std"][:n_samples, :, stim_col].astype(np.float32)
             have_mvstats = True
         except KeyError:
             v_mean = v_std = None
@@ -113,6 +159,26 @@ def load_test_data(trainMD, n_samples):
     return v_soma_norm, unit_par, v_mean, v_std
 
 
+def _simulate_nograd(pred_phys, cell_name, stim_name, bs, solver="bwd_euler"):
+    """Forward-only jaxley on the cached handle's jitted vmap -> (N, n_rec, T_ds)
+    float64 numpy.  Skips the jax.vjp graph that JaxleyBridge.simulate_batch
+    always builds (it is the TRAINING bridge); the 19-param L5TTPC cell OOMs
+    there.  Pads the last chunk to `bs` so XLA compiles one shape."""
+    import jax.numpy as jnp
+    handle = JaxleyBridge.get_handle(cell_name, stim_name, solver=solver)
+    pp = jnp.asarray(pred_phys.detach().cpu().numpy())
+    outs = []
+    for i0 in range(0, pp.shape[0], bs):
+        pg = pp[i0:i0 + bs]
+        ng = pg.shape[0]
+        if ng < bs:
+            pg = jnp.concatenate(
+                [pg, jnp.broadcast_to(pg[:1], (bs - ng,) + pg.shape[1:])], axis=0)
+        v = handle.simulate_batch(pg)                    # (bs, n_rec, T_ds)
+        outs.append(np.asarray(v[:ng]))
+    return np.concatenate(outs, axis=0)
+
+
 def main():
     args = get_parser()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -120,7 +186,20 @@ def main():
     model, trainMD = load_trained_model(args.modelPath, device)
 
     # Voltage-loss config from sum_train.yaml — has cell_name, phys_par_range, etc.
-    vl = trainMD["train_params"]["voltage_loss"]
+    vl = trainMD["train_params"].get("voltage_loss")
+    if vl is None:
+        # Param-only (supervised) runs never built a voltage loss, so the
+        # simulator config must come from the CLI.
+        if not args.cellSim:
+            sys.exit("[eval] this run has no voltage_loss block (param-only training); "
+                     "pass --cellSim <jaxley cell> and --stimNames <a,b,c in probe order>")
+        names = [x for x in (args.stimNames or "").split(",") if x]
+        vl = {"cell_name_for_sim": args.cellSim,
+              "stim_name": names[0] if names else None,
+              "stim_names_multi": names if len(names) > 1 else None,
+              "fp64": True, "clamp_unit_tanh": bool(args.clampTanh),
+              "t_max_override": "auto"}
+        print(f"[eval] WARN: no voltage_loss block in sum_train.yaml -> simulator config from CLI: {vl}")
     cell_name      = vl["cell_name_for_sim"]
     phys_par_range = vl.get("phys_par_range")  # may be None if read from H5 meta
     clamp_tanh     = bool(vl.get("clamp_unit_tanh", False))
@@ -132,6 +211,51 @@ def main():
     sim_dt_ms      = float(vl.get("sim_dt_ms", 0.1))
     sim_skip_bins  = max(0, int(round(sim_t_skip_ms / sim_dt_ms)))
     print(f"[eval] sim_t_skip_ms={sim_t_skip_ms} -> skipping first {sim_skip_bins} bins of jaxley output")
+
+    # ── Which stimulus are we evaluating on? ─────────────────────────────
+    # Joint/single packs: the battery lives on the PROBE axis, stims_select has
+    # one entry, and the per-probe loop below handles the multi-stim case.
+    # Pooled packs: the battery lives on the STIM axis (probs_select == [0]) and
+    # the model sees ONE trace with no protocol tag, so each stim is its own test
+    # set and must be selected explicitly.
+    dcf_eval        = trainMD["train_params"]["data_conf"]
+    stims_sel       = list(dcf_eval["stims_select"])
+    is_pooled       = bool(dcf_eval.get("pooled_stim_index", False))
+    # `pooled_stim_names` is written into the voltage_loss block (HybridLoss owns
+    # it), NOT data_conf — check both, and stim_names_multi for joint packs.
+    pooled_names    = (vl.get("pooled_stim_names") or dcf_eval.get("pooled_stim_names")
+                       or vl.get("stim_names_multi") or dcf_eval.get("stim_names_multi"))
+    if args.stimIndex is None:
+        stim_col = stims_sel[0]
+    else:
+        if not 0 <= args.stimIndex < len(stims_sel):
+            sys.exit(f"[eval] --stimIndex {args.stimIndex} out of range for "
+                     f"stims_select={stims_sel} (len {len(stims_sel)})")
+        if not is_pooled and len(stims_sel) == 1:
+            sys.exit("[eval] --stimIndex is meaningless for this run: stims_select has one "
+                     "entry.  For a JOINT pack the battery is on the probe axis and every "
+                     "stim is already evaluated (one row per probe).")
+        stim_col = stims_sel[args.stimIndex]
+        # The simulated stimulus must match the data column we just selected,
+        # otherwise we would compare a trace under stim A to a sim under stim B.
+        if pooled_names:
+            if stim_col >= len(pooled_names):
+                sys.exit(f"[eval] stim column {stim_col} has no name in "
+                         f"pooled_stim_names={pooled_names}")
+            stim_name = pooled_names[stim_col]
+        else:
+            # Refusing rather than warning: falling back to vl['stim_name'] would
+            # compare data recorded under stim K against a simulation run under
+            # stim 0 and still emit a complete, plausible-looking scorecard.
+            sys.exit(
+                "[eval] FATAL: --stimIndex given but no stim-name list found in metadata "
+                "(looked for pooled_stim_names / stim_names_multi under both voltage_loss "
+                "and data_conf).  Without it the simulated stimulus cannot be matched to the "
+                f"selected data column {stim_col}, and the scores would silently compare "
+                f"column {stim_col}'s data against a {stim_name!r} simulation.  "
+                "Pass the correct name explicitly or re-run with metadata that carries it.")
+        print(f"[eval] --stimIndex {args.stimIndex} -> H5 stim column {stim_col}, "
+              f"simulating stim_name={stim_name!r}")
 
     if phys_par_range is None:
         # Read from H5 meta — same fallback as build_hybrid_loss
@@ -160,7 +284,8 @@ def main():
     _log_jax_devices_once()
 
     # Load test data
-    v_soma_norm, unit_par_true, v_mean_arr, v_std_arr = load_test_data(trainMD, args.numSamples)
+    v_soma_norm, unit_par_true, v_mean_arr, v_std_arr = load_test_data(
+        trainMD, args.numSamples, stim_col)
     N, T_data = v_soma_norm.shape
     P_cnn = trainMD["train_params"]["model"]["outputSize"]
     print(f"[eval] N={N} test samples, T_data={T_data}, P_cnn={P_cnn}")
@@ -171,7 +296,7 @@ def main():
     h5_path = trainMD["train_params"]["full_h5name"]
     probs = trainMD["train_params"]["data_conf"]["probs_select"]
     with h5py.File(h5_path, "r") as f:
-        cnn_in = f["test_volts_norm"][:N, :, :, trainMD["train_params"]["data_conf"]["stims_select"][0]]
+        cnn_in = f["test_volts_norm"][:N, :, :, stim_col]
     cnn_in = cnn_in[:, :, probs].astype(np.float32)   # (N, T, num_probes)
     print(f"[eval] CNN input shape: {cnn_in.shape}")
 
@@ -250,7 +375,16 @@ def main():
     probe_labels = [f"probe{p} ({s})" for p, s in zip(sel_probes, sel_stims)]
     print(f"[eval] {n_probe} probe(s): {probe_labels}")
 
-    sim_bs = 64
+    sim_bs = int(args.simBatch)
+    # Which RECORDING of the simulated cell feeds data channel j?  Multi-probe
+    # runs (Exp 2) train with `probe_loss_indices` = the cell's .record() order
+    # per data channel; everything else compares recording 0 (soma).
+    _pli = vl.get("probe_loss_indices")
+    rec_idx = [int(_pli[j]) if (_pli and j < len(_pli)) else 0 for j in range(n_probe)]
+    if _pli:
+        print(f"[eval] probe_loss_indices={_pli} -> recording per data channel: {rec_idx}")
+    sim_solver = str(vl.get("solver", "bwd_euler"))
+    sim_cache = {}       # stim_name -> (N, n_rec, T_sim): one sim per distinct stim
     v_sim_pre_all = []   # per-probe (N, T) mV pre-z
     v_sim_z_all   = []   # per-probe (N, T) z-scored
     v_data_z_all  = []   # per-probe (N, T) z-scored data (from cnn_in)
@@ -258,13 +392,24 @@ def main():
     spikes_sim_all = []; spikes_data_all = []
     T = None
     for j, (p_idx, s_name) in enumerate(zip(sel_probes, sel_stims)):
-        sim_chunks = []
-        print(f"[eval] running jaxley for {probe_labels[j]} on {N} preds, batch={sim_bs}...")
+        rec_k = rec_idx[j]
         t0 = time.time()
-        for i in range(0, N, sim_bs):
-            v = JaxleyBridge.simulate_batch(pred_phys[i:i+sim_bs], cell_name, s_name)
-            sim_chunks.append(v[:, 0, :].cpu())   # (B, T_sim)
-        v_sim = torch.cat(sim_chunks, dim=0).numpy()
+        if s_name in sim_cache:
+            print(f"[eval] {probe_labels[j]}: reusing the {s_name} simulation, recording {rec_k}")
+            v_all = sim_cache[s_name]
+        else:
+            print(f"[eval] running jaxley for {probe_labels[j]} on {N} preds, batch={sim_bs}"
+                  f"{' (no-grad)' if args.noGrad else ''}...")
+            if args.noGrad:
+                v_all = _simulate_nograd(pred_phys, cell_name, s_name, sim_bs, sim_solver)
+            else:
+                sim_chunks = []
+                for i in range(0, N, sim_bs):
+                    v = JaxleyBridge.simulate_batch(pred_phys[i:i+sim_bs], cell_name, s_name)
+                    sim_chunks.append(v.cpu())              # (B, n_rec, T_sim)
+                v_all = torch.cat(sim_chunks, dim=0).numpy()
+            sim_cache[s_name] = v_all
+        v_sim = v_all[:, rec_k, :]                           # (N, T_sim)
         t1 = time.time()
         # Drop the pre-stim window so the sim time axis aligns with the (already
         # pre-trimmed) data H5.
@@ -301,7 +446,15 @@ def main():
           f"data mean={spikes_data.mean():.1f}, |diff| mean={np.abs(spike_diff).mean():.2f}")
 
     # ─── outputs ────────────────────────────────────────────────────────────
-    outDir = args.outDir or os.path.join(args.modelPath, "eval")
+    if args.outDir:
+        outDir = args.outDir
+    elif args.stimIndex is None:
+        outDir = os.path.join(args.modelPath, "eval")
+    else:
+        # Keep each stim's scores separate — a pooled model has a DIFFERENT
+        # recovery per protocol, and overwriting `eval/` would hide that.
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(stim_name))
+        outDir = os.path.join(args.modelPath, f"eval_stim{args.stimIndex}_{safe}")
     os.makedirs(outDir, exist_ok=True)
 
     # CSV per-sample
@@ -316,6 +469,13 @@ def main():
     # Summary YAML — voltage + channel-recovery metrics together.
     summary = {
         "n_samples": int(N),
+        # Which protocol this scorecard is for.  Essential for pooled runs, where
+        # the same model has a different recovery per stimulus and several
+        # summary.yaml files coexist under one run dir.
+        "eval_stim_index": (None if args.stimIndex is None else int(args.stimIndex)),
+        "eval_stim_col": int(stim_col),
+        "eval_stim_name": (str(stim_name) if stim_name else None),
+        "eval_pooled": bool(is_pooled),
         "voltage_mse_z_mean": float(err_z.mean()),
         "voltage_mse_z_median": float(np.median(err_z)),
         "voltage_rmse_z_mean": float(rmse_z.mean()),
@@ -381,13 +541,14 @@ def main():
     for j in range(P, rows * cols):
         r, c = divmod(j, cols); axes[r][c].axis("off")
     fig_grid.tight_layout()
-    fig_grid.savefig(os.path.join(outDir, "channel_recovery_grid.png"), dpi=120)
+    if args.savePng:
+        fig_grid.savefig(os.path.join(outDir, "channel_recovery_grid.png"), dpi=120)
     # NOTE: keep fig_grid open — it is re-used as page 1 of trace_overlays.pdf
     # so the PDF is self-contained (ion channels + all voltage overlays).
     print(f"[eval] wrote summary -> {outDir}/summary.yaml")
 
-    # Histogram
-    fig = plt.figure(figsize=(7, 4))
+    # Histogram — kept open, becomes page 2 of the PDF
+    fig_hist = plt.figure(figsize=(7, 4))
     plt.hist(err_z, bins=40, color="C0", edgecolor="black", alpha=0.8)
     plt.axvline(err_z.mean(), color="red", linestyle="--", label=f"mean={err_z.mean():.3f}")
     plt.axvline(np.median(err_z), color="orange", linestyle="--", label=f"median={np.median(err_z):.3f}")
@@ -396,8 +557,19 @@ def main():
     plt.title(f"Voltage-loss distribution on test ({N} samples)")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(outDir, "voltage_loss_hist.png"), dpi=120)
-    plt.close(fig)
+    if args.savePng:
+        plt.savefig(os.path.join(outDir, "voltage_loss_hist.png"), dpi=120)
+
+    # Aggregate accuracy plot: rmse_z sorted — kept open, becomes page 3 of the PDF
+    fig_cdf = plt.figure(figsize=(7, 4))
+    plt.plot(np.sort(rmse_z), np.linspace(0, 1, N), color="C0", lw=2)
+    plt.xlabel("voltage RMSE (z-scored)")
+    plt.ylabel("CDF over test samples")
+    plt.title("Test-set voltage-RMSE CDF")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    if args.savePng:
+        plt.savefig(os.path.join(outDir, "voltage_rmse_cdf.png"), dpi=120)
 
     # Overlay plots — plot `numOverlay` (default 50) samples spanning the full
     # error range (best -> worst), evenly sampled so no duplicates and the PDF
@@ -413,9 +585,11 @@ def main():
 
     pdf_path = os.path.join(outDir, "trace_overlays.pdf")
     pdf = PdfPages(pdf_path)
-    # Page 1: ion-channel recovery grid (always) so the PDF is self-contained.
-    pdf.savefig(fig_grid)
-    plt.close(fig_grid)
+    # Pages 1-3: ion-channel recovery grid, loss histogram, RMSE CDF — so the
+    # PDF is the single self-contained artifact and no PNGs are needed.
+    pdf.savefig(fig_grid);  plt.close(fig_grid)
+    pdf.savefig(fig_hist);  plt.close(fig_hist)
+    pdf.savefig(fig_cdf);   plt.close(fig_cdf)
     # One page per picked sample; one row per probe (data vs predicted-sim in
     # z-scored space).  For the multi-stim pack the rows are the SAME neuron
     # under the 4 different stimuli, so you can see whether the predicted params
@@ -440,24 +614,26 @@ def main():
                             fontweight="bold")
         axes[-1][0].set_xlabel("time (ms)")
         plt.tight_layout()
-        plt.savefig(os.path.join(outDir, f"trace_overlay_{k:02d}_sample{idx}.png"), dpi=120)
+        if args.savePng:
+            plt.savefig(os.path.join(outDir, f"trace_overlay_{k:02d}_sample{idx}.png"), dpi=120)
         pdf.savefig(fig)
         plt.close(fig)
     pdf.close()
-    print(f"[eval] wrote {len(pick)} overlay plots ({n_probe} probe rows each) to "
-          f"{outDir}/ (+ combined {pdf_path}: page1=ion-channel grid, then "
-          f"{len(pick)} voltage overlays)")
-
-    # Aggregate accuracy plot: rmse_z sorted
-    fig = plt.figure(figsize=(7, 4))
-    plt.plot(np.sort(rmse_z), np.linspace(0, 1, N), color="C0", lw=2)
-    plt.xlabel("voltage RMSE (z-scored)")
-    plt.ylabel("CDF over test samples")
-    plt.title("Test-set voltage-RMSE CDF")
-    plt.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(outDir, "voltage_rmse_cdf.png"), dpi=120)
-    plt.close(fig)
+    # Compact trace dump so cross-run composite figures can be built without
+    # re-simulating (float32, z-scored, all probes, all N samples).
+    np.savez_compressed(
+        os.path.join(outDir, "traces.npz"),
+        t_axis=t_axis.astype(np.float32),
+        v_sim_z=np.stack(v_sim_z_all).astype(np.float32),     # (n_probe, N, T)
+        v_data_z=np.stack(v_data_z_all).astype(np.float32),
+        err_z=np.stack(err_z_all).astype(np.float32),         # (n_probe, N)
+        spikes_sim=np.stack(spikes_sim_all), spikes_data=np.stack(spikes_data_all),
+        pick=pick, probe_labels=np.array(probe_labels), rec_idx=np.array(rec_idx))
+    print(f"[eval] wrote {os.path.join(outDir, 'traces.npz')}")
+    print(f"[eval] wrote {pdf_path}: page1=ion-channel grid, page2=loss hist, "
+          f"page3=rmse CDF, then {len(pick)} voltage overlays "
+          f"({n_probe} probe row(s) each)"
+          + ("  [+ .png copies, --savePng]" if args.savePng else "  [PDF-only; --savePng for .png]"))
     print(f"[eval] DONE — see {outDir}/")
 
 

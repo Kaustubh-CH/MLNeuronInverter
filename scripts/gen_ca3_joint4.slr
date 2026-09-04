@@ -1,0 +1,75 @@
+#!/bin/bash -l
+#SBATCH -N 4 --time=2:00:00 -J ca3gen_joint4 -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --cpus-per-task=32 -C gpu -A m2043_g
+# - - - E N D    O F    SLURM    C O M M A N D S
+#
+# 80k joint 4-stim CA3 battery -> ca3_joint4_v1.
+#
+# Battery (probe axis order is LOAD-BEARING: stim_names_multi must match):
+#   0 5kChaoticRamp         native 5000 samp = 500 ms  chaotic   (na3, kap)   kdr  5.1 mV
+#   1 5k0chaotic4           native 5000 samp = 500 ms  chaotic   (eFEL cover) kdr  0.4 mV
+#   2 BBP_Exp_Step1000_i4k  4000 samp = 400 ms         long step (kdr)        kdr 11.9 mV
+#   3 chirp23a_i4k          4000 samp = 400 ms         chirp     (leak)       kdr <0.2 mV
+#
+# Probe 2 is BBP_Exp_Step1000_i4k, NOT the Step600 of the Jul-4 eFEL battery:
+# the OAT sweep (tmp_neuInv/sensitivity_variation/ca3_pyramidal/salloc_55486075/
+# interp4000/combined/variation_matrix.csv) ranks it the best CLEAN stim for kdr at
+# 11.9 mV vs Step600's 3.7 -- Step600 is below even 5kChaoticRamp (5.1), the stim
+# whose campaign capped kdr at R2 0.366. Those OAT numbers are computed on the
+# 4000-step interpolated set, so the _i4k twin is exactly what scored 11.9.
+#
+# t_max = 500 (cell default, NO --t-max override). dt_stim = dt = 0.1 ms, so
+# upsample_stim() maps each CSV onto arange(0,500,0.1) and np.interp CLAMPS past
+# the end of the 4000-sample stims -- their final sample is exactly 0.0 nA, so
+# probes 2/3 get a quiescent 100 ms tail rather than a held current. No active
+# region is truncated: 5kChaoticRamp/5k0chaotic4 are active 150-450 ms,
+# BBP_Exp_Step600_i4k 87-354 ms, chirp23a_i4k ends at 0. -> T = 5001 for all four,
+# matching every other 5k* CA3 pack.
+#
+# EXCLUDED ON PURPOSE: the seven pA-as-nA stims (ramp_500, 4k50kInterramp_50khz,
+# 4k50kInterstep_{200,500}_50khz and _i4k twins) inject 1000x too much current and
+# drive the soma to +1600 mV. They contaminated ca3_best_efel_multi (1 of 4 probes)
+# and ca3_best_mse_multi (2 of 4) -- the only two runs that ever recovered kdr.
+#
+# Usage: sbatch scripts/gen_ca3_joint4.slr [n] [out_dir]
+set -e
+
+n=${1:-80000}
+out_dir=${2:-/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_joint4_v1}
+cell=ca3_pyramidal_joint4
+stims=5kChaoticRamp,5k0chaotic4,BBP_Exp_Step1000_i4k,chirp23a_i4k
+
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+export JAX_PLATFORMS=cuda JAX_ENABLE_X64=true
+export XLA_PYTHON_CLIENT_PREALLOCATE=false XLA_PYTHON_CLIENT_MEM_FRACTION=0.4
+
+shard=$SCRATCH/ca3_gen_shards/${cell}
+rm -rf "$shard"; mkdir -p "$shard" "$out_dir"
+mkdir -p /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs
+cd ${SLURM_SUBMIT_DIR:-$(pwd)}
+
+G=$(( SLURM_NNODES * 4 ))
+echo "=== worker phase: G=$G ranks, n=$n, stims=$stims ==="
+date
+# JAX compile cache MUST be per-rank: a shared dir across DDP/srun ranks causes a
+# nondeterministic "replica assigned to cuda:3" XLA crash. $SLURM_PROCID has to
+# expand INSIDE the task, so keep it in single quotes.
+srun -n "$G" --gpu-bind=none bash -c '
+  export JAX_COMPILATION_CACHE_DIR=$SCRATCH/jax_cc/genjoint4_rank_$SLURM_PROCID
+  mkdir -p $JAX_COMPILATION_CACHE_DIR
+  exec python -u scripts/gen_ca3_sharded.py \
+       --source-cell ca3_pyramidal --cell-name '"$cell"' \
+       --out '"$out_dir"' --shard-dir '"$shard"' \
+       --stims '"$stims"' --n '"$n"' --batch 256 --seed 0'
+
+echo "=== merge phase ==="
+srun -n 1 python -u scripts/gen_ca3_sharded.py --merge --world "$G" \
+     --source-cell ca3_pyramidal --cell-name "$cell" \
+     --out "$out_dir" --shard-dir "$shard" \
+     --stims "$stims" --n "$n" --batch 256 --seed 0
+date
+echo "=== done ==="
+ls -lh "$out_dir"

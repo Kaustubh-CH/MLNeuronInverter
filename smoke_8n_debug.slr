@@ -1,0 +1,22 @@
+#!/bin/bash -l
+#SBATCH -N8 --time=0:28:00 -J ca3vo-smoke8n -q debug
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# DEBUG-queue smoke: validate 32-rank DDP rendezvous (file-based) + one training
+# step before committing the full 200k regular-queue run. Tiny data, 2 epochs.
+# SUCCESS = "Epoch 0" / "Epoch 1 took" appears in log.train (rendezvous fixed);
+# FAIL = "TCP client failed" / store timeout (rendezvous still broken).
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+V1=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v1/
+export NEUINV_RDZV_FILE=$SCRATCH/tmp_neuInv/rdzv/rdzv_${SLURM_JOBID}
+mkdir -p "$(dirname "$NEUINV_RDZV_FILE")"; rm -f "$NEUINV_RDZV_FILE"
+export NCCL_P2P_DISABLE=1
+echo "SMOKE-8n: start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST rdzv=$NEUINV_RDZV_FILE"
+# numGlobSamp>=8192 so valid (numGlobSamp//4) >= world_size*BS = 32*64 = 2048 and
+# the loader's locStep>0 / maxShard>=world_size asserts hold at 32 ranks. 16384 gives
+# train locStep=8, valid locStep=2 -> real epochs, exercising the 32-rank jaxley step.
+NEUINV_WRK_SUFIX=smoke8n NEUINV_EPOCHS=2 NEUINV_NUMGLOBSAMP=16384 \
+  bash batchShifterJaxleyCA3_100ep.slr "$V1" ca3_vo_chaoticramp_dtw_8n
+echo "SMOKE-8n: launcher exit=$? $(date)"

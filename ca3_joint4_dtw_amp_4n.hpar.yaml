@@ -1,0 +1,112 @@
+# CA3 — VARIANT A: joint 4-stim battery, stims as separate CNN CHANNELS.
+#
+# Objective is the champion recipe (ca3_vo_chaoticramp_dtw_amp_8n, mean R2 0.763)
+# copied VERBATIM: soft-DTW primary + a small ramped soft-eFEL aux on
+# [voltage_base, AP_amplitude], fp64, clamp_unit_tanh, LR 1e-4, grad clip 1.0.
+# The ONLY change is the data: one 80k pack whose four probes are four stimuli.
+#
+# Battery (probe/channel order MUST match stim_names_multi below), with each
+# stim's Kdr observability from the OAT sweep (variation_matrix.csv, mV):
+#   0 5kChaoticRamp         5.1   chaotic  -> na3, kap
+#   1 5k0chaotic4           0.4   chaotic  -> best eFEL coverage
+#   2 BBP_Exp_Step1000_i4k 11.9   long step-> kdr (best CLEAN stim in the whole set)
+#   3 chirp23a_i4k         <0.2   chirp    -> leak
+#
+# Question: does kdr survive under a CLEAN battery + the champion objective? The
+# only two runs that ever recovered kdr (R2 0.985/0.991, Jul 4) each contained a
+# pA-as-nA stim driving the soma to +1600 mV, so "the long step recovers kdr" and
+# "the overdriven probe recovers kdr" were perfectly confounded. No contaminated
+# stim appears here.
+#
+# Paired with ca3_pool4_dtw_amp_4n.hpar.yaml (variant B, same data pooled into
+# single-channel samples). Both cost 320k solves/epoch and run 78 steps/epoch, so
+# the A/B isolates INPUT STRUCTURE, not compute.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_joint4_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+# 16 ranks (4 nodes x 4 GPUs) x 64 = global 1024 param draws/step; x4 stims =
+# 256 solves/rank/step. The champion ran 64 solves/rank/step, and all four stims'
+# sim graphs are held simultaneously for backward, so this is already 4x its peak
+# activation memory — do not raise without re-checking GPU memory.
+batch_size: 64
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    stim_name:         5kChaoticRamp
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    range_penalty_weight: 0.0
+    # EXPLICIT, not `auto`: auto resolves t_max from len(stim_name.csv), so it
+    # would silently give 400 ms if stim_name ever named one of the 4000-sample
+    # _i4k stims. The pack was generated at the cell default 500 ms (T=5001) and
+    # the loss must match it.
+    t_max_override:    500.0
+    solver:            bwd_euler
+    fp64:              True
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    blur_weight:       0.0
+    smooth_sigma:      0.0
+    smooth_samples:    1
+    lowpass_ms:        0.0
+    efel_weight:       0.2
+    efel_features:     [voltage_base, AP_amplitude]
+    schedule:
+        efel_weight:  { start: 0.05, end: 0.2, epochs: 20 }
+    # One sim per stim, soma each, compared against data channel i. Order MUST
+    # match the pack's probe axis (= --probsSelect order).
+    stim_names_multi: [5kChaoticRamp, 5k0chaotic4, BBP_Exp_Step1000_i4k, chirp23a_i4k]
+
+model:
+    myId:    ca3_joint4_dtw_amp_4n
+    comment: CA3 voltage-only soft-DTW + soft-eFEL aux, 80k joint 4-stim battery (stims as channels), 4-node
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

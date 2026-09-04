@@ -97,7 +97,19 @@ if __name__ == '__main__':
     if _local >= torch.cuda.device_count():
       _local = 0
     torch.cuda.set_device(_local)
-    dist.init_process_group(backend='nccl', init_method='env://')
+    # Rendezvous. Default env:// (TCPStore at MASTER_ADDR:MASTER_PORT) works for
+    # contiguous small allocations but is fragile for multi-node sbatch spanning
+    # racks (rank-0 node hostname may be unreachable -> all ranks time out on the
+    # store). If NEUINV_RDZV_FILE is set, use a shared-FS FileStore instead, which
+    # needs no hostname/port and is robust at 32+ ranks. Gated so the proven
+    # 4-node env:// path is unchanged when the var is unset.
+    _rdzv = os.environ.get('NEUINV_RDZV_FILE')
+    if _rdzv:
+      dist.init_process_group(backend='nccl', init_method='file://'+_rdzv,
+                              world_size=params['world_size'],
+                              rank=int(os.environ['RANK']))
+    else:
+      dist.init_process_group(backend='nccl', init_method='env://')
     params['world_rank'] = dist.get_rank()
     #print('M:locRank:',params['local_rank'],'rndSeed=',torch.seed())
   params['verb'] =params['world_rank'] == 0
@@ -152,7 +164,7 @@ if __name__ == '__main__':
     trainer.train()
     
   print("DONE for",params['world_rank'])
-  if params['world_rank'] == 0:
+  if params['world_rank'] == 0 and not params['do_ray']:
     sumF=args.outPath+'/sum_train.yaml'
     write_yaml(trainer.sumRec, sumF) # to be able to predict while training continus
 

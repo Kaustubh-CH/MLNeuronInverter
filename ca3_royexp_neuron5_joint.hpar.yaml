@@ -1,0 +1,109 @@
+# CA3 — NEURON-level joint 5-sweep battery (option 2, user 2026-08-28).
+#
+# One sample = one NEURON: its five family sweeps (Roy100..Roy2000) stacked on
+# the probe axis as 5 CNN input channels (the proven joint4 layout).  The CNN
+# emits ONE parameter set per neuron; the loss simulates that set under all
+# five rig-exact Roy<amp>_icaRec_5k stimuli and compares sim i to channel i
+# (stim_names_multi).  Per-neuron consistency is therefore structural, not
+# hoped-for: the same theta must explain the cell at every drive.
+#
+# Objective = the efel5 champion recipe (wide box span 1.0, DTW 1.0 + eFEL 5.0,
+# fp64, tanh clamp).  FROM SCRATCH: the 1-channel supervised warm start cannot
+# load into a 5-channel conv1.  LR 5e-5 (from-scratch exp + eFEL-heavy + wide
+# box; watch the curve), clip 1.0.
+#
+# Pack: RoyExpPack_neuron5/RoyExpNeuron5.mlPack1.h5 (34/4/6 neurons x 12/8/8
+# sweep combos = 408/32/48 samples; build_roy_neuron5_pack.py, seed 0).
+# Launch: NEUINV_CELL=RoyExpNeuron5 NEUINV_PROBS="0 1 2 3 4" NEUINV_STIMS=0.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/RoyExpPack_neuron5/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 60
+# x5 sims/sample. 8 (not 4): per-step jax call overhead dominated at 4
+# (256 s/epoch); joint4 held 64x4 graphs so 8x5 is safely inside memory.
+# valid split is 32 -> exactly 1 step on 16 ranks.
+batch_size: 8
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.00005]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+# ─────────────────────────────────────────────────────────────────────────
+# VOLTAGE-ONLY joint 5-stim loss: sim(theta, stim_i) vs data channel i
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    efel_weight:       5.0          # the basin-switch weight (finding 14f)
+    stim_name:         Roy2000_icaRec_5k    # t_max anchor only
+    # One sim per stim, soma each, vs data channel i.  Order MUST match the
+    # pack's probe axis (= --probsSelect order = build script FAMS order).
+    stim_names_multi:  [Roy100_icaRec_5k, Roy500_icaRec_5k, Roy1000_icaRec_5k,
+                        Roy1500_icaRec_5k, Roy2000_icaRec_5k]
+    soma_probe_index:  0
+    sim_t_skip_ms:     99.9         # 999 bins: sim bin i == 5k-stim bin 999+i == data bin i
+    clamp_unit_tanh:   True
+    t_max_override:    500.0        # explicit: all 5 icaRec CSVs are 5000 pts
+    solver:            bwd_euler
+    fp64:              True
+    # WIDE box (finding 14: the firing shell sits at |u|~1.5-2 of the 0.5 span)
+    phys_par_range:
+        - [3.9417e-05, 1.0, "S/cm^2"]   # CA3_g_leak
+        - [0.04,       1.0, "S/cm^2"]   # CA3_gbar_na3
+        - [0.01,       1.0, "S/cm^2"]   # CA3_gkdrbar_kdr
+        - [0.04,       1.0, "S/cm^2"]   # CA3_gkabar_kap
+        - [0.00052,    1.0, "S/cm^2"]   # CA3_gbar_km
+        - [0.00025,    1.0, "S/cm^2"]   # CA3_gkdbar_kd
+
+model:
+    myId:    ca3_royexp_neuron5_joint
+    comment: CA3 neuron-level joint 5-sweep battery, one theta per neuron, wide box + DTW + eFELx5
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [128, 128, 128]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

@@ -1,0 +1,31 @@
+#!/bin/bash -l
+#SBATCH -N4 --time=2:30:00 -J ca3gen-v3 -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# Generate the v3 CA3 chaoticRamp pack: 250k total -> 200k train / 25k valid / 25k test
+# (the authorized data ceiling). Same generator/stim/seed as v1(40k)/v2(80k) so the
+# data-scaling curve stays a clean single-variable sweep. 16 shards (4 nodes x 4 GPU).
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+OUT=/pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v3
+echo "GEN-v3: start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST"
+bash scripts/run_ca3_gen.sh ca3_pyramidal_synth "$OUT" 5kChaoticRamp 250000
+rc=$?
+echo "GEN-v3: run_ca3_gen exit=$rc $(date)"
+# validate the produced pack before the dependent training job trusts it
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+python - "$OUT/ca3_pyramidal_synth.mlPack1.h5" <<'PY'
+import sys, h5py
+f=sys.argv[1]
+with h5py.File(f,'r') as h:
+    tr=h['train_volts_norm'].shape; tp=h['train_phys_par'].shape
+    print("GEN-v3 VALIDATE:", f)
+    print("  train_volts_norm", tr, " train_phys_par", tp)
+    assert tr[0]>=200000, f"train too small: {tr[0]}"
+    assert tp[1]==6, f"expected 6 params, got {tp[1]}"
+print("GEN-v3 VALIDATE: OK")
+PY
+echo "GEN-v3: done $(date)"

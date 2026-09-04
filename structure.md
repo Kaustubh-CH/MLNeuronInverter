@@ -65,7 +65,6 @@ toolbox/unitParamConvert{,Hdf5}.py
 | SLURM entry                | `batchShifter.slr`, `batchShifter_ray.slr`, `batchShifterMultiCell.slr`, `batchShifterOntraInh.slr`, `batchShifterFinetune.slr` | each `cp -rp $codeList $wrkDir; cd $wrkDir; srun shifter ...` |
 | Data packing               | `packBBP3/aggregate_*.py`, `format_bbp3_for_ML*.py` | see `packBBP3/Readme-packing` |
 | HF publish                 | `upload_to_hf.py`, `predict_from_hf.py`      | blank_model.pth + ckpt.pth + sum_train.yaml → HF repo |
-| Predicted-param evaluation | `predicted_data_analysis/{submit_matrix.sh, score_cells.py, rank_cells.py}` | 5×5 cross-amplitude matrix over 13 excitatory cells, σ-normalised eFEL scoring, cell ranking (see its README.md) |
 
 ### 3.a `<design>.hpar.yaml` config surface
 
@@ -146,12 +145,16 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: threadTrain, trainable, Raytune
 - `build_roy_expH5.py` - Pack the Roy* ABF sweeps into per-stim mlPack1 HDF5s for NeuronInverter.
     - defs: main, iv_main
+- `build_roy_neuron5_pack.py` - Build the NEURON-level 5-sweep battery pack from RoyExpPack_ca3ft.
+- `build_roy_stimch_pack.py` - Build the STIM-AS-CHANNEL single-sweep pack from RoyExpPack_ca3ft.
 - `chaoticramp_variance_probe.py` - Look directly at the ChaoticRamp trace ensemble per channel and test which
     - defs: smooth, spike_rate, main
 - `convertPred.py`
     - defs: extract_efel_features_from_volts, normalize_volts, resample_by_interpolation
 - `evaluate_voltage.py` - Evaluate a HybridLoss/voltage-trained model.
-    - defs: get_parser, load_trained_model, load_test_data, main
+    - defs: get_parser, load_trained_model, load_test_data, _simulate_nograd, main
+- `excitability_probe_icarec.py` - Can the CA3 model fire at experimental rates under the TRUE recorded drive?
+    - defs: spikes_pos, main
 - `feature_channel_sensitivity.py` - Feature x Channel sensitivity matrix for the CA3 (or any jaxley-cell) inverse.
     - defs: get_parser, resolve_phys_range, operating_points, feature_list, main
 - `findSpikesExpC.py` - identify spikes in experimental wave forms
@@ -199,8 +202,16 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `plot_efel_vs_channel.py` - Distribution of soft-eFEL features vs ion-channel value for the ball-and-stick pack.
 - `plot_exp_overlay.py` - Plot predicted unit-params + voltage overlays for EXPERIMENTAL data.
     - defs: get_parser, zscore, main
+- `plot_exp_overlay_neuron5.py` - Evaluate the neuron-level joint 5-sweep model on held-out neurons.
+    - defs: get_parser, zscore, zfix, spikes_pos, main
+- `plot_exp_overlay_roy.py` - Predict the Roy/Paula chaotic recordings (Apr-2026) with a DTW-era CA3 model.
+    - defs: get_parser, zscore, spikes_pos, main
 - `plot_exp_overlay_royv2.py` - Voltage-error evaluation of a CA3 model on Paula's Roy v2 experimental pack.
     - defs: get_parser, zscore, zfix, spikes_pos, sim_family, main
+- `plot_exp_overlay_royv2_l5.py` - Cross-cell-model probe: score the L5TTPC jaxley model on Roy v2 recordings.
+    - defs: get_parser, zscore, zfix, spikes_pos, sim_family, main
+- `plot_exp_overlay_stimch.py` - Evaluate a stim-as-channel single-sweep model on held-out Roy neurons.
+    - defs: get_parser, zscore, zfix, spikes_pos, main
 - `plot_halved_vs_full_inh.py` - Compare ALL_CELLS_Inhibitory error (same-cell / intrapolation / extrapolation)
     - defs: load
 - `plot_ion_channels_compare.py` - Side-by-side ion-channel comparison figure (truth-vs-pred 2D density per channel),
@@ -346,17 +357,32 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: _shrink_t_max, _restore_t_max, test_zero_recovers_mse, test_adapter_is_mse, test_voltage_forward_finite, test_voltage_grad_flows, test_mask_channels_skips_channel_loss, test_unit_to_phys_matches_numpy, test_factory_channel_only_passthrou...
 - `toolbox/tests/test_jaxley_bridge.py` - Phase 1 tests for toolbox.JaxleyBridge.
     - defs: test_registry_lists_both_cells, test_shapes, test_cache_hit_no_recompile, test_vmap_matches_serial_loop, test_gradcheck_tiny, test_fresh_state_per_call, test_l5ttpc_registers_but_do_not_build, main
+- `toolbox/tests/test_pooled_stim_grouping.py` - Pooled multi-stim (variant B) grouping logic, with the jaxley solve stubbed out.
+    - defs: _make_loss, test_grouping, test_single_stim_matches_reference, test_weighting_is_not_per_group, _make_loss_norm, _two_group_setup, test_stim_norm_off_is_identical, test_stim_norm_ema_equalizes, test_stim_norm_gated_off_in_validation
+- `toolbox/tests/verify_pooled_alignment.py` - Integration check (needs the real ca3_joint4_v1 pack; run on a login node).
 
 ### scripts/
 
+- `scripts/all_models_time_table.py` - Every trained model of record: samples/epoch, GPUs, measured s/epoch (steady
+    - defs: tb_epoch_times, g
+- `scripts/chaoticramp_run_table.py` - Table of every chaoticRamp CA3 run of record: recipe knobs, samples, epochs,
+    - defs: tb_epoch_times, g
+- `scripts/collect_vo_ledger.py` - Collect CA3 voltage-only run metrics into one comparison CSV (the "vo ledger").
+    - defs: resolve_summary, design_name, row_from_summary, load_existing, main
 - `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 from a registered jaxley cell.
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages, normalize_volts_fixed_scale, write_h5, main
 - `scripts/gen_ca3_sharded.py` - Sharded multi-GPU generation of a CA3 mlPack1.h5 (single- or multi-stim).
     - defs: _phys_range, _load_cell, _slice, _draw_unit_par, _fam_assign, _vary_indices, worker, merge, main
 - `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages_one_stim, normalize_volts_fixed_scale, write_h5, main
+- `scripts/plot_l5ttpc_curves.py` - Train / validation loss per epoch for every L5TTPC (ncomp=2) run, read from
+    - defs: read_curve
+- `scripts/pool_multistim_pack.py` - Turn a JOINT multi-stim pack into a POOLED one by moving the battery from the
+    - defs: main
+- `scripts/summarize_l5ttpc_eval.py` - Summarise the L5TTPC ncomp=2 test-split evaluations in l5ttpc_eval/<run>/.
 - `scripts/voltage_loss_bias_probe.py` - Step-0 bias audit for the voltage-only training objective.
     - defs: get_parser, load_split_volts, loss_at, main
+- `scripts/eval_all_stims.sh`
 - `scripts/gen_best_stims_all.sh`
 - `scripts/install_hooks.sh`
 - `scripts/run_ca3_gen.sh`

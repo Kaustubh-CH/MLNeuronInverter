@@ -27,6 +27,7 @@ Voltage-space alignment
   generates ball-and-stick data with the canonical stim explicitly.
 """
 
+import math
 from typing import Optional
 
 import torch
@@ -89,6 +90,10 @@ class HybridLoss(nn.Module):
         stim_names_multi=None,
         stim_from_label=None,
         param_subset=None,
+        pooled_stim_names=None,
+        pooled_pad_quantum: int = 8,
+        pooled_stim_norm: Optional[str] = None,
+        pooled_stim_norm_beta: float = 0.98,
         efel_weight: float = 0.0,
         mse_weight: float = 1.0,
         efel_features=None,
@@ -216,6 +221,34 @@ class HybridLoss(nn.Module):
         # before the unit->phys map, so the bridge always gets the full vector.
         # phys_par_range must still list ALL cell params.
         self.param_subset = [int(i) for i in param_subset] if param_subset else None
+        # `pooled_stim_names` (variant B): the stim VOCABULARY, indexed by the
+        #   per-sample stim id the dataloader supplies.  Order MUST match the pooled
+        #   pack's stim axis (meta['stim_names']), because the id is just an index
+        #   into it — a mismatch silently trains every sample against the wrong
+        #   protocol.  Unlike stim_names_multi (one sample -> all K stims as
+        #   channels), here one sample -> exactly one stim.
+        self.pooled_stim_names = (
+            [str(s) for s in pooled_stim_names] if pooled_stim_names else None
+        )
+        # Per-stim groups are padded up to a multiple of this, trading ~quantum/2
+        # wasted solves per group for a bounded number of XLA-traced batch shapes.
+        self._pooled_quantum = int(pooled_pad_quantum) if pooled_pad_quantum else 0
+        # Opt-in per-stim loss normalization for the pooled path ('ema' or None).
+        # None preserves the exact pre-existing behavior (raw per-sample mean).
+        assert pooled_stim_norm in (None, "ema"), \
+            f"pooled_stim_norm must be None or 'ema', got {pooled_stim_norm!r}"
+        self.pooled_stim_norm = pooled_stim_norm
+        self.pooled_stim_norm_beta = float(pooled_stim_norm_beta)
+        # stim id -> python-float EMA of that stim's recent (detached) group loss.
+        # Per-rank under DDP (not all-reduced): every rank sees IID batches, so the
+        # EMAs agree to within batch noise; syncing would cost a collective per step.
+        self._pooled_ema = {}
+        if self.pooled_stim_names:
+            K = len(self.pooled_stim_names)
+            per = (self.pad_batch_size / K) if self.pad_batch_size else float("nan")
+            print(f"[HybridLoss] pooled stims={self.pooled_stim_names} K={K} "
+                  f"local_batch={self.pad_batch_size} (~{per:.1f}/stim) "
+                  f"pad_quantum={self._pooled_quantum}", flush=True)
         self._mse = nn.MSELoss()
 
         # ── L1 soft-DTW / L2 low-pass / O1 randomized smoothing (all opt-in) ─────
@@ -306,9 +339,10 @@ class HybridLoss(nn.Module):
     # curriculum
     # ------------------------------------------------------------------
 
-    _SCHEDULABLE = ("mse_weight", "efel_weight", "dtw_weight", "blur_weight",
-                    "blur_sigma_scale", "lowpass_ms", "smooth_sigma",
-                    "channel_weight", "voltage_weight", "range_penalty_weight")
+    _SCHEDULABLE = ("mse_weight", "efel_weight", "dtw_weight", "dtw_band_ms",
+                    "dtw_gamma", "blur_weight", "blur_sigma_scale", "lowpass_ms",
+                    "smooth_sigma", "channel_weight", "voltage_weight",
+                    "range_penalty_weight")
 
     def set_epoch(self, epoch: int) -> None:
         """Update scheduled loss-term weights for `epoch` (O2/L2 curriculum).
@@ -414,13 +448,92 @@ class HybridLoss(nn.Module):
             total = total + self._voltage_loss_core(pred_unit + eps, true_volts, stim_idx)
         return total / float(self.smooth_samples)
 
+    def _pooled_voltage_loss(self, pred_unit: torch.Tensor, true_volts: torch.Tensor,
+                             stim_idx: torch.Tensor) -> torch.Tensor:
+        """Pooled multi-stim: each sample is ONE trace from ONE stimulus.
+
+        The batch mixes stimuli, so it is split by stim id and each group is run
+        through the normal single-stim path under its own protocol.  Total solves
+        per step equal the batch size (up to the padding below), so a pooled epoch
+        costs the same N*K solves as the joint variant -- the A/B isolates input
+        structure, not compute.
+
+        Group sizes fluctuate multinomially around B/K and a fresh batch shape makes
+        XLA retrace the vmapped jaxley sim, so each group is padded up to the next
+        multiple of `pooled_pad_quantum`.  That caps the number of traced shapes at
+        pad_batch_size/quantum (a handful, compiled once and cached) while wasting
+        only ~quantum/2 solves per group.  Padding repeats row 0 and is sliced off
+        before the loss, exactly as the single-stim path does, so no sample is
+        dropped and none is double-counted.
+        """
+        losses, weights = [], []
+        # Per-stim EMA normalization (opt-in): divide each group's loss by a
+        # detached running mean of that stim's recent loss, so every stimulus
+        # contributes O(1) to the total regardless of its raw loss scale.  Without
+        # it a loss averaged over a spike-mismatched battery is dominated by
+        # whichever stim has the largest raw DTW loss, and the quiet stims'
+        # subthreshold matching swamps the spike information (joint4, Finding 13).
+        # TRAIN-ONLY (gated on grad being enabled): validation reports the RAW
+        # per-sample mean, so the plateau scheduler tracks a stationary metric and
+        # stays comparable across arms.  EMA state is per-rank under DDP (see ctor).
+        use_norm = (self.pooled_stim_norm == "ema") and torch.is_grad_enabled()
+        for s in torch.unique(stim_idx).tolist():
+            sel = (stim_idx == s).nonzero(as_tuple=True)[0]
+            n = int(sel.numel())
+            if n == 0:
+                continue
+            sname = self.pooled_stim_names[int(s)]
+            q = self._pooled_quantum
+            pad_to = int(math.ceil(n / q) * q) if q else n
+            if self.pad_batch_size:
+                pad_to = min(pad_to, self.pad_batch_size)
+            l = self._voltage_loss_core(
+                pred_unit[sel], true_volts[sel], None,
+                stim_name_override=sname, pad_to=pad_to)
+            if use_norm:
+                d = float(l.detach())
+                if math.isfinite(d):
+                    prev = self._pooled_ema.get(int(s))
+                    # First sight initializes the EMA at the group's own loss, so
+                    # the first normalized step is exactly scale-1.
+                    ema = d if prev is None else (
+                        self.pooled_stim_norm_beta * prev
+                        + (1.0 - self.pooled_stim_norm_beta) * d)
+                    self._pooled_ema[int(s)] = ema
+                else:
+                    ema = self._pooled_ema.get(int(s))  # NaN/inf: don't poison it
+                # Soft-DTW can dip slightly negative; normalize only against a
+                # clearly-positive scale, otherwise pass the loss through raw.
+                if ema is not None and ema > 1e-8:
+                    l = l / ema
+            losses.append(l)
+            weights.append(float(n))
+        if not losses:
+            return pred_unit.new_zeros(())
+        # Weight by group size so the result equals the per-sample mean, i.e. it does
+        # not silently up-weight whichever stimulus happened to be rare in this batch.
+        tot = sum(weights)
+        out = pred_unit.new_zeros(())
+        for l, w in zip(losses, weights):
+            out = out + l * (w / tot)
+        return out
+
     def _voltage_loss_core(self, pred_unit: torch.Tensor, true_volts: torch.Tensor,
-                           stim_idx: Optional[torch.Tensor] = None) -> torch.Tensor:
+                           stim_idx: Optional[torch.Tensor] = None,
+                           stim_name_override: Optional[str] = None,
+                           pad_to: Optional[int] = None) -> torch.Tensor:
         """`pred_unit`  : (B, P) in unit-normalized space.
            `true_volts` : (B, T, C) with C = num_probes (after dataloader reshape)
                           or possibly (B, T, probes*stims) if multiple stims.
+           `stim_idx`   : (B,) per-sample stim id -> pooled mode (variant B).
+           `stim_name_override` : force one stim for this call (used by pooled mode
+                          once the batch has been split into same-stim groups).
         Returns scalar voltage MSE (in z-scored mV space).
         """
+        if stim_idx is not None and self.pooled_stim_names is not None:
+            # pooled mode (dataloader stim id).  The label-column mode
+            # (stim_from_label) also arrives as stim_idx but is handled below.
+            return self._pooled_voltage_loss(pred_unit, true_volts, stim_idx)
         # Per-parameter gradient preconditioning: reweight the gradient of the
         # voltage loss w.r.t. each output parameter BEFORE any transform, so the
         # scaling lands on ∂(voltage_loss)/∂pred_unit exactly.  Identity in the
@@ -453,9 +566,13 @@ class HybridLoss(nn.Module):
         # in-range, numerically-stable sample — and are sliced off before the
         # MSE, so they contribute nothing to the loss or to its gradient.
         cur_bs = pred_phys.shape[0]
-        do_pad = self.pad_batch_size is not None and 0 < cur_bs < self.pad_batch_size
+        # Pooled mode passes its own quantized target; otherwise pad to the canonical
+        # batch as before.
+        if pad_to is None:
+            pad_to = self.pad_batch_size
+        do_pad = pad_to is not None and 0 < cur_bs < pad_to
         if do_pad:
-            reps = self.pad_batch_size - cur_bs
+            reps = pad_to - cur_bs
             pred_phys = torch.cat([pred_phys, pred_phys[:1].expand(reps, -1)], dim=0)
 
         def _sim(stim_name):
@@ -495,6 +612,9 @@ class HybridLoss(nn.Module):
                 )
                 pairs.append((v[:ng, 0, :], true_volts[m][..., self.soma_probe_index]))
                 pair_w.append(ng / float(cur_bs))
+        elif stim_name_override is not None:                         # pooled: one stim/group
+            v_sim = _sim(stim_name_override)
+            pairs = [(v_sim[:, 0, :], true_volts[..., self.soma_probe_index])]
         elif self.stim_names_multi and self.probe_loss_indices is not None:  # Exp 1 combined
             # For each stim, sim the multi-probe cell and supervise every probe.
             # Channels are stim-major/probe-inner: data channel index = running count.
@@ -584,6 +704,7 @@ class HybridLoss(nn.Module):
         pred_unit: torch.Tensor,
         true_unit: Optional[torch.Tensor],
         true_volts: torch.Tensor,
+        stim_idx: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         ch = pred_unit.new_zeros(())
         if not self.mask_channels and self.channel_weight > 0:
@@ -591,10 +712,13 @@ class HybridLoss(nn.Module):
                 raise ValueError("channel loss enabled but true_unit is None")
             ch = self._mse(pred_unit, true_unit)
 
+        if stim_idx is not None and self.pooled_stim_names is None:
+            raise ValueError("got per-sample stim_idx but voltage_loss.pooled_stim_names "
+                             "is unset — the loss cannot tell which stim each sample used")
+
         v = pred_unit.new_zeros(())
         if self.voltage_weight > 0:
-            stim_idx = None
-            if self.stim_names_by_idx is not None:
+            if stim_idx is None and self.stim_names_by_idx is not None:
                 if true_unit is None:
                     raise ValueError("voltage_loss.stim_from_label set but the "
                                      "labels tensor (true_unit) is None")
@@ -630,7 +754,7 @@ class _ChannelOnlyAdapter(nn.Module):
         super().__init__()
         self._mse = nn.MSELoss()
 
-    def forward(self, pred_unit, true_unit, _images=None):
+    def forward(self, pred_unit, true_unit, _images=None, _stim_idx=None):
         return self._mse(pred_unit, true_unit)
 
 
@@ -830,6 +954,11 @@ def build_hybrid_loss(params) -> nn.Module:
         stim_from_label    = vl.get("stim_from_label"),
         # CNN predicts only these cell-param indices; rest pinned at default.
         param_subset       = vl.get("param_subset"),
+        pooled_stim_names  = vl.get("pooled_stim_names"),
+        pooled_pad_quantum = vl.get("pooled_pad_quantum", 8),
+        # Opt-in per-stim EMA loss normalization for pooled batches ('ema' | absent).
+        pooled_stim_norm      = vl.get("pooled_stim_norm"),
+        pooled_stim_norm_beta = float(vl.get("pooled_stim_norm_beta", 0.98)),
         # Soft-eFEL feature-matching voltage loss (opt-in; efel_weight=0 = off).
         efel_weight      = float(vl.get("efel_weight", 0.0)),
         mse_weight       = float(vl.get("mse_weight", 1.0)),
