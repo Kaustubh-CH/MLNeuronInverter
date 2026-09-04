@@ -30,17 +30,17 @@ RUNS=(
   "multistim_nc2|$V/l5ttpc_multistim/L5TTPC_multistim/salloc_55166043/out"
   "multistim_efel|$V/l5ttpc_multistim_efel/L5TTPC_multistim/salloc_55370141/out"
   "hybrid_efel|$V/l5ttpc_jaxley_hybrid_efel/L5TTPC_multistim/reg15/out"
-  "paramonly_3stim|$V/l5ttpc_multistim_paramonly/L5TTPC_multistim/debug_55374316/out"
-  "paramonly_ft80k|$V/l5ttpc_multistim_paramonly/L5TTPC_multistim/finetune_55375352/out"
+  "paramonly_3stim|$V/l5ttpc_multistim_paramonly/L5TTPC_multistim/debug_55374316/out|--cellSim l5ttpc --stimNames 5k50kInterChaoticB,5k0step_500,5k0chirp"
+  "paramonly_ft80k|$V/l5ttpc_multistim_paramonly/L5TTPC_multistim/finetune_55375352/out|--cellSim l5ttpc --stimNames 5k50kInterChaoticB,5k0step_500,5k0chirp"
 )
 
 echo "L5TTPC eval driver start $(date)  job=${SLURM_JOB_ID:-?}  node=$(srun -n1 hostname 2>/dev/null | head -1)"
 for r in "${RUNS[@]}"; do
-  name=${r%%|*}; mp=${r#*|}
+  name=${r%%|*}; rest=${r#*|}; mp=${rest%%|*}; extra=""; [[ "$rest" == *"|"* ]] && extra=${rest#*|}
   echo "===== $name  ($mp)  $(date)"
   if [ -f "$OUT/$name/summary.yaml" ]; then echo "  already scored -- skip"; continue; fi
   srun -n1 --gpus-per-task=1 python -u evaluate_voltage.py -m "$mp" --outDir "$OUT/$name" \
-       -n 200 --numOverlay 6 --noGrad --simBatch 64 --savePng > "$OUT/$name.log" 2>&1 \
+       -n 200 --numOverlay 6 --noGrad --simBatch 64 --savePng $extra > "$OUT/$name.log" 2>&1 \
     || echo "  $name: FAILED (see $OUT/$name.log)"
   grep -E 'mean R²|MSE_z mean|spike count|DONE|Error|error' "$OUT/$name.log" | tail -8
 done

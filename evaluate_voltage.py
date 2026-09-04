@@ -79,6 +79,13 @@ def get_parser():
                    help="also write the individual .png figures.  Default is PDF-only: "
                         "everything lands in trace_overlays.pdf (channel grid, per-sample "
                         "overlays, loss histogram, RMSE CDF).")
+    p.add_argument("--cellSim", default=None,
+                   help="jaxley cell for the re-simulation when the run has no voltage_loss "
+                        "block (param-only training), e.g. l5ttpc / ca3_pyramidal.")
+    p.add_argument("--stimNames", default=None,
+                   help="comma list of stimulus CSV stems in PROBE order for --cellSim runs.")
+    p.add_argument("--clampTanh", action="store_true",
+                   help="apply tanh to the CNN output before unit->phys for --cellSim runs.")
     p.add_argument("--noGrad", action="store_true",
                    help="Forward-only jaxley (handle.simulate_batch, no jax.vjp graph). "
                         "REQUIRED for the 19-param L5TTPC cell: the training bridge's VJP "
@@ -105,6 +112,10 @@ def load_trained_model(modelPath: str, device: torch.device):
     # Strip "module." prefix if present (saved from DDP).
     if any(k.startswith("module.") for k in state):
         state = {k[len("module."):]: v for k, v in state.items()}
+    # blank_model.pth may itself be a DataParallel / DDP wrapper (1-GPU runs
+    # wrap in DataParallel); unwrap so the stripped keys match.
+    if model.__class__.__name__ in ("DataParallel", "DistributedDataParallel"):
+        model = model.module
     model.load_state_dict(state)
     model.to(device).eval()
     return model, trainMD
@@ -175,7 +186,20 @@ def main():
     model, trainMD = load_trained_model(args.modelPath, device)
 
     # Voltage-loss config from sum_train.yaml — has cell_name, phys_par_range, etc.
-    vl = trainMD["train_params"]["voltage_loss"]
+    vl = trainMD["train_params"].get("voltage_loss")
+    if vl is None:
+        # Param-only (supervised) runs never built a voltage loss, so the
+        # simulator config must come from the CLI.
+        if not args.cellSim:
+            sys.exit("[eval] this run has no voltage_loss block (param-only training); "
+                     "pass --cellSim <jaxley cell> and --stimNames <a,b,c in probe order>")
+        names = [x for x in (args.stimNames or "").split(",") if x]
+        vl = {"cell_name_for_sim": args.cellSim,
+              "stim_name": names[0] if names else None,
+              "stim_names_multi": names if len(names) > 1 else None,
+              "fp64": True, "clamp_unit_tanh": bool(args.clampTanh),
+              "t_max_override": "auto"}
+        print(f"[eval] WARN: no voltage_loss block in sum_train.yaml -> simulator config from CLI: {vl}")
     cell_name      = vl["cell_name_for_sim"]
     phys_par_range = vl.get("phys_par_range")  # may be None if read from H5 meta
     clamp_tanh     = bool(vl.get("clamp_unit_tanh", False))
