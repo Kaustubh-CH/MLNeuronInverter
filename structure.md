@@ -303,6 +303,10 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 
 ### scripts/
 
+- `scripts/all_models_time_table.py` - Every trained model of record: samples/epoch, GPUs, measured s/epoch (steady
+    - defs: tb_epoch_times, g
+- `scripts/chaoticramp_run_table.py` - Table of every chaoticRamp CA3 run of record: recipe knobs, samples, epochs,
+    - defs: tb_epoch_times, g
 - `scripts/collect_vo_ledger.py` - Collect CA3 voltage-only run metrics into one comparison CSV (the "vo ledger").
     - defs: resolve_summary, design_name, row_from_summary, load_existing, main
 - `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 from a registered jaxley cell.
