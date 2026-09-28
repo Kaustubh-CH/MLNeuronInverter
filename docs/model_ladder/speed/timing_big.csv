@@ -1,0 +1,14 @@
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+2,fp64,0.1,500.0,512,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 2498560000 bytes.,,,27.9
+2,fp64,0.1,500.0,1024,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 4997120000 bytes.,,,27.9
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+4,fp64,0.1,500.0,512,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 4509696000 bytes.,,,21.0
+4,fp64,0.1,500.0,1024,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 9019392000 bytes.,,,21.0
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+1,fp64,0.1,500.0,512,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 6117306056 bytes.,,,29.6
+1,fp64,0.1,500.0,1024,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 2985984000 bytes.,,,30.9
+1,fp64,0.1,500.0,2048,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 5971968000 bytes.,,,30.9
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+2,fp32,0.1,500.0,512,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 1249280000 bytes.,,,31.7
+2,fp32,0.1,500.0,1024,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 2498560000 bytes.,,,31.7
+2,fp64,0.2,500.0,512,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 10518298768 bytes.,,,25.0

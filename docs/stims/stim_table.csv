@@ -1,0 +1,94 @@
+stem,family,n,t_ms,min_nA,max_nA,mean_nA,std_nA,end_nA,flag,used_by
+5k0chaotic4,#chaotic#,5000,500,-0.796,3.034,0.071,0.620,0.000,,"3: ca3_joint4_dtw_amp_4n,ca3_pool4_dtw_amp_4n,ca3_pool4_dtw_amp_v2_4n"
+5k0chaotic4_i4k,#chaotic#,4000,400,-0.795,3.029,0.071,0.619,0.000,,
+5k0chaotic5A,#chaotic#A,5000,500,-0.472,1.823,0.042,0.372,0.000,,
+5k0chaotic5B,#chaotic#B,5000,500,-0.671,3.070,0.026,0.389,0.000,,
+5k0chaotic5C,#chaotic#C,5000,500,-0.516,1.629,0.041,0.339,0.000,,
+5k0chaotic_kevinA,#chaotic_kevinA,5000,500,-0.236,0.911,0.021,0.186,0.000,,
+5k0chaotic_kevinB,#chaotic_kevinB,5000,500,-0.671,3.070,0.026,0.389,0.000,,
+5k0chirp,#chirp,5000,500,-1.000,1.000,0.050,0.526,0.000,,
+5k0chirpScaled,#chirpScaled,5000,500,-3.000,3.000,0.150,1.578,0.000,,
+5k0ramp,#ramp,5000,500,0.000,0.500,0.150,0.166,0.000,,
+5k0rampScaled,#rampScaled,5000,500,0.000,3.999,1.200,1.327,0.000,,
+5k0step_200,#step_#,5000,500,0.000,0.200,0.120,0.098,0.000,,"2: ca3_vo_A7_hybrid,ca3_vo_A7_mse"
+5k0step_500,#step_#,5000,500,0.000,0.500,0.300,0.245,0.000,,"3: ca3_vo_A7_hybrid,ca3_vo_A7_mse,ca3_vo_dtw_chaoramp_step"
+5k0step_200_16.00x,#step_#_#x,5000,500,0.000,3.200,1.920,1.568,0.000,,
+5k0step_500_16.00x,#step_#_#x,5000,500,0.000,8.000,4.800,3.919,0.000,,
+BBP_Exp_Step1000,BBP_Exp_Step#,6000,600,0.000,1.000,0.667,0.471,0.000,,
+BBP_Exp_Step1000_i4k,BBP_Exp_Step#,4000,400,0.000,1.000,0.667,0.471,0.000,,"3: ca3_joint4_dtw_amp_4n,ca3_pool4_dtw_amp_4n,ca3_pool4_dtw_amp_v2_4n"
+BBP_Exp_Step200,BBP_Exp_Step#,6000,600,0.000,0.200,0.133,0.094,0.000,,
+BBP_Exp_Step600_i4k,BBP_Exp_Step#,4000,400,0.000,0.600,0.400,0.283,0.000,,
+BBP_Exp_Step800,BBP_Exp_Step#,6000,600,0.000,0.800,0.533,0.377,0.000,,
+BBP_Exp_Step1000_2.00x,BBP_Exp_Step#_#x,6000,600,0.000,2.000,1.333,0.943,0.000,,
+BBP_Exp_Step1000_4.00x,BBP_Exp_Step#_#x,6000,600,0.000,4.000,2.667,1.886,0.000,,
+BBP_Exp_Step1000_8.00x,BBP_Exp_Step#_#x,6000,600,0.000,8.000,5.333,3.771,0.000,,
+4kChaoticRamp,ChaoticRamp,4000,400,-0.395,6.000,1.536,1.498,0.000,,
+5kChaoticRamp,ChaoticRamp,5000,500,-0.395,6.000,1.229,1.474,0.000,,"27: ca3_joint4_dtw_amp_4n,ca3_pool4_dtw_amp_4n,ca3_pool4_dtw_amp_v2_4n,ca3_vo_chaoticramp_dtw ..."
+ICB_hold_5k,ICB_hold,5000,500,-1.541,6.773,0.007,0.864,-0.050,,
+4k50kInterChaoticB,InterChaoticB,4000,400,-1.492,6.822,0.071,0.966,0.000,,"6: ca3_voltonly_dtw_smooth,ca3_voltonly_mse_baseline,ladder_l5ttpc_nc2_icb4k_sup,ladder_l5ttpc_nc2_icb4k_vo_fp32dt02 ..."
+5k50kInterChaoticB,InterChaoticB,5000,500,-1.492,6.822,0.057,0.864,0.000,,"15: ballBBP_matched,ballBBP_voltage_only,ca3_matched,ca3_vo_interchaoticB_dtw_8n ..."
+4k50kInterchaotic_50khz,Interchaotic,4000,400,-0.525,2.025,0.059,0.462,0.000,,
+4k50kInterchirp_50khz,Interchirp,4000,400,-1.000,1.000,0.062,0.588,0.000,,
+4k50kInterramp_50khz,Interramp,4000,400,0.000,499.867,187.450,165.347,0.000,PA_AS_NA,
+4k50kInterramp_50khz_i4k,Interramp_#khz,4000,400,0.000,499.867,187.450,165.347,0.000,PA_AS_NA,
+4k50kInterstep_200_50khz,Interstep_#,4000,400,0.000,200.000,150.000,86.603,0.000,PA_AS_NA,
+4k50kInterstep_500_50khz,Interstep_#,4000,400,0.000,500.000,375.000,216.506,0.000,PA_AS_NA,
+4k50kInterstep_500_50khz_i4k,Interstep_#_#khz,4000,400,0.000,500.000,375.000,216.506,0.000,PA_AS_NA,
+5kRamp8pA,Ramp#pA,5000,500,0.000,0.800,0.240,0.265,0.000,,
+Roy1000_ica5k,Roy#_ica#k,5000,500,-0.974,1.112,-0.585,0.217,-0.600,,
+Roy100_ica5k,Roy#_ica#k,5000,500,-0.637,-0.428,-0.598,0.022,-0.600,,
+Roy1500_ica5k,Roy#_ica#k,5000,500,-1.161,1.967,-0.578,0.325,-0.599,,
+Roy2000_ica5k,Roy#_ica#k,5000,500,-1.347,2.822,-0.571,0.433,-0.599,,
+Roy500_ica5k,Roy#_ica#k,5000,500,-0.787,0.257,-0.592,0.108,-0.600,,
+Roy1000_icaRec_5k,Roy#_icaRec,5000,500,-0.377,1.699,0.015,0.215,0.001,,"15: ca3_royexp_ft_icarec,ca3_royexp_ft_icarec_wide,ca3_royexp_ft_icarec_wide_dtw,ca3_royexp_ft_icarec_wide_dtwefel ..."
+Roy100_icaRec_5k,Roy#_icaRec,5000,500,-0.037,0.170,0.002,0.022,0.000,,"15: ca3_royexp_ft_icarec,ca3_royexp_ft_icarec_wide,ca3_royexp_ft_icarec_wide_dtw,ca3_royexp_ft_icarec_wide_dtwefel ..."
+Roy1500_icaRec_5k,Roy#_icaRec,5000,500,-0.566,2.548,0.022,0.323,0.001,,"15: ca3_royexp_ft_icarec,ca3_royexp_ft_icarec_wide,ca3_royexp_ft_icarec_wide_dtw,ca3_royexp_ft_icarec_wide_dtwefel ..."
+Roy2000_icaRec_5k,Roy#_icaRec,5000,500,-0.754,3.395,0.029,0.430,0.001,,"15: ca3_royexp_ft_icarec,ca3_royexp_ft_icarec_wide,ca3_royexp_ft_icarec_wide_dtw,ca3_royexp_ft_icarec_wide_dtwefel ..."
+Roy500_icaRec_5k,Roy#_icaRec,5000,500,-0.189,0.850,0.008,0.108,0.001,,"15: ca3_royexp_ft_icarec,ca3_royexp_ft_icarec_wide,ca3_royexp_ft_icarec_wide_dtw,ca3_royexp_ft_icarec_wide_dtwefel ..."
+Roy1000_icav2_5k,Roy#_icav#,5000,500,-0.420,1.646,-0.035,0.215,-0.050,,"9: ca3_royexp_1stim_1000,ca3_royexp_1stim_1000_dtw,ca3_royexp_1stim_1500,ca3_royexp_1stim_1500_dtw ..."
+Roy100_icav2_5k,Roy#_icav#,5000,500,-0.087,0.120,-0.048,0.022,-0.050,,"9: ca3_royexp_1stim_1000,ca3_royexp_1stim_1000_dtw,ca3_royexp_1stim_1500,ca3_royexp_1stim_1500_dtw ..."
+Roy1500_icav2_5k,Roy#_icav#,5000,500,-0.606,2.494,-0.028,0.322,-0.050,,"9: ca3_royexp_1stim_1000,ca3_royexp_1stim_1000_dtw,ca3_royexp_1stim_1500,ca3_royexp_1stim_1500_dtw ..."
+Roy2000_icav2_5k,Roy#_icav#,5000,500,-0.791,3.342,-0.021,0.430,-0.050,,"9: ca3_royexp_1stim_1000,ca3_royexp_1stim_1000_dtw,ca3_royexp_1stim_1500,ca3_royexp_1stim_1500_dtw ..."
+Roy500_icav2_5k,Roy#_icav#,5000,500,-0.235,0.799,-0.043,0.108,-0.050,,"9: ca3_royexp_1stim_1000,ca3_royexp_1stim_1000_dtw,ca3_royexp_1stim_1500,ca3_royexp_1stim_1500_dtw ..."
+Roy2000_scale_5k,Roy#_scale,5000,500,-0.741,3.391,0.028,0.430,0.000,,
+Updatedchaotic3,Updatedchaotic#,1600,160,-0.523,1.993,0.059,0.461,0.000,,
+Updatedchaotic4,Updatedchaotic#,1600,160,-0.785,2.989,0.088,0.691,0.000,,
+Updatedchirp,Updatedchirp,1600,160,-1.000,1.000,0.062,0.588,0.000,,
+Updatedramp,Updatedramp,1600,160,0.000,0.500,0.187,0.165,0.000,,
+Updatedstep_200,Updatedstep_#,1600,160,0.000,0.200,0.150,0.087,0.000,,
+Updatedstep_500,Updatedstep_#,1600,160,0.000,0.500,0.375,0.217,0.000,,
+cahotic_50khz,cahotic,20000,2000,-1.516,6.834,0.071,0.966,0.000,,
+chaotic3,chaotic#,4000,400,-0.531,2.023,0.059,0.461,0.000,,
+chaotic3_i4k,chaotic#,4000,400,-0.531,2.023,0.059,0.461,0.000,,
+chaotic4,chaotic#,4000,400,-0.796,3.034,0.088,0.692,0.000,,
+chaotic_1,chaotic_#,10000,1000,-1.512,6.831,0.105,1.425,0.000,,
+chaotic_2,chaotic_#,8000,800,-1.516,6.834,0.105,1.425,-0.000,,
+chirp,chirp,4000,400,-1.000,1.000,0.062,0.588,0.000,,
+chirp16a,chirp#a,16000,1600,-1.378,2.344,-0.205,0.887,0.000,,
+chirp23a,chirp#a,23000,2300,-1.378,2.344,-0.360,0.815,0.000,,
+chirp23a_i4k,chirp#a,4000,400,-1.359,2.343,-0.360,0.815,0.000,,"3: ca3_joint4_dtw_amp_4n,ca3_pool4_dtw_amp_4n,ca3_pool4_dtw_amp_v2_4n"
+chirp_05,chirp_#,7600,760,-0.500,1.500,0.405,0.681,0.000,,
+chirp_damp,chirp_damp,7600,760,-1.490,2.479,0.439,0.905,0.000,,
+chirp_damp_10k,chirp_damp_#k,10000,1000,-1.490,2.479,0.114,1.013,0.000,,
+chirp_damp_8k,chirp_damp_#k,8000,800,-1.490,2.479,0.354,0.948,0.000,,
+chirp_damp_16k_v1,chirp_damp_#k_v#,16000,1600,-1.378,2.344,-0.205,0.887,0.000,,
+he_1i_1,he_#i_#,7600,760,-0.402,1.672,0.159,0.478,0.000,,
+passiveReverse5k+10pA,passiveReverse#k+#pA,5000,500,0.000,0.010,0.006,0.005,0.000,,
+passiveReverse5k+20pA,passiveReverse#k+#pA,5000,500,0.000,0.020,0.012,0.010,0.000,,
+passiveReverse5k+30pA,passiveReverse#k+#pA,5000,500,0.000,0.030,0.018,0.015,0.000,,
+passiveReverse5k+40pA,passiveReverse#k+#pA,5000,500,0.000,0.040,0.024,0.020,0.000,,
+passiveReverse5k+50pA,passiveReverse#k+#pA,5000,500,0.000,0.050,0.030,0.024,0.000,,
+passiveReverse5k-00pA,passiveReverse#k-#pA,5000,500,0.000,0.000,0.000,0.000,0.000,,
+passiveReverse5k-10pA,passiveReverse#k-#pA,5000,500,-0.010,0.000,-0.006,0.005,0.000,,
+passiveReverse5k-20pA,passiveReverse#k-#pA,5000,500,-0.020,0.000,-0.012,0.010,0.000,,
+passiveReverse5k-30pA,passiveReverse#k-#pA,5000,500,-0.030,0.000,-0.018,0.015,0.000,,
+passiveReverse5k-40pA,passiveReverse#k-#pA,5000,500,-0.040,0.000,-0.024,0.020,0.000,,
+passiveReverse5k-50pA,passiveReverse#k-#pA,5000,500,-0.050,0.000,-0.030,0.024,0.000,,"2: ca3_vo_A7_hybrid,ca3_vo_A7_mse"
+passiveReverse5k-70pA,passiveReverse#k-#pA,5000,500,-0.070,0.000,-0.042,0.034,0.000,,
+ramp,ramp,4000,400,0.000,0.500,0.188,0.165,0.000,,
+ramp_500,ramp_#,20000,2000,0.000,500.000,187.500,165.366,0.000,PA_AS_NA,
+ramp_500_i4k,ramp_#,4000,400,0.000,499.983,187.500,165.385,0.000,PA_AS_NA,
+step,step,7600,760,0.000,0.200,0.189,0.045,0.000,,
+step_200,step_#,4000,400,0.000,0.200,0.150,0.087,0.000,,
+step_500,step_#,4000,400,0.000,0.500,0.375,0.217,0.000,,
+testSave,testSave,4150,415,-0.796,3.034,0.085,0.680,0.000,,

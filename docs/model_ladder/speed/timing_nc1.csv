@@ -1,0 +1,6 @@
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+1,fp64,0.1,500.0,64,"100,10",132.5,3638,25980,0.4059,2.46,7.5
+1,fp64,0.1,500.0,128,"100,10",93.3,3924,29925,0.2338,4.28,14.4
+1,fp64,0.1,500.0,256,"100,10",102.4,4505,36233,0.1415,7.07,28.8
+1,fp64,0.2,500.0,128,"100,10",118.5,1960,14932,0.1167,8.57,7.6
+1,fp64,0.25,500.0,128,"100,10",,,ERR The desired simulation duration is longer than `prod(nested_length)`.,,,7.6

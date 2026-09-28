@@ -1,0 +1,20 @@
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+1,fp64,0.1,500.0,512,"100,10",163.5,5935,49412,0.0965,10.36,57.7
+1,fp64,0.1,500.0,1024,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 2991955968 bytes.,,,64.3
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+2,fp64,0.1,500.0,256,"100,10",214.5,6749,60329,0.2357,4.24,48.3
+2,fp64,0.1,500.0,512,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 2503557120 bytes.,,,65.5
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+2,fp32,0.1,500.0,256,"100,10",187.4,4990,42192,0.1648,6.07,24.3
+2,fp32,0.1,500.0,512,"100,10",149.2,6336,57662,0.1126,8.88,48.3
+1,fp64,0.2,500.0,512,"100,10",133.1,2981,24765,0.0484,20.67,29.2
+1,fp64,0.25,500.0,512,"100,10",97.7,2390,19858,0.0388,25.78,29.2
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+4,fp64,0.1,500.0,128,"100,10",304.3,8770,79947,0.6246,1.60,43.6
+4,fp64,0.1,500.0,256,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 11912155896 bytes.,,,66.0
+2,fp64,0.2,500.0,256,"100,10",176.9,3356,30199,0.1180,8.48,24.5
+2,fp64,0.25,500.0,256,"100,10",129.8,2702,24199,0.0945,10.58,24.5
+4,fp64,0.2,500.0,128,"100,10",257.9,4374,40075,0.3131,3.19,22.2
+4,fp32,0.1,500.0,128,"100,10",271.0,6866,57226,0.4471,2.24,22.0
+4,fp32,0.1,500.0,256,"100,10",226.2,8109,76455,0.2987,3.35,43.7
+2,fp32,0.2,400.0,256,"100,10",155.0,2013,16845,0.0658,15.20,10.1

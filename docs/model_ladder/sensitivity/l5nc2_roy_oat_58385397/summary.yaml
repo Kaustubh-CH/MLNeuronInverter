@@ -1,0 +1,143 @@
+best_stim_per_channel:
+  cm_axonal:
+    best: Roy2000_icaRec_5k
+    top3:
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.9318640471015811}
+    - {stim: 5k50kInterChaoticB, variation_mV: 0.34424064629191264}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.0207502733952236}
+    variation_mV: 0.9318640471015811
+  cm_somatic:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 0.6157739275909518}
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.4161665589014976}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.020040841816508562}
+    variation_mV: 0.6157739275909518
+  e_pas_all:
+    best: Roy1000_icaRec_5k
+    top3:
+    - {stim: Roy1000_icaRec_5k, variation_mV: 3.650276908273296}
+    - {stim: Roy500_icaRec_5k, variation_mV: 3.64610293242627}
+    - {stim: Roy100_icaRec_5k, variation_mV: 3.641338511343238}
+    variation_mV: 3.650276908273296
+  gCa_HVAbar_Ca_HVA_axonal:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 0.6130434620667186}
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.42636604918314397}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 6.08388518623426e-08}
+    variation_mV: 0.6130434620667186
+  gCa_LVAstbar_Ca_LVAst_axonal:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 0.6727429073025676}
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.36601003091339684}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.0036980170293451522}
+    variation_mV: 0.6727429073025676
+  gCa_LVAstbar_Ca_LVAst_somatic:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 0.2745891637100597}
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.0003135445687338372}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.00013976694382375327}
+    variation_mV: 0.2745891637100597
+  gIhbar_Ih_dend:
+    best: Roy2000_icaRec_5k
+    top3:
+    - {stim: Roy2000_icaRec_5k, variation_mV: 1.884977758643306}
+    - {stim: Roy100_icaRec_5k, variation_mV: 1.814716143715722}
+    - {stim: Roy500_icaRec_5k, variation_mV: 1.7690840572637394}
+    variation_mV: 1.884977758643306
+  gImbar_Im_apical:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 0.15217129403514398}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.016028622308272657}
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.015335566483473968}
+    variation_mV: 0.15217129403514398
+  gK_Pstbar_K_Pst_axonal:
+    best: Roy2000_icaRec_5k
+    top3:
+    - {stim: Roy2000_icaRec_5k, variation_mV: 4.757501423972805}
+    - {stim: 5k50kInterChaoticB, variation_mV: 4.466113224038205}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.5542676467143709}
+    variation_mV: 4.757501423972805
+  gK_Tstbar_K_Tst_axonal:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 0.14470857441256302}
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.06480554509664814}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.002374863676975134}
+    variation_mV: 0.14470857441256302
+  gNaTa_tbar_NaTa_t_axonal:
+    best: Roy2000_icaRec_5k
+    top3:
+    - {stim: Roy2000_icaRec_5k, variation_mV: 1.2472419046792413}
+    - {stim: 5k50kInterChaoticB, variation_mV: 1.2184639447900447}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.8902864345278935}
+    variation_mV: 1.2472419046792413
+  gNaTs2_tbar_NaTs2_t_apical:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 1.577134149689846}
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.002129422250996359}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.00029749376967175555}
+    variation_mV: 1.577134149689846
+  gNaTs2_tbar_NaTs2_t_somatic:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 1.5265242531014742}
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.23562982592856582}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.0034604185400033847}
+    variation_mV: 1.5265242531014742
+  gNap_Et2bar_Nap_Et2_axonal:
+    best: Roy2000_icaRec_5k
+    top3:
+    - {stim: Roy2000_icaRec_5k, variation_mV: 5.416815392907342}
+    - {stim: 5k50kInterChaoticB, variation_mV: 4.6718499788345005}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.004102700916424656}
+    variation_mV: 5.416815392907342
+  gSK_E2bar_SK_E2_axonal:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 1.288098032496932}
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.8962908416761453}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.3387203340449534}
+    variation_mV: 1.288098032496932
+  gSKv3_1bar_SKv3_1_apical:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 0.24299500635644297}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.06511449259749996}
+    - {stim: Roy1000_icaRec_5k, variation_mV: 0.0602235725029017}
+    variation_mV: 0.24299500635644297
+  gSKv3_1bar_SKv3_1_somatic:
+    best: 5k50kInterChaoticB
+    top3:
+    - {stim: 5k50kInterChaoticB, variation_mV: 1.846141847029171}
+    - {stim: Roy2000_icaRec_5k, variation_mV: 1.017468656249984}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.3991766208661854}
+    variation_mV: 1.846141847029171
+  g_pas_axonal:
+    best: Roy2000_icaRec_5k
+    top3:
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.6301482682055328}
+    - {stim: Roy100_icaRec_5k, variation_mV: 0.28452886168740943}
+    - {stim: Roy500_icaRec_5k, variation_mV: 0.2701402541802045}
+    variation_mV: 0.6301482682055328
+  g_pas_somatic:
+    best: Roy2000_icaRec_5k
+    top3:
+    - {stim: Roy2000_icaRec_5k, variation_mV: 0.7535311361928216}
+    - {stim: 5k50kInterChaoticB, variation_mV: 0.14109070546026425}
+    - {stim: Roy1500_icaRec_5k, variation_mV: 0.07380856690325098}
+    variation_mV: 0.7535311361928216
+cell: l5ttpc
+fp64: true
+n_channels: 19
+n_samples_per_set: 500
+n_stims: 6
+solver_dt_ms: 0.2
+stim_dir: /pscratch/sd/k/ktub1999/main/DL4neurons2/stims
+stim_scale: {5k50kInterChaoticB: 1.5, Roy1000_icaRec_5k: 1.0, Roy100_icaRec_5k: 1.0,
+  Roy1500_icaRec_5k: 1.0, Roy2000_icaRec_5k: 1.0, Roy500_icaRec_5k: 1.0}

@@ -1,0 +1,5 @@
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+1,fp32,0.1,500.0,128,"100,10",127.9,3167,24255,0.1895,5.28,7.5
+2,fp32,0.1,500.0,128,"100,10",170.4,4403,34255,0.2676,3.74,12.1
+4,fp32,0.1,500.0,128,"100,10",274.9,6882,57447,0.4488,2.23,21.9
+2,fp32,0.1,500.0,128,none,,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 3125760000 bytes.,,,31.6

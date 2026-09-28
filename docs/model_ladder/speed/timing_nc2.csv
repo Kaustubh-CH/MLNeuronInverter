@@ -1,0 +1,7 @@
+ncomp,precision,dt_ms,t_max_ms,B,ckpt,compile_s,fwd_ms,fwd_bwd_ms,gpu_s_per_sim,sims_per_s,peak_GB
+2,fp64,0.1,500.0,64,"100,10",183.6,5015,36809,0.5751,1.74,12.1
+2,fp64,0.1,500.0,128,"100,10",130.6,5377,43574,0.3404,2.94,24.1
+2,fp64,0.1,500.0,256,"100,10",,,ERR RESOURCE_EXHAUSTED: Out of memory while trying to allocate 1249280000 bytes.,,,30.4
+2,fp64,0.2,500.0,128,"100,10",166.5,2700,21672,0.1693,5.91,12.3
+2,fp64,0.25,500.0,128,"100,10",,,ERR The desired simulation duration is longer than `prod(nested_length)`.,,,12.3
+2,fp64,0.1,400.0,128,"100,10",181.7,4325,34778,0.2717,3.68,19.7
