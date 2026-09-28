@@ -1,0 +1,94 @@
+# 200k VOLTAGE-ONLY RUN (2026-09-09): the fp32/dt0.2 pilot recipe scaled to 200k train samples,
+# 50 epochs, 8 x 80 GB nodes (32 GPUs).  Pack: the 50k pilot recipe regenerated at N=250k
+# (200k/25k/25k): L5 ncomp=2, solver dt 0.2, 400 ms 4k50kInterChaoticB, stim x1.5, run.py sampling.
+# Changes vs the pilot design:
+#   batch_size 128/GPU  -> global batch 4096 on 32 GPUs (2x the recipe's 2048; 256 would be 8192
+#                          and halve the optimizer steps: 200k/4096 x 50 = 2440 steps vs pilot 1950)
+#   max_epochs 50
+#   plateau_patience 25 -> the pilot's plateau scheduler cut the LR 5x (1e-4 -> 2.4e-7) after the
+#                          eFEL ramp inflated the val loss; with patience 25 it cannot fire before ~ep 45
+# Expected ~11-12 min/epoch on 32 GPUs (0.108 GPU-s/sample at B=128) -> ~9.5 h; 12 h wall.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/model_ladder_data/l5ttpc_nc2_icb4k_bbp_dt02_250k/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 50
+batch_size: 128
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 25, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: l5ttpc
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True          # labels never enter the loss
+    stim_name:         4k50kInterChaoticB
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    range_penalty_weight: 0.0
+    t_max_override:    auto          # 4000 samples x 0.1 ms = 400 ms
+    sim_dt_override:   0.2           # solver step; pack traces are decimated to this grid
+    solver:            bwd_euler
+    fp64:              False         # fp32 solve (job env sets JAX_ENABLE_X64=false)
+    checkpoint_lengths: [201, 10]    # 2000 steps + 1; inner 10 keeps memory ~10 GB at B=256
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    blur_weight:       0.0
+    smooth_sigma:      0.0
+    smooth_samples:    1
+    lowpass_ms:        0.0
+    efel_weight:       0.2
+    efel_features:     [voltage_base, AP_amplitude]
+    schedule:
+        efel_weight:  { start: 0.05, end: 0.2, epochs: 20 }
+
+model:
+    myId:    ladder_l5ttpc_nc2_icb4k_vo_fp32dt02_200k
+    comment: L5 nc2 voltage-only 200k/50ep on 32 GPUs, fp32 + dt0.2 + 400ms InterChaoticB, patience 25, kernel 128
+    outputSize_override: 19
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        # kernel 128 (user request 2026-09-09, the CA3 k128 experimental-transfer recipe).  Conv1d has
+        # no padding, so on the 2001-sample dt-0.2 input three 128-taps blocks only fit with the first
+        # pool at 2: 2001-127=1874 /2=937 -> 810 /4=202 -> 75 /4=18 (pool 4 first would leave 85 < 128).
+        # NB 128 taps on the 0.2 ms grid = 25.6 ms, twice the span of k128 on the 0.1 ms CA3 grid.
+        kernel: [128, 128, 128]
+        pool:   [2,   4,   4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

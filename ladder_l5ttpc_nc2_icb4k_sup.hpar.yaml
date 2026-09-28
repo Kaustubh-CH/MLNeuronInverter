@@ -1,0 +1,73 @@
+# SUPERVISED TWIN of the fp32/dt0.2 pilot (2026-09-09): L5 ncomp=2, param-MSE (use_voltage_loss False),
+# on the SAME pack the voltage-only pilot trained on, so the two are directly comparable:
+#   /pscratch/sd/k/ktub1999/model_ladder_data/l5ttpc_nc2_icb4k_bbp_dt02/l5ttpc_nc2_bbp_synth.mlPack1.h5
+#   50k (40k/5k/5k), 400 ms 4k50kInterChaoticB at dt 0.2, stim x1.5, DL4neurons2 run.py sampling
+#   (conductances +-1 decade, e_pas/cm LINEAR "lin" rows).
+# Training never calls jaxley; the voltage_loss block only documents the simulator for
+# evaluate_voltage (sim_dt_override 0.2 = the pack grid, stim scale 1.5 read from the pack meta).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/model_ladder_data/l5ttpc_nc2_icb4k_bbp_dt02/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0003]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 0
+
+use_voltage_loss: False
+voltage_loss:
+    # supervised param-MSE; this block only documents the simulator for evaluate_voltage
+    cell_name_for_sim: l5ttpc
+    channel_weight:    1.0
+    voltage_weight:    0.0
+    mask_channels:     False
+    stim_name:         4k50kInterChaoticB
+    soma_probe_index:  0
+    clamp_unit_tanh:   True         # tanh-bounded outputs (project_ca3_supervised_tanh)
+    t_max_override:    auto          # 4000 x 0.1 ms = 400 ms
+    sim_dt_override:   0.2           # pack grid (meta timeAxis.step); eval simulates on it
+    solver:            bwd_euler
+    fp64:              True
+
+model:
+    myId:    ladder_l5ttpc_nc2_icb4k_sup
+    comment: supervised twin of the nc2 fp32/dt0.2 voltage-only pilot (same pack)
+    outputSize_override: 19
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

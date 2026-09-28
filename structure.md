@@ -186,6 +186,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser, zscore, spikes_pos, main
 - `plot_exp_overlay_royv2_l5.py` - Cross-cell-model probe: score the L5TTPC jaxley model on Roy v2 recordings.
     - defs: get_parser, zscore, zfix, spikes_pos, sim_family, main
+- `plot_exp_overlay_royv2_l5dt02.py` - Score a dt-0.2 L5 nc2 model (the fp32/dt0.2 voltage-only pilot, its 200k successor, or an
+    - defs: get_parser, zscore, zfix, spikes_pos, sim_family, main
 - `plot_exp_overlay_stimch.py` - Evaluate a stim-as-channel single-sweep model on held-out Roy neurons.
     - defs: get_parser, zscore, zfix, spikes_pos, main
 - `predict.py` - read trained net : model+weights
@@ -194,6 +196,12 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser, load_model, model_infer, compute_dummy_residual
 - `predict_exp.py` - read trained net : model+weights
     - defs: get_parser, model_infer_exper, M_get_phys_packing
+- `sensitivity_analysis.py` - Identifiability / sensitivity analysis of a jaxley-cell inverse problem under a stim battery.
+    - defs: get_parser, resolve_phys_range, operating_points, feature_list, short_name, spike_counts, main
+- `sensitivity_variation.py` - One-at-a-time (OAT) voltage-variation sensitivity analysis for jaxley cells.
+    - defs: get_parser, compute_efel_variation, compute_metric_variation, compute_variance_metrics, resolve_phys_range, discover_stims, build_unit_samples, simulate_stim, main, write_outputs, write_efel_outputs, write_scalar_metric_outputs, _plot_su...
+- `sensitivity_variation_merge.py` - Merge chunked sensitivity_variation.py outputs into one combined result.
+    - defs: read_matrix, main
 - `train_dist.py` - Not running on CPUs !
     - defs: get_parser
 - `yamlMaker.py`
@@ -235,6 +243,8 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser
 - `toolbox/jaxley_utils.py` - Helpers shared across the jaxley voltage-loss path.
     - defs: normalize_volts_fixed, phys_par_range_to_arrays, build_phys_par_range, unit_to_phys_torch, phys_par_range_linear_mask, unit_to_phys_np, unit_to_phys_jax, load_stim_csv, upsample_stim, downsample_step
+- `toolbox/physio_stats.py` - Physiological-plausibility measures for soma voltage traces (mV).
+    - defs: spike_stats, scan_traces, verdict_default, verdict_box
 - `toolbox/recal_metrics.py` - Per-channel recovery metrics that CREDIT a good-but-offset diagonal, plus a
     - defs: _rankdata, _r2, channel_metrics, fit_affine, apply_affine, metrics_table, print_table, _load_npz, main
 - `toolbox/refresh_structure.py` - Regenerate the auto-appendix section of structure.md.
@@ -305,26 +315,86 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 
 - `scripts/all_models_time_table.py` - Every trained model of record: samples/epoch, GPUs, measured s/epoch (steady
     - defs: tb_epoch_times, g
+- `scripts/bench_l5_speed.py` - Time the exact TRAINING path (JaxleyBridge.simulate_batch fwd + backward of a voltage
+    - defs: peak_gb, main
 - `scripts/chaoticramp_run_table.py` - Table of every chaoticRamp CA3 run of record: recipe knobs, samples, epochs,
     - defs: tb_epoch_times, g
+- `scripts/collect_ladder_results.py` - Collect model-ladder training results (out/eval/summary.yaml of every run) into one
 - `scripts/collect_vo_ledger.py` - Collect CA3 voltage-only run metrics into one comparison CSV (the "vo ledger").
     - defs: resolve_summary, design_name, row_from_summary, load_existing, main
+- `scripts/compare_royexp_ft.py` - Compare Roy-exp fine-tunes of the L5 nc2 model (2026-09-24: c = 3 vs x1) from the outputs of
+    - defs: rin_stats, main
+- `scripts/compare_sensvar_ncomp.py` - Side-by-side comparison of sensitivity_variation.py runs (e.g. L5TTPC nc1 / nc2 / nc4).
+    - defs: read_matrix, short, main
+- `scripts/compose_exp_before_after.py` - Stack the zero-shot and fine-tuned Roy v2 overlay grids of a dt-0.2 L5 model into one
+    - defs: table
 - `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 from a registered jaxley cell.
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages, normalize_volts_fixed_scale, write_h5, main
 - `scripts/gen_ca3_sharded.py` - Sharded multi-GPU generation of a CA3 mlPack1.h5 (single- or multi-stim).
     - defs: _phys_range, _load_cell, _slice, _draw_unit_par, _vary_indices, worker, merge, main
 - `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages_one_stim, normalize_volts_fixed_scale, write_h5, main
+- `scripts/l5_accuracy_dt_ncomp.py` - Accuracy of cheaper L5 solver settings: forward traces at (ncomp = env, dt in --dts) for
+    - defs: simulate, spikes, compare
+- `scripts/l5_excitability_probe.py` - Why is the L5 nc2 model silent under the Roy currents, and what makes it fire like the cells?
+    - defs: parse_variant, make_step_dir, main
+- `scripts/make_ladder_designs.py` - Write the model-ladder design YAMLs (one per rung x stim x training mode).
+    - defs: write
+- `scripts/plot_excitability_probe.py` - Figure for the L5 nc2 excitability probe (scripts/l5_excitability_probe.py) vs the Roy recordings.
+- `scripts/plot_l5_default_variants.py` - Default-parameter L5 soma traces under the cheaper solver settings.
+    - defs: simulate, spikes, plot, _plot_page
 - `scripts/plot_l5ttpc_curves.py` - Train / validation loss per epoch for every L5TTPC (ncomp=2) run, read from
     - defs: read_curve
+- `scripts/plot_ladder_stim_voltage.py` - Stimulus + voltage figure for the model ladder AFTER the fixes.
+    - defs: simulate, plot
 - `scripts/pool_multistim_pack.py` - Turn a JOINT multi-stim pack into a POOLED one by moving the battery from the
     - defs: main
+- `scripts/rin_fit.py` - Apparent input resistance + membrane tau from a (V, I) trace pair, identical metric for
+    - defs: spikes, rc_filter, fit_rin
+- `scripts/scan_ca3_packs_physiology.py` - Scan every synthetic CA3 data pack for physiological plausibility and compare
+    - defs: spike_stats, scan_traces, row
+- `scripts/scan_cells_default_physiology.py` - Cross-CELL comparison: every registered jaxley cell simulated at its DEFAULT
+    - defs: default_flat
+- `scripts/smoke_param_subset.py` - Smoke test for a --vary subset pack + HybridLoss.param_subset (GPU, ~2-5 min).
+- `scripts/stim_catalog.py` - Stimulus catalog (2026-09-24): scan the DL4neurons2 stim CSVs that JaxleyBridge loads
+    - defs: family, used_by, load, main
+- `scripts/stim_scale_scan.py` - Stimulus-amplitude sweep for one jaxley cell: which `stim_scale` makes the
+    - defs: cell_module, default_row, simulate, main
 - `scripts/summarize_l5ttpc_eval.py` - Summarise the L5TTPC ncomp=2 test-split evaluations in l5ttpc_eval/<run>/.
 - `scripts/voltage_loss_bias_probe.py` - Step-0 bias audit for the voltage-only training objective.
     - defs: get_parser, load_split_volts, loss_at, main
 - `scripts/eval_all_stims.sh`
 - `scripts/install_hooks.sh`
+- `scripts/l5_speed_worker.sh`
+- `scripts/l5_speed_worker2.sh`
+- `scripts/l5_speed_worker3.sh`
+- `scripts/model_ladder_scan_worker.sh`
+- `scripts/run_200k_gen_salloc.sh`
+- `scripts/run_80k_subset_gen_salloc.sh`
 - `scripts/run_ca3_gen.sh`
+- `scripts/run_default_grid_cpu.sh`
+- `scripts/run_excitability_probe_salloc.sh`
+- `scripts/run_gen_ladder_salloc.sh`
+- `scripts/run_l5_royexp_ft_salloc.sh`
+- `scripts/run_l5_speed2_salloc.sh`
+- `scripts/run_l5_speed3_salloc.sh`
+- `scripts/run_l5_speed_salloc.sh`
+- `scripts/run_ladder_smoke_salloc.sh`
+- `scripts/run_ladder_sup_salloc.sh`
+- `scripts/run_model_ladder_scan_salloc.sh`
+- `scripts/run_nc2_icb4k_sup_salloc.sh`
+- `scripts/run_pack_scan_cpu.sh`
+- `scripts/run_pilot_gen_salloc.sh`
+- `scripts/run_pilot_smoke_salloc.sh`
+- `scripts/run_royexp_ft_compare_salloc.sh`
+- `scripts/run_sensitivity_salloc.sh`
+- `scripts/run_sensvar_salloc.sh`
+- `scripts/submit_l5_royexp_ft.sh`
+- `scripts/submit_l5_royexp_ft_200k.sh`
+- `scripts/submit_nc2_200k_fp32dt02.sh`
+- `scripts/submit_nc2_sub10_80k.sh`
+- `scripts/submit_pilot_nc2_fp32dt02.sh`
+- `scripts/train_model_ladder.sh`
 
 ### packBBP3/
 

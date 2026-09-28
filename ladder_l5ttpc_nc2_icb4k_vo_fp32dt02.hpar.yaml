@@ -1,0 +1,90 @@
+# PILOT (2026-09-05): L5 ncomp=2, STRICTLY voltage-only (soft-DTW + ramped soft-eFEL aux),
+# with the three speed levers from docs/model_ladder/speed/README.md:
+#   fp32 jaxley solve  (voltage_loss.fp64 False + NEUINV_JAX_X64=false in the job env)
+#   solver dt 0.2 ms   (sim_dt_override; the pack was generated at dt 0.2 -> self-consistent)
+#   400 ms stimulus    (4k50kInterChaoticB, t_max auto = 400 ms)
+#   batch 256/GPU on 80 GB A100s, 2 nodes -> global batch 2048 (the CA3 recipe's)
+# Pack: /pscratch/sd/k/ktub1999/model_ladder_data/l5ttpc_nc2_icb4k_bbp_dt02/l5ttpc_nc2_bbp_synth.mlPack1.h5
+#   50k samples, DL4neurons2 run.py sampling: conductances base*10^u (+-1 decade), e_pas -85..-65 mV
+#   and cm 0.5..2 uF/cm2 LINEAR (phys_par_range rows carry "lin"), stim x1.5.
+# Measured cost 0.066 GPU-s/sample -> ~5.5 min/epoch on 8 GPUs, ~9.5 h for 100 epochs.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/model_ladder_data/l5ttpc_nc2_icb4k_bbp_dt02/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 256
+
+use_manual_features: False
+const_local_batch: True
+validation_period: [1, 1]
+log_freq_per_epoch: 8
+tb_show_graph: False
+save_checkpoint: True
+resume_checkpoint: False
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: l5ttpc
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True          # labels never enter the loss
+    stim_name:         4k50kInterChaoticB
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    range_penalty_weight: 0.0
+    t_max_override:    auto          # 4000 samples x 0.1 ms = 400 ms
+    sim_dt_override:   0.2           # solver step; pack traces are decimated to this grid
+    solver:            bwd_euler
+    fp64:              False         # fp32 solve (job env sets JAX_ENABLE_X64=false)
+    checkpoint_lengths: [201, 10]    # 2000 steps + 1; inner 10 keeps memory ~10 GB at B=256
+    mse_weight:        0.0
+    dtw_weight:        1.0
+    dtw_gamma:         0.1
+    dtw_n_points:      256
+    dtw_band_ms:       8.0
+    blur_weight:       0.0
+    smooth_sigma:      0.0
+    smooth_samples:    1
+    lowpass_ms:        0.0
+    efel_weight:       0.2
+    efel_features:     [voltage_base, AP_amplitude]
+    schedule:
+        efel_weight:  { start: 0.05, end: 0.2, epochs: 20 }
+
+model:
+    myId:    ladder_l5ttpc_nc2_icb4k_vo_fp32dt02
+    comment: L5 nc2 voltage-only pilot, fp32 + dt0.2 + 400ms InterChaoticB, BBP run.py sampling
+    outputSize_override: 19
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

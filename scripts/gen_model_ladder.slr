@@ -1,0 +1,40 @@
+#!/bin/bash -l
+#SBATCH -N4 --time=2:00:00 -J ladder-gen -q regular
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# Model-ladder packs: 4 rungs x 2 stims, one 50k pack each (40k/5k/5k), fixed-scale
+# norm, +-0.5 decade box (l5: cm x0.5-2, e_pas -85..-65), stim scaled per cell
+# (toolbox/jaxley_cells/<cell>._STIM_SCALE; recorded in meta).  Runs the sharded
+# generator on 16 GPUs pack after pack.  Set LADDER_ONLY="single_comp l5ttpc_nc2"
+# to restrict rungs; LADDER_N to change the sample count.
+set -u
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+cd "$WT" || exit 2
+# pscratch is over quota (2026-09-03) -> packs + shards live in HOME for now.
+ROOT=${LADDER_DATA_ROOT:-/global/homes/k/ktub1999/model_ladder_data}
+export SHARD_ROOT=${SHARD_ROOT:-$ROOT/.shards}
+N=${LADDER_N:-50000}; N_L5=${LADDER_N_L5:-25000}
+RUNGS=${LADDER_ONLY:-"single_comp ball_and_stick ball_and_stick_bbp l5ttpc_nc2 l5ttpc_nc4"}
+STIMS=${LADDER_STIMS:-"5k50kInterChaoticB 5kChaoticRamp"}
+echo "LADDER-GEN start $(date) job=$SLURM_JOBID nodes=$SLURM_JOB_NODELIST N=$N rungs=[$RUNGS]"
+for rung in $RUNGS; do
+  case $rung in
+    single_comp)        src=soma_only;          cellname=single_comp_synth;        batch=1024; ncomp="" ;;
+    ball_and_stick)     src=ball_and_stick;     cellname=ball_and_stick_synth;     batch=1024; ncomp="" ;;
+    ball_and_stick_bbp) src=ball_and_stick_bbp; cellname=ball_and_stick_bbp_synth; batch=512;  ncomp="" ;;
+    l5ttpc_nc2)         src=l5ttpc;             cellname=l5ttpc_nc2_synth;         batch=64;   ncomp=2 ;;
+    l5ttpc_nc4)         src=l5ttpc;             cellname=l5ttpc_nc4_synth;         batch=32;   ncomp=4 ;;
+    *) echo "unknown rung $rung"; continue ;;
+  esac
+  for stim in $STIMS; do
+    out=$ROOT/${rung}_${stim}
+    if [ -f "$out/$cellname.mlPack1.h5" ]; then echo "LADDER-GEN: $out exists, skip"; continue; fi
+    echo "LADDER-GEN: ===== $rung / $stim -> $out  $(date)"
+    if [ -n "$ncomp" ]; then export L5TTPC_NCOMP=$ncomp; else unset L5TTPC_NCOMP; fi
+    n=$N; [[ $rung == l5ttpc_* ]] && n=$N_L5
+    SOURCE_CELL=$src GEN_BATCH=$batch bash scripts/run_ca3_gen.sh "$cellname" "$out" "$stim" "$n"
+    echo "LADDER-GEN: $rung / $stim exit=$? $(date)"
+  done
+done
+echo "LADDER-GEN done $(date)"
+ls -la $ROOT/*/ 2>/dev/null

@@ -90,6 +90,6 @@ fig.suptitle("L5TTPC ncomp=2 runs (2026-06-27 to 07-08): train vs validation los
              "Samples per epoch and seconds per epoch (16 GPUs unless noted) in each title.",
              fontsize=10.5, color=INK, x=0.01, ha="left")
 fig.tight_layout(rect=(0, 0, 1, 0.95))
-out = sys.argv[1] if len(sys.argv) > 1 else "l5ttpc_train_val_curves"
+out = sys.argv[1] if len(sys.argv) > 1 else "l5ttpc_eval/l5ttpc_train_val_curves"
 fig.savefig(out + ".png", dpi=170); fig.savefig(out + ".pdf")
 print("wrote", out + ".png", out + ".pdf")
