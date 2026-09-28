@@ -29,6 +29,23 @@ _V_INIT  = -75.0
 # Read once at import; used by read_swc, the apical-Ih gradient loop, and
 # swc_apical_branch_distances.  Default stays 4 (baseline unchanged).
 _NCOMP   = int(os.environ.get("L5TTPC_NCOMP", "4"))
+# Stimulus multiplier (see CellSpec.stim_scale).  The stim CSVs were designed
+# for this cell (1.0 = the native BBP protocol), but at 1.0 the BBP-default cell
+# fires only 2 spikes under 5k50kInterChaoticB (box median 2).  1.5 (chosen by
+# scripts/stim_scale_scan.py, docs/model_ladder/) gives 7-8 spikes with +37..40 mV
+# peaks, -80 mV AHPs, Vmin -90 and 15 spikes on 5kChaoticRamp, no block and 0 %
+# out-of-range across the +-0.5-decade box for BOTH ncomp=2 and ncomp=4 -- in
+# line with the other rungs of the model ladder.  Packs made before 2026-09-03
+# used 1.0 (their meta has no _STIM_SCALE key).
+_STIM_SCALE = 1.5
+
+# Fixed (non-trainable) DENDRITIC passive properties.  The basal + apical tree carries almost
+# all of the membrane area, so these -- not the trainable g_pas_somatic / g_pas_axonal -- set
+# the cell's input resistance and hence its rheobase.  BBP biophysics.hoc: g_pas 3e-5 S/cm^2
+# everywhere, cm 2 uF/cm^2 on dendrites (spine correction).  Env/attr-overridable for the
+# excitability probe (scripts/l5_excitability_probe.py, 2026-09-23); defaults = BBP.
+_DEND_GPAS = float(os.environ.get("L5TTPC_DEND_GPAS", "3e-5"))
+_DEND_CM   = float(os.environ.get("L5TTPC_DEND_CM", "2.0"))
 
 # Apical Ih distance-dependent gradient — biophysics.hoc convention for L5TTPC.
 # gIh(d) = max(0, _IH_A + _IH_B * exp(d * _IH_K)) * ih_base   (S/cm²)
@@ -71,6 +88,19 @@ _PARAM_JAX    = [entry[2] for entry in _CSV_PARAM_MAP]
 # CSV generate_L5_samples.py / get_random_params samples around). Used as the
 # unit=0 centre when a caller does not supply an explicit phys_par_range (e.g.
 # scripts/gen_ball_and_stick_data.py). Order matches PARAM_KEYS.
+# Non-conductance entries get their OWN sampling range (see
+# toolbox.jaxley_utils.build_phys_par_range), LINEAR exactly as DL4neurons2
+# run.py:get_random_params does for e_pas_all / cm_*:  phys = mid + u*halfwidth
+#   cm      1.25 +- 0.75 -> 0.5 .. 2.0 uF/cm^2   (BBP pack range, uniform)
+#   e_pas   -75  +- 10   -> -85 .. -65 mV        (BBP pack range, uniform)
+# Conductances use the caller's log_halfspan: 1.0 = the BBP +-1 decade
+# (run.py UNIT_RANGES [-1, 1]); the model ladder used 0.5.
+PHYS_RANGE_OVERRIDES = {
+    "cm_axonal":  (1.25, 0.75, "uF/cm^2", "lin"),
+    "cm_somatic": (1.25, 0.75, "uF/cm^2", "lin"),
+    "e_pas_all":  (-75.0, 10.0, "mV", "lin"),
+}
+
 _DEFAULTS = {
     "gNaTs2_tbar_NaTs2_t_apical":    0.026145,
     "gSKv3_1bar_SKv3_1_apical":      0.004226,
@@ -150,8 +180,8 @@ def _build():
     cell.set("capacitance", 1.0)
     cell.set("v", _V_INIT)
     try:
-        cell.apical.set("capacitance", 2.0)
-        cell.basal.set("capacitance", 2.0)
+        cell.apical.set("capacitance", _DEND_CM)
+        cell.basal.set("capacitance", _DEND_CM)
     except Exception:
         pass
 
@@ -169,6 +199,7 @@ def _build():
 
     # Defaults from biophysics.hoc (reversal potentials etc.)
     cell.set("BBPLeak_gLeak", 3e-5)
+    cell.basal.set("BBPLeak_gLeak", _DEND_GPAS); cell.apical.set("BBPLeak_gLeak", _DEND_GPAS)
     cell.set("BBPLeak_eLeak", -75.0)
     cell.soma.set("NaTs2_t_ena", 50.0); cell.soma.set("SKv3_1_ek", -85.0)
     cell.soma.set("Ih_ehcn", -45.0); cell.soma.set("CaComplex_ek", -85.0)
@@ -180,6 +211,24 @@ def _build():
     cell.basal.set("Ih_ehcn", -45.0)
     cell.apical.set("NaTs2_t_ena", 50.0); cell.apical.set("SKv3_1_ek", -85.0)
     cell.apical.set("Im_ek", -85.0); cell.apical.set("Ih_ehcn", -45.0)
+
+    # Set the 19 CNN-facing parameters to their BBP base values (`_DEFAULTS`,
+    # = L5Params.csv) so that a forward WITHOUT a CNN override -- benchmarks,
+    # the cross-cell physiology scan, `cell.get_parameters()` -- is the real
+    # BBP cell and not the channel classes' 1e-5 placeholder gbar.  The bridge
+    # overwrites every one of these with the CNN prediction during training,
+    # so this changes nothing there.  gIhbar_Ih_dend is applied below via the
+    # apical distance gradient (basal uniform).
+    groups_for_defaults = {"soma": cell.soma, "axon": cell.axon,
+                           "basal": cell.basal, "apical": cell.apical}
+    for name, group_key, jax_key in _CSV_PARAM_MAP:
+        val = float(_DEFAULTS[name])
+        if name == "gIhbar_Ih_dend":
+            cell.basal.set(jax_key, val)        # apical: gradient below
+        elif group_key == "all":
+            cell.set(jax_key, val)
+        else:
+            groups_for_defaults[group_key].set(jax_key, val)
 
     # BBP biophysics.hoc applies a distance-dependent gradient to apical Ih.
     # Apply with `_IH_BASE` so the default-parameter forward matches NEURON.
@@ -233,6 +282,7 @@ def _spec() -> CellSpec:
         v_init            = _V_INIT,
         default_stim_name = "5k50kInterChaoticB",
         stim_dir          = _STIM_DIR,
+        stim_scale        = _STIM_SCALE,
     )
 
 

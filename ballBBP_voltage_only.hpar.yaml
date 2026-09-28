@@ -1,13 +1,13 @@
 # Voltage-only hybrid loss against the ball_and_stick_bbp cell.
 #
 # Data pack stores 19 unit_par columns (cADpyr), but ball_and_stick_bbp
-# exposes only 12 trainable conductances — see toolbox/jaxley_cells/
+# exposes only 13 trainable conductances — see toolbox/jaxley_cells/
 # ball_and_stick_bbp.py:_PARAM_MAP.
 #
 # - mask_channels: True       -> data unit_par is ignored, so the dim
-#                                 mismatch (19 vs 12) is benign.
-# - model.outputSize_override: 12  -> forces the CNN's last FC to 12.
-# - voltage_loss.phys_par_range: 12 entries matching ball_and_stick_bbp
+#                                 mismatch (19 vs 13) is benign.
+# - model.outputSize_override: 13  -> forces the CNN's last FC to 13.
+# - voltage_loss.phys_par_range: 13 entries matching ball_and_stick_bbp
 #   PARAM_KEYS in order; centers are the cell's _DEFAULTS, log halfspan
 #   0.5 (~3.16x range when unit ∈ [-1, 1]).
 
@@ -83,12 +83,13 @@ voltage_loss:
                                         # in the SLURM env (set in batchShifter-
                                         # Jaxley.slr). Without fp64, backward
                                         # NaN's at t_max ≥ 250 ms with BBP set.
-    # 12-entry [center, log10_halfspan, unit] aligned with
+    # 13-entry [center, log10_halfspan, unit] aligned with
     # ball_and_stick_bbp.PARAM_KEYS.  Halfspan 0.5 -> unit∈[-1,1] maps to
     # ~3.16x range around the BBP defaults.
     phys_par_range:
         - [0.983955, 0.5, "S/cm^2"]   # gNaTs2_tbar_NaTs2_t_somatic
         - [0.006827, 0.5, "S/cm^2"]   # gNap_Et2bar_Nap_Et2_somatic
+        - [0.303472, 0.5, "S/cm^2"]   # gSKv3_1bar_SKv3_1_somatic (added 2026-09-03)
         - [0.089259, 0.5, "S/cm^2"]   # gK_Tstbar_K_Tst_somatic
         - [0.100000, 0.5, "S/cm^2"]   # gK_Pstbar_K_Pst_somatic
         - [0.000333, 0.5, "S/cm^2"]   # gCa_LVAstbar_Ca_LVAst_somatic
@@ -103,7 +104,7 @@ voltage_loss:
 model:
     myId:    ballBBP_voltage_only
     comment: Phase 2 debug-queue smoke run, ball_and_stick_bbp voltage-only
-    outputSize_override: 12          # data has 19; CNN should emit 12 to match cell
+    outputSize_override: 13          # data has 19; CNN should emit 13 to match cell
     num_cnn_blocks: 2
     conv_block:
         filter: [30, 90, 180]

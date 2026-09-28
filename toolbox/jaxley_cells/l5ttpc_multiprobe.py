@@ -45,6 +45,8 @@ _DT_STIM   = l5ttpc._DT_STIM
 _T_MAX     = l5ttpc._T_MAX
 _V_INIT    = l5ttpc._V_INIT
 _NCOMP     = l5ttpc._NCOMP
+_STIM_SCALE = l5ttpc._STIM_SCALE
+PHYS_RANGE_OVERRIDES = l5ttpc.PHYS_RANGE_OVERRIDES
 
 # Probe order MUST equal the .record() order below, the data-channel order,
 # probsSelect order, and voltage_loss.probe_loss_indices order.
@@ -111,6 +113,7 @@ def _spec() -> CellSpec:
         v_init            = _V_INIT,
         default_stim_name = "5k50kInterChaoticB",
         stim_dir          = l5ttpc._STIM_DIR,
+        stim_scale        = _STIM_SCALE,
     )
 
 

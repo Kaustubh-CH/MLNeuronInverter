@@ -32,6 +32,11 @@ _DT_STIM = 0.1     # ms
 _DT      = 0.1     # ms (use 0.025 for spike-time precision <0.1 ms)
 _T_MAX   = 500.0   # ms
 _V_INIT  = -65.0   # mV (matches NEURON h.v_init)
+# Stimulus multiplier (see CellSpec.stim_scale).  Kept at 1.0: every CA3 pack
+# and model to date was made with the unscaled stims, and the InterChaoticB
+# response is physiological as-is.  (chaoticRamp's 6 nA ramp end does drive
+# the default CA3 cell into depolarisation block -- see docs/model_ladder/.)
+_STIM_SCALE = 1.0
 
 # Geometry (verbatim from morphology_mechanisms.hoc).
 _L    = 50.0       # µm
@@ -137,6 +142,7 @@ def _spec() -> CellSpec:
         v_init            = _V_INIT,
         default_stim_name = "5k50kInterChaoticB",
         stim_dir          = _STIM_DIR,
+        stim_scale        = _STIM_SCALE,
     )
 
 

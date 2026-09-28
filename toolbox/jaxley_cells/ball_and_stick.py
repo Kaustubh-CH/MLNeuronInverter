@@ -23,6 +23,12 @@ _DT_STIM = 0.1     # ms
 _DT      = 0.1     # ms (use 0.025 if spike-time precision <0.1 ms matters)
 _T_MAX   = 500.0   # ms
 _V_INIT  = -65.0   # mV
+# Stimulus multiplier (see CellSpec.stim_scale) — same rationale as
+# soma_only.py: the HH soma + passive stick is a ~13 pF cell, the stim CSVs
+# are L5-scale.  Chosen by scripts/stim_scale_scan.py (docs/model_ladder/): 0.05,
+# the SAME current as single_comp so the two rungs of the ladder are directly
+# comparable (8 / 14 spikes, +39 / +29 mV peaks, Vmin -77, box 10-20 % silent).
+_STIM_SCALE = 0.05
 
 PARAM_KEYS = [
     "HH_gNa",      # soma
@@ -124,6 +130,7 @@ def _spec() -> CellSpec:
         v_init            = _V_INIT,
         default_stim_name = "5k50kInterChaoticB",
         stim_dir          = _STIM_DIR,
+        stim_scale        = _STIM_SCALE,
     )
 
 

@@ -34,6 +34,7 @@ _DT      = 0.1
 _T_MAX   = 500.0
 _V_INIT  = -75.0
 _NCOMP   = 4   # match l5ttpc.py so morphology cost is the only difference benchmarked
+_STIM_SCALE = 1.0   # stim CSVs are L5-scale already (see CellSpec.stim_scale)
 
 # Reversal potentials / passive defaults (BBP biophysics.hoc convention).
 _ENA   =  50.0
@@ -70,6 +71,10 @@ _CSV_PARAM_MAP = [
 ]
 
 PARAM_KEYS    = [entry[0] for entry in _CSV_PARAM_MAP]
+# Same defaults / non-conductance ranges as l5ttpc (identical 19-param BBP order).
+from . import l5ttpc as _l5
+_DEFAULTS = _l5._DEFAULTS
+PHYS_RANGE_OVERRIDES = _l5.PHYS_RANGE_OVERRIDES
 
 
 def _build():
@@ -173,6 +178,7 @@ def _spec() -> CellSpec:
         v_init            = _V_INIT,
         default_stim_name = "5k50kInterChaoticB",
         stim_dir          = _STIM_DIR,
+        stim_scale        = _STIM_SCALE,
     )
 
 

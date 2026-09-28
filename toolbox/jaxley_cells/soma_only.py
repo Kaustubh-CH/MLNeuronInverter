@@ -21,6 +21,13 @@ _DT_STIM = 0.1     # ms
 _DT      = 0.1     # ms (use 0.025 if spike-time precision <0.1 ms matters)
 _T_MAX   = 500.0   # ms (spec default; bench overrides to 100)
 _V_INIT  = -65.0   # mV
+# Stimulus multiplier (see CellSpec.stim_scale).  The stim CSVs are 6-7 nA
+# L5-scale templates; this 1.26e-5 cm^2 HH soma (12.6 pF, R_in ~265 MOhm)
+# needs them scaled to its own rheobase.  Value chosen by
+# scripts/stim_scale_scan.py (see docs/model_ladder/): 0.05 -> InterChaoticB peaks
+# at 0.34 nA (8 spikes, +40 mV, AHP -76, Vmin -77 mV), chaoticRamp at 0.30 nA
+# (19 spikes); over the +-0.5 decade box: 5-13 % silent, 0 % block, 0 % out of range.
+_STIM_SCALE = 0.05
 
 PARAM_KEYS = [
     "HH_gNa",
@@ -89,7 +96,12 @@ def _spec() -> CellSpec:
         v_init            = _V_INIT,
         default_stim_name = "5k50kInterChaoticB",
         stim_dir          = _STIM_DIR,
+        stim_scale        = _STIM_SCALE,
     )
 
 
 register("single_comp", _spec)
+# Alias under the MODULE name so generators that import
+# `toolbox.jaxley_cells.<name>` and then call the bridge with the same name
+# (scripts/gen_ca3_sharded.py --source-cell soma_only) resolve.
+register("soma_only", _spec)
