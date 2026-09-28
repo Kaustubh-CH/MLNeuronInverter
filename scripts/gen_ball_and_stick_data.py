@@ -105,8 +105,12 @@ _DEFAULT_CELL_NAME = "ball_and_stick_bbp_synth"
 _STIM_NAME = "5k50kInterChaoticB"
 
 
-def _build_phys_par_range(param_keys, defaults):
-    """Build the `[[center, log_halfspan, "S/cm^2"], ...]` list."""
+def _build_phys_par_range(param_keys, defaults, cell_mod=None):
+    """Build the `[[center, log_halfspan, unit], ...]` list (per-key overrides
+    from `cell_mod.PHYS_RANGE_OVERRIDES` when the module is given)."""
+    if cell_mod is not None:
+        from toolbox.jaxley_utils import build_phys_par_range
+        return build_phys_par_range(cell_mod, _LOG_HALFSPAN)
     return [[float(defaults[k]), float(_LOG_HALFSPAN), "S/cm^2"]
             for k in param_keys]
 
@@ -117,7 +121,7 @@ def _build_phys_par_range(param_keys, defaults):
 
 def generate_voltages(unit_par, batch_size, src_cell_mod, src_cell_name,
                        fp64=True, verbose=True, centers=None, logspans=None,
-                       checkpoint_lengths=None):
+                       checkpoint_lengths=None, linear_rows=None):
     """Run the jaxley sim on every row of `unit_par`.
 
     `centers`/`logspans` define the unit->phys map (phys = center·10^(unit·span)).
@@ -136,7 +140,9 @@ def generate_voltages(unit_par, batch_size, src_cell_mod, src_cell_name,
             dtype=np.float64,
         )
         logspans = np.full(P, _LOG_HALFSPAN, dtype=np.float64)
-    phys_all = unit_to_phys_np(unit_par.astype(np.float64), np.asarray(centers), np.asarray(logspans))
+    from toolbox.jaxley_utils import phys_par_range_linear_mask as _lm
+    phys_all = unit_to_phys_np(unit_par.astype(np.float64), np.asarray(centers), np.asarray(logspans),
+                               _lm(linear_rows) if linear_rows is not None else None)
 
     out = None
     n_batches = int(np.ceil(N / batch_size))
@@ -207,8 +213,10 @@ def write_h5(out_path, volts_norm, unit_par, splits, meta, cell_name):
     volts4 = volts_norm[..., np.newaxis]   # (N, T, P, 1)
 
     # Phys params (just for record; the CNN trains in unit space)
+    from toolbox.jaxley_utils import phys_par_range_linear_mask as _lm
     centers, logspans = phys_par_range_to_arrays(meta["input_meta"]["phys_par_range"])
-    phys_par = unit_to_phys_np(unit_par.astype(np.float64), centers, logspans).astype(np.float32)
+    phys_par = unit_to_phys_np(unit_par.astype(np.float64), centers, logspans,
+                               _lm(meta["input_meta"]["phys_par_range"])).astype(np.float32)
 
     sl_train = slice(0, n_train)
     sl_valid = slice(n_train, n_train + n_valid)
@@ -293,7 +301,7 @@ def main():
             f"ppr-yaml has {len(phys_par_range)} entries but cell has {P} params"
         print(f"[gen] using phys_par_range from {args.ppr_yaml} (self-consistent map)", flush=True)
     else:
-        phys_par_range = _build_phys_par_range(src_cell.PARAM_KEYS, src_cell._DEFAULTS)
+        phys_par_range = _build_phys_par_range(src_cell.PARAM_KEYS, src_cell._DEFAULTS, src_cell)
     gen_centers, gen_logspans = phys_par_range_to_arrays(phys_par_range)
 
     # 1. unit draws
@@ -304,7 +312,7 @@ def main():
     volts = generate_voltages(unit_par, batch_size=args.batch,
                                src_cell_mod=src_cell, src_cell_name=args.source_cell,
                                fp64=not args.fp32,
-                               centers=gen_centers, logspans=gen_logspans,
+                               centers=gen_centers, logspans=gen_logspans, linear_rows=phys_par_range,
                                checkpoint_lengths=ckpt)
     if not np.isfinite(volts).all():
         n_nan = int(np.isnan(volts).sum())
@@ -337,6 +345,8 @@ def main():
         "_DT_STIM": src_cell._DT_STIM,
         "_T_MAX": src_cell._T_MAX,
         "_V_INIT": src_cell._V_INIT,
+        "_STIM_SCALE": float(getattr(src_cell, "_STIM_SCALE", 1.0)),
+        "_NCOMP": getattr(src_cell, "_NCOMP", None),
     }
     # phys_par_range already resolved above (from --ppr-yaml or _DEFAULTS)
     T = volts_norm.shape[1]

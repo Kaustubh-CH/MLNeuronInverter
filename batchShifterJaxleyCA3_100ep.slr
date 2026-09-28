@@ -48,13 +48,16 @@ source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
 export PYTHONNOUSERSITE=1
 
 # ─── JAX persistent compile cache (per-rank) ────────────────────────────
-export JAX_COMPILATION_CACHE_DIR=$SCRATCH/jax_cc/rank_${SLURM_PROCID:-0}
+# NEUINV_JAXCC_ROOT: compile-cache root (default $SCRATCH/jax_cc; use /tmp/jaxcc when pscratch is full).
+JAXCC_ROOT=${NEUINV_JAXCC_ROOT:-$SCRATCH/jax_cc}
+export JAX_COMPILATION_CACHE_DIR=$JAXCC_ROOT/rank_${SLURM_PROCID:-0}
 mkdir -p $JAX_COMPILATION_CACHE_DIR
 export JAX_PLATFORMS=cuda
 # fp64 is REQUIRED for training (not just bench): under DDP, rare high-gNa
 # parameter draws produce NaN backward gradients in fp32, and NCCL all-reduce
 # propagates NaN across ranks.  See ca3_matched.hpar.yaml fp64 comment.
-export JAX_ENABLE_X64=true
+# NEUINV_JAX_X64=false runs the jaxley solve in fp32 (pair with voltage_loss.fp64: False).
+export JAX_ENABLE_X64=${NEUINV_JAX_X64:-true}
 
 # ─── NCCL (Perlmutter, no shifter) ──────────────────────────────────────
 export NCCL_DEBUG=WARN
@@ -80,7 +83,10 @@ facility=perlmutter
 [[ -z "${NEUINV_WRK_SUFIX}" ]] && wrkSufix=$SLURM_JOBID || wrkSufix="${NEUINV_WRK_SUFIX}"
 [[ -z "${NEUINV_JOBID}"    ]] && jobId=j$SLURM_JOBID    || jobId="${design}_${NEUINV_JOBID}"
 
-wrkDir0=$SCRATCH/tmp_neuInv/jaxley_ca3/${design}/${cellName}/
+# NEUINV_ROOT: sub-dir of tmp_neuInv the run lands in (default jaxley_ca3;
+# the model-ladder driver uses model_ladder).
+# NEUINV_TMP_ROOT: replaces $SCRATCH/tmp_neuInv (e.g. a HOME path while pscratch is over quota).
+wrkDir0=${NEUINV_TMP_ROOT:-$SCRATCH/tmp_neuInv}/${NEUINV_ROOT:-jaxley_ca3}/${design}/${cellName}/
 wrkDir=$wrkDir0/$wrkSufix
 outPath=$wrkDir/out
 mkdir -p $outPath
@@ -112,7 +118,7 @@ echo "S:PY_CMD=$PY_CMD"
 
 date
 time srun -n $G bash -c "
-export JAX_COMPILATION_CACHE_DIR=\$SCRATCH/jax_cc/rank_\$SLURM_PROCID
+export JAX_COMPILATION_CACHE_DIR=$JAXCC_ROOT/rank_\$SLURM_PROCID
 mkdir -p \$JAX_COMPILATION_CACHE_DIR
 $PY_CMD" >& log.train
 echo "S:done train"
@@ -123,8 +129,13 @@ date
 # (per-param R², voltage MSE_z, spike-count, trace_overlays.pdf).
 echo "S:running eval on ./out"
 srun -n1 python -u predict.py --modelPath ./out --dom test -X >& log.predict || echo "S:predict FAILED"
-srun -n1 python -u evaluate_voltage.py --modelPath ./out --numSamples 200 --numOverlay 20 >& log.evalvolt || echo "S:evalvolt FAILED"
+# NEUINV_EVAL_ARGS: extra evaluate_voltage.py flags (supervised runs need
+# "--cellSim <cell> --stimNames <stim> --clampTanh"; L5 needs "--noGrad --simBatch 32").
+srun -n1 python -u evaluate_voltage.py --modelPath ./out --numSamples 200 --numOverlay 20 ${NEUINV_EVAL_ARGS:-} >& log.evalvolt || echo "S:evalvolt FAILED"
 echo "S:done eval"
+# NEUINV_TRIM_LAST=1: drop the duplicate last-epoch checkpoint (95 MB) once the
+# best-val ckpt.pth exists -- HOME-hosted runs while pscratch is over quota.
+if [[ -n "${NEUINV_TRIM_LAST:-}" && -f ./out/checkpoints/ckpt.pth ]]; then rm -f ./out/checkpoints/last.pth; echo "S:trimmed last.pth"; fi
 grep -E "#res,MSEloss|Average loss" log.predict 2>/dev/null | tail -2
 grep -E "overall MSE|mean R²|voltage MSE_z|spike count" log.evalvolt 2>/dev/null | tail -4
 

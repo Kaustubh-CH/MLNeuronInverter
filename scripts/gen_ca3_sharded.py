@@ -46,8 +46,9 @@ import h5py
 _LOG_HALFSPAN = float(os.environ.get("NEUINV_LOG_HALFSPAN", 0.5))
 
 
-def _phys_range(param_keys, defaults):
-    return [[float(defaults[k]), float(_LOG_HALFSPAN), "S/cm^2"] for k in param_keys]
+def _phys_range(cell_mod):
+    from toolbox.jaxley_utils import build_phys_par_range
+    return build_phys_par_range(cell_mod, _LOG_HALFSPAN)
 
 
 def _load_cell(name):
@@ -65,49 +66,78 @@ def _draw_unit_par(seed, n, P):
     return np.random.default_rng(seed).uniform(-1.0, 1.0, size=(n, P)).astype(np.float32)
 
 
+def _vary_indices(cell, vary):
+    """--vary keys -> (varied_idx, pinned_idx). None -> all varied."""
+    P = len(cell.PARAM_KEYS)
+    if not vary:
+        return list(range(P)), []
+    vidx = []
+    for k in vary:
+        if k not in cell.PARAM_KEYS:
+            raise ValueError(f"--vary {k!r} not in PARAM_KEYS {cell.PARAM_KEYS}")
+        vidx.append(cell.PARAM_KEYS.index(k))
+    pin = [i for i in range(P) if i not in vidx]
+    return vidx, pin
+
+
 # ─────────────────────────────────────────────────────────────────────────
 def worker(args):
     import torch
     from toolbox import JaxleyBridge
-    from toolbox.jaxley_utils import phys_par_range_to_arrays, unit_to_phys_np
+    from toolbox.jaxley_utils import phys_par_range_to_arrays, phys_par_range_linear_mask, unit_to_phys_np
 
     rank  = int(os.environ.get("SLURM_PROCID", 0))
     world = int(os.environ.get("SLURM_NTASKS", 1))
     cell = _load_cell(args.source_cell)
     if args.t_max is not None:
         cell._T_MAX = float(args.t_max)   # set before first simulate -> handle uses it
-        JaxleyBridge.clear_cache()
+    if args.dt is not None:
+        cell._DT = float(args.dt)         # coarser solver step (must match training's sim_dt_override)
+    JaxleyBridge.clear_cache()
     P = len(cell.PARAM_KEYS)
-    ppr = _phys_range(cell.PARAM_KEYS, cell._DEFAULTS)
-    centers, logspans = phys_par_range_to_arrays(ppr)
+    ppr = _phys_range(cell)
+    centers, logspans = phys_par_range_to_arrays(ppr); linear = phys_par_range_linear_mask(ppr)
 
     unit_all = _draw_unit_par(args.seed, args.n, P)
+    _, pin = _vary_indices(cell, args.vary)
+    if pin:                       # pinned params sit at unit 0 (= cell default for log rows)
+        unit_all[:, pin] = 0.0
     lo, hi = _slice(rank, world, args.n)
-    phys = unit_to_phys_np(unit_all[lo:hi].astype(np.float64), centers, logspans)
+    phys = unit_to_phys_np(unit_all[lo:hi].astype(np.float64), centers, logspans, linear)
+    if rank == 0:
+        print("[gen] phys_par_range:", "; ".join(f"{k}: {r[0]:.4g} +-{r[1]:.3g} {r[3] if len(r) > 3 else 'log10'}" for k, r in zip(cell.PARAM_KEYS, ppr)), flush=True)
     print(f"[rank {rank}/{world}] GPU={os.environ.get('CUDA_VISIBLE_DEVICES')} "
           f"slice [{lo}:{hi}] ({hi-lo} samples) stims={args.stims}", flush=True)
 
+    import jax.numpy as jnp
     chans = []
     for sname in args.stims:
+        handle = JaxleyBridge.get_handle(args.source_cell, sname)
         out = None
         nb = int(np.ceil((hi - lo) / args.batch))
         t0 = time.time()
         for b in range(nb):
             i0 = b * args.batch
             i1 = min(hi - lo, i0 + args.batch)
-            pb = torch.from_numpy(phys[i0:i1]).double()
-            with torch.no_grad():
-                v = JaxleyBridge.simulate_batch(pb, args.source_cell, stim_name=sname)
-            v = v.detach().cpu().numpy()          # (b, n_rec, T)
-            if v.shape[1] != 1:
-                raise RuntimeError(f"expected soma-only, got n_rec={v.shape[1]}")
+            # Forward-only on the cached jitted vmap (no jax.vjp graph): the
+            # training bridge's VJP OOMs for the ~1000-2000-comp L5 cells at
+            # batch 32-64.  Pad the last chunk so XLA compiles one shape.
+            pg = jnp.asarray(phys[i0:i1]); ng = pg.shape[0]
+            if ng < args.batch:
+                pg = jnp.concatenate([pg, jnp.broadcast_to(pg[:1], (args.batch - ng,) + pg.shape[1:])], axis=0)
+            v = np.asarray(handle.simulate_batch(pg))[:ng]      # (b, n_rec, T)
+            if v.shape[1] != 1 and len(args.stims) > 1:
+                raise RuntimeError(f"multi-stim packs need a soma-only cell, got n_rec={v.shape[1]}")
             if out is None:
-                out = np.zeros((hi - lo, v.shape[-1]), dtype=np.float32)
-            out[i0:i1] = v[:, 0, :]
+                out = np.zeros((hi - lo, v.shape[-1], v.shape[1]), dtype=np.float32)
+            out[i0:i1] = np.moveaxis(v, 1, 2)     # (b, T, n_rec)
         chans.append(out)
         print(f"[rank {rank}] stim {sname}: {out.shape} in {(time.time()-t0)/60:.1f} min",
               flush=True)
-    volts = np.stack(chans, axis=2)               # (n_slice, T, S)
+    # Channel axis: K stims of a soma-only cell -> (n, T, K); one stim of a
+    # P-probe cell -> (n, T, P).  Either way the dataloader sees it as the
+    # PROBE axis with num_stims=1.
+    volts = np.concatenate(chans, axis=2)         # (n_slice, T, S*n_rec)
     if not np.isfinite(volts).all():
         raise RuntimeError(f"[rank {rank}] non-finite volts")
     shard = Path(args.shard_dir) / f"shard_{rank:03d}.npy"
@@ -119,12 +149,14 @@ def worker(args):
 # ─────────────────────────────────────────────────────────────────────────
 def merge(args):
     from toolbox.jaxley_utils import (normalize_volts_fixed, phys_par_range_to_arrays,
-                                       unit_to_phys_np)
+                                       phys_par_range_linear_mask, unit_to_phys_np)
     cell = _load_cell(args.source_cell)
     if args.t_max is not None:
         cell._T_MAX = float(args.t_max)   # recorded in meta so training's t_max matches
+    if args.dt is not None:
+        cell._DT = float(args.dt)         # recorded in meta (cell_spec._DT)
     P = len(cell.PARAM_KEYS)
-    ppr = _phys_range(cell.PARAM_KEYS, cell._DEFAULTS)
+    ppr = _phys_range(cell)
     world = args.world
 
     parts = []
@@ -141,11 +173,16 @@ def merge(args):
     volts_norm = normalize_volts_fixed(volts).astype(np.float32)
     print(f"[merge] fixed-norm: global mean={volts_norm.mean():.3f} "
           f"std={volts_norm.std():.3f}", flush=True)
+    if not np.isfinite(volts_norm).all():
+        raise RuntimeError("[merge] non-finite volts after concatenation")
 
     # Reproduce the single-process rng stream: draw unit_par (advances state),
     # then permute — identical ordering to a non-sharded run.
     rng = np.random.default_rng(args.seed)
     unit_par = rng.uniform(-1.0, 1.0, size=(args.n, P)).astype(np.float32)
+    vidx, pin = _vary_indices(cell, args.vary)
+    if pin:
+        unit_par[:, pin] = 0.0     # match the worker's pinning
     perm = rng.permutation(args.n)
     volts_norm = volts_norm[perm]
     unit_par = unit_par[perm]
@@ -155,30 +192,51 @@ def merge(args):
     n_valid = n * 10 // 100
     n_test = n - n_train - n_valid
     centers, logspans = phys_par_range_to_arrays(ppr)
-    phys_par = unit_to_phys_np(unit_par.astype(np.float64), centers, logspans).astype(np.float32)
+    phys_par = unit_to_phys_np(unit_par.astype(np.float64), centers, logspans,
+                               phys_par_range_linear_mask(ppr)).astype(np.float32)
     volts4 = volts_norm[..., np.newaxis]          # (N, T, S, 1)
+    # With --vary the pack's label/param space covers ONLY the varied params; the
+    # full 19-row range + subset indices go to simu_info so HybridLoss / evaluate_voltage
+    # can expand the CNN's subset prediction back to the full cell vector.
+    par_names_out = [cell.PARAM_KEYS[i] for i in vidx]
+    ppr_out = [ppr[i] for i in vidx]
+    unit_par = unit_par[:, vidx]
+    phys_par = phys_par[:, vidx]
 
-    probe_names = (["soma"] if S == 1 else list(args.stims))
+    if len(args.stims) > 1:
+        probe_names = list(args.stims)            # K stims as channels
+    else:
+        probe_names = list(getattr(cell, "PROBE_NAMES", None) or (["soma"] if S == 1 else [f"probe{i}" for i in range(S)]))
+    assert len(probe_names) == S, f"probe_names {probe_names} vs S={S}"
     out_path = Path(args.out) / f"{args.cell_name}.mlPack1.h5"
     Path(args.out).mkdir(parents=True, exist_ok=True)
     meta = {
         "cell_name": args.cell_name, "source_cell": args.source_cell,
-        "num_phys_par": P, "num_varied_phys_par": P,
+        "num_phys_par": len(vidx), "num_varied_phys_par": len(vidx),
         "num_probs": int(S), "num_stims": 1, "num_time_bins": int(T),
-        "parName": list(cell.PARAM_KEYS), "probe_names": probe_names,
+        "parName": par_names_out, "probe_names": probe_names,
         "stim_names": list(args.stims),
-        "timeAxis": {"step": float(cell._DT_STIM), "unit": "(ms)"},
-        "phys_par_range": ppr,
-        "input_meta": {"parName": list(cell.PARAM_KEYS), "phys_par_range": ppr},
+        "timeAxis": {"step": float(max(cell._DT, cell._DT_STIM)), "unit": "(ms)"},
+        "phys_par_range": ppr_out,
+        "input_meta": {"parName": par_names_out, "phys_par_range": ppr_out},
         "simu_info": {
             "generator": "scripts/gen_ca3_sharded.py",
             "stim_names": list(args.stims),
             "joint_per_sample_channels": bool(S > 1),
-            "log_halfspan": _LOG_HALFSPAN, "fp64": True, "seed": args.seed,
+            # precision the traces were generated at (run_ca3_gen.sh GEN_X64; default fp64)
+            "log_halfspan": _LOG_HALFSPAN, "seed": args.seed,
+            "fp64": str(os.environ.get("JAX_ENABLE_X64", "true")).lower() in ("1", "true", "yes"),
             "cell_spec": {"_DT": cell._DT, "_DT_STIM": cell._DT_STIM,
-                          "_T_MAX": cell._T_MAX, "_V_INIT": cell._V_INIT},
+                          "_T_MAX": cell._T_MAX, "_V_INIT": cell._V_INIT,
+                          "_STIM_SCALE": float(getattr(cell, "_STIM_SCALE", 1.0)),
+                          "_NCOMP": getattr(cell, "_NCOMP", None)},
             "probe_names": probe_names, "stim_names_multi": list(args.stims),
             "world_shards": world,
+            "varied_params": par_names_out,
+            "pinned_params": [cell.PARAM_KEYS[i] for i in pin],
+            "full_param_keys": list(cell.PARAM_KEYS),
+            "full_phys_par_range": ppr,
+            "param_subset_indices": vidx,
         },
         "pack_info": {"n_total": n, "n_train": n_train, "n_valid": n_valid,
                       "n_test": n_test, "batch": args.batch},
@@ -218,11 +276,20 @@ def main():
                          "stims: they are 4000 samples @0.1ms = 400 ms, not the "
                          "cell default 500 ms. Set BEFORE the first sim so the "
                          "cached jaxley handle uses it; recorded in meta.")
+    ap.add_argument("--dt", type=float, default=None,
+                    help="override the cell's solver step _DT (ms), e.g. 0.2; the pack is then "
+                         "stored on that grid (T = t_max/dt) and training must use the same "
+                         "voltage_loss.sim_dt_override.")
+    ap.add_argument("--vary", default=None,
+                    help="comma-separated PARAM_KEYS to vary; the rest are pinned at unit 0 "
+                         "(= cell default). unit_par/parName/phys_par_range in the pack then "
+                         "cover ONLY the varied params (full range kept in simu_info).")
     ap.add_argument("--merge", action="store_true", help="run the merge phase")
     ap.add_argument("--world", type=int, default=None,
                     help="(merge) number of shards to expect; default SLURM_NTASKS")
     args = ap.parse_args()
     args.stims = [s for s in args.stims.split(",") if s]
+    args.vary = [s for s in args.vary.split(",") if s] if args.vary else None
     if args.world is None:
         args.world = int(os.environ.get("SLURM_NTASKS", 1))
     if args.merge:
