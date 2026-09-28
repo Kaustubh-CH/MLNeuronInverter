@@ -206,7 +206,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `toolbox/Dataloader_multiH5.py`
     - defs: get_data_loader, Dataset_multiH5_neuronInverter
 - `toolbox/HybridLoss.py` - Hybrid channel + voltage loss for the jaxley physics-supervised path.
-    - defs: _GradScale, HybridLoss, _ChannelOnlyAdapter, _log_jax_devices_once, _read_phys_par_range_from_h5, _resolve_grad_precond_weights, build_hybrid_loss
+    - defs: _GradScale, HybridLoss, _ChannelOnlyAdapter, _log_jax_devices_once, time_decim_factor, read_pack_sim_meta, _read_data_dt_from_h5, resolve_stim_scale, _read_phys_par_range_from_h5, _resolve_grad_precond_weights, build_hybrid_loss
 - `toolbox/JaxleyBridge.py` - Torch <-> Jaxley bridge.
     - defs: _CellHandle, _build_handle, get_handle, _torch_to_jax, _jax_to_torch, _JaxleySimulate, simulate_batch, output_shape, param_keys, clear_cache
 - `toolbox/Model.py`
@@ -234,7 +234,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `toolbox/aggregate_loss.py`
     - defs: get_parser
 - `toolbox/jaxley_utils.py` - Helpers shared across the jaxley voltage-loss path.
-    - defs: normalize_volts_fixed, phys_par_range_to_arrays, unit_to_phys_np, unit_to_phys_jax, load_stim_csv, upsample_stim, downsample_step
+    - defs: normalize_volts_fixed, phys_par_range_to_arrays, build_phys_par_range, unit_to_phys_torch, phys_par_range_linear_mask, unit_to_phys_np, unit_to_phys_jax, load_stim_csv, upsample_stim, downsample_step
 - `toolbox/recal_metrics.py` - Per-channel recovery metrics that CREDIT a good-but-offset diagonal, plus a
     - defs: _rankdata, _r2, channel_metrics, fit_affine, apply_affine, metrics_table, print_table, _load_npz, main
 - `toolbox/refresh_structure.py` - Regenerate the auto-appendix section of structure.md.
@@ -312,7 +312,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 from a registered jaxley cell.
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages, normalize_volts_fixed_scale, write_h5, main
 - `scripts/gen_ca3_sharded.py` - Sharded multi-GPU generation of a CA3 mlPack1.h5 (single- or multi-stim).
-    - defs: _phys_range, _load_cell, _slice, _draw_unit_par, worker, merge, main
+    - defs: _phys_range, _load_cell, _slice, _draw_unit_par, _vary_indices, worker, merge, main
 - `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages_one_stim, normalize_volts_fixed_scale, write_h5, main
 - `scripts/plot_l5ttpc_curves.py` - Train / validation loss per epoch for every L5TTPC (ncomp=2) run, read from

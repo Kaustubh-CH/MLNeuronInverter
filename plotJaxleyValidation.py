@@ -53,7 +53,7 @@ jax.config.update("jax_enable_x64", True)
 from toolbox import JaxleyBridge
 from toolbox.HybridLoss import _log_jax_devices_once
 from toolbox.Util_IOfunc import read_yaml, write_yaml
-from toolbox.jaxley_utils import phys_par_range_to_arrays
+from toolbox.jaxley_utils import phys_par_range_to_arrays, phys_par_range_linear_mask, unit_to_phys_torch
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -329,6 +329,7 @@ def main():
     centers, logspans = phys_par_range_to_arrays(phys_par_range)
     centers_t  = torch.tensor(centers,  dtype=torch.float64, device=device)
     logspans_t = torch.tensor(logspans, dtype=torch.float64, device=device)
+    linear_t   = torch.tensor(phys_par_range_linear_mask(phys_par_range), device=device)  # BBP "lin" rows
 
     # t_max_override (matches HybridLoss build path)
     if t_max_override is not None:
@@ -379,10 +380,7 @@ def main():
 
     # ── unit -> phys, run jaxley ───────────────────────────────────────────
     pred_unit_t = torch.from_numpy(pred_unit_eff_np).double().to(device)
-    pred_phys = centers_t * torch.pow(
-        torch.tensor(10.0, dtype=torch.float64, device=device),
-        pred_unit_t * logspans_t,
-    )
+    pred_phys = unit_to_phys_torch(pred_unit_t, centers_t, logspans_t, linear_t)
     v_sim_pre = jaxley_forward(pred_phys, cell_name, stim_name, sim_bs=args.simBatch)
 
     # ── voltage metrics ────────────────────────────────────────────────────

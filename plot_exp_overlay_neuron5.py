@@ -25,8 +25,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from evaluate_voltage import load_trained_model
 from toolbox import JaxleyBridge
-from toolbox.jaxley_utils import (phys_par_range_to_arrays,
-                                  VOLT_NORM_MEAN, VOLT_NORM_STD)
+from toolbox.jaxley_utils import (phys_par_range_to_arrays, phys_par_range_linear_mask,
+                                  unit_to_phys_np, VOLT_NORM_MEAN, VOLT_NORM_STD)
 from toolbox.soft_dtw import soft_dtw_loss
 
 PACK_DEF = "/pscratch/sd/k/ktub1999/RoyExpPack_neuron5/RoyExpNeuron5.mlPack1.h5"
@@ -67,6 +67,7 @@ def main():
 
     vl = trainMD["train_params"]["voltage_loss"]
     centers, logspans = phys_par_range_to_arrays(vl["phys_par_range"])
+    lin_mask = phys_par_range_linear_mask(vl["phys_par_range"])
     par_names = ["g_leak", "gbar_na3", "gkdrbar_kdr", "gkabar_kap", "gbar_km", "gkdbar_kd"]
     centers_t = torch.tensor(centers, dtype=torch.float64, device=device)
     logspans_t = torch.tensor(logspans, dtype=torch.float64, device=device)
@@ -81,7 +82,7 @@ def main():
     with torch.no_grad():
         xt = torch.from_numpy(X).contiguous().to(device)
         pu = torch.tanh(model(xt).double()).cpu().numpy()               # (M,6) unit
-    phys = centers[None, :] * np.power(10.0, pu * logspans[None, :])
+    phys = unit_to_phys_np(pu, centers, logspans, linear=lin_mask)
 
     # per-neuron consistency: std of unit params across a neuron's combos
     by_n = collections.defaultdict(list)

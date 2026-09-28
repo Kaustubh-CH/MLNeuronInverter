@@ -29,7 +29,7 @@ from pathlib import Path
 from evaluate_voltage import load_trained_model
 from toolbox import JaxleyBridge
 from toolbox import jaxley_cells, jaxley_utils as _jutils
-from toolbox.jaxley_utils import phys_par_range_to_arrays
+from toolbox.jaxley_utils import phys_par_range_to_arrays, phys_par_range_linear_mask, unit_to_phys_torch
 from toolbox.soft_dtw import soft_dtw_loss
 
 AMPS = [500, 1000, 1500, 2000]   # Roy100 dropped from the study (user, 2026-08-26)
@@ -79,6 +79,7 @@ def main():
     centers, logspans = phys_par_range_to_arrays(phys_par_range)
     centers_t  = torch.tensor(centers,  dtype=torch.float64, device=device)
     logspans_t = torch.tensor(logspans, dtype=torch.float64, device=device)
+    linear_t   = torch.tensor(phys_par_range_linear_mask(phys_par_range), device=device)  # BBP "lin" rows
 
     # T_MAX must follow the SIMULATED stim's length, not a fixed 500 ms: a
     # 4000-bin training stim (e.g. 4k50kInterChaoticB) upsampled onto a 500 ms
@@ -118,8 +119,7 @@ def main():
         pu = pred_unit.double().to(device)
         if clamp_tanh:
             pu = torch.tanh(pu)
-        pred_phys = centers_t * torch.pow(
-            torch.tensor(10.0, dtype=torch.float64, device=device), pu * logspans_t)
+        pred_phys = unit_to_phys_torch(pu, centers_t, logspans_t, linear_t)
         unit_by_amp[amp] = pu.cpu().numpy()
         np.savetxt(os.path.join(outDir, f"Roy{amp}_unit_params.csv"),
                    unit_by_amp[amp], delimiter=",", header=",".join(par_names), comments="")

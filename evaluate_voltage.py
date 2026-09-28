@@ -55,7 +55,7 @@ jax.config.update("jax_enable_x64", True)
 from toolbox.Util_IOfunc import read_yaml, write_yaml
 from toolbox import JaxleyBridge
 from toolbox.HybridLoss import _log_jax_devices_once  # for device print
-from toolbox.jaxley_utils import phys_par_range_to_arrays
+from toolbox.jaxley_utils import phys_par_range_to_arrays, phys_par_range_linear_mask
 
 
 def get_parser():
@@ -159,13 +159,13 @@ def load_test_data(trainMD, n_samples, stim_col):
     return v_soma_norm, unit_par, v_mean, v_std
 
 
-def _simulate_nograd(pred_phys, cell_name, stim_name, bs, solver="bwd_euler"):
+def _simulate_nograd(pred_phys, cell_name, stim_name, bs, solver="bwd_euler", stim_scale=None):
     """Forward-only jaxley on the cached handle's jitted vmap -> (N, n_rec, T_ds)
     float64 numpy.  Skips the jax.vjp graph that JaxleyBridge.simulate_batch
     always builds (it is the TRAINING bridge); the 19-param L5TTPC cell OOMs
     there.  Pads the last chunk to `bs` so XLA compiles one shape."""
     import jax.numpy as jnp
-    handle = JaxleyBridge.get_handle(cell_name, stim_name, solver=solver)
+    handle = JaxleyBridge.get_handle(cell_name, stim_name, solver=solver, stim_scale=stim_scale)
     pp = jnp.asarray(pred_phys.detach().cpu().numpy())
     outs = []
     for i0 in range(0, pp.shape[0], bs):
@@ -185,6 +185,11 @@ def main():
 
     model, trainMD = load_trained_model(args.modelPath, device)
 
+    # What the PACK records about its own generation (jaxley packs only; {} for NEURON
+    # packs): trace grid, stim scale, cell_spec (_DT/_T_MAX/...), precision, probe names.
+    from toolbox.HybridLoss import read_pack_sim_meta, resolve_stim_scale, time_decim_factor
+    _pm = read_pack_sim_meta(trainMD["train_params"].get("full_h5name", ""))
+
     # Voltage-loss config from sum_train.yaml — has cell_name, phys_par_range, etc.
     vl = trainMD["train_params"].get("voltage_loss")
     if vl is None:
@@ -199,16 +204,31 @@ def main():
               "stim_names_multi": names if len(names) > 1 else None,
               "fp64": True, "clamp_unit_tanh": bool(args.clampTanh),
               "t_max_override": "auto"}
-        print(f"[eval] WARN: no voltage_loss block in sum_train.yaml -> simulator config from CLI: {vl}")
+        # Self-consistent scoring: simulate the way the pack was GENERATED (solver dt,
+        # precision; stim scale is resolved below from the same meta).
+        _cs = _pm.get("cell_spec") or {}
+        if _cs.get("_DT") is not None:
+            vl["sim_dt_override"] = float(_cs["_DT"])
+        if _pm.get("fp64") is not None:
+            vl["fp64"] = bool(_pm["fp64"])
+        print(f"[eval] WARN: no voltage_loss block in sum_train.yaml -> simulator config from CLI"
+              f" + pack meta: {vl}")
     cell_name      = vl["cell_name_for_sim"]
     phys_par_range = vl.get("phys_par_range")  # may be None if read from H5 meta
     clamp_tanh     = bool(vl.get("clamp_unit_tanh", False))
     fp64           = bool(vl.get("fp64", False))
     stim_name      = vl.get("stim_name")
     t_max_override = vl.get("t_max_override")
+    if vl.get("sim_dt_override") is not None:
+        import importlib
+        importlib.import_module(f"toolbox.jaxley_cells.{cell_name}")._DT = float(vl["sim_dt_override"])
+        JaxleyBridge.clear_cache()
+        print(f"[eval] sim_dt_override -> solver dt = {vl['sim_dt_override']} ms")
     soma_probe_idx = int(vl.get("soma_probe_index", 0))
     sim_t_skip_ms  = float(vl.get("sim_t_skip_ms", 0.0))
-    sim_dt_ms      = float(vl.get("sim_dt_ms", 0.1))
+    _data_dt = _pm.get("data_dt")
+    sim_dt_ms      = float(vl.get("sim_dt_ms", _data_dt or 0.1))
+    print(f"[eval] data-trace grid = {sim_dt_ms} ms (pack meta timeAxis.step = {_data_dt})")
     sim_skip_bins  = max(0, int(round(sim_t_skip_ms / sim_dt_ms)))
     print(f"[eval] sim_t_skip_ms={sim_t_skip_ms} -> skipping first {sim_skip_bins} bins of jaxley output")
 
@@ -257,6 +277,11 @@ def main():
         print(f"[eval] --stimIndex {args.stimIndex} -> H5 stim column {stim_col}, "
               f"simulating stim_name={stim_name!r}")
 
+    # Subset packs (gen --vary): the CNN predicts only these indices; simulate with the
+    # full range and the rest at unit 0 (= cell default), exactly as HybridLoss does.
+    param_subset = vl.get("param_subset") or _pm.get("param_subset")
+    if param_subset and phys_par_range is None:
+        phys_par_range = _pm.get("full_phys_par_range")
     if phys_par_range is None:
         # Read from H5 meta — same fallback as build_hybrid_loss
         from toolbox.HybridLoss import _read_phys_par_range_from_h5
@@ -265,6 +290,7 @@ def main():
     centers, logspans = phys_par_range_to_arrays(phys_par_range)
     centers_t  = torch.tensor(centers,  dtype=torch.float64, device=device)
     logspans_t = torch.tensor(logspans, dtype=torch.float64, device=device)
+    linear_t   = torch.tensor(phys_par_range_linear_mask(phys_par_range), device=device)
 
     # Apply t_max_override (matches HybridLoss build path)
     if t_max_override is not None:
@@ -320,8 +346,16 @@ def main():
     pred_unit_d = pred_unit.double().to(device)
     if clamp_tanh:
         pred_unit_d = torch.tanh(pred_unit_d)
+    pred_unit_sub = pred_unit_d
+    if param_subset:
+        pred_unit_d = torch.zeros(pred_unit_sub.shape[0], len(phys_par_range),
+                                  dtype=pred_unit_sub.dtype, device=device)
+        pred_unit_d[:, param_subset] = pred_unit_sub
+        print(f"[eval] param_subset: {len(param_subset)} predicted, rest pinned at default")
     pred_phys = centers_t * torch.pow(torch.tensor(10.0, dtype=torch.float64, device=device),
                                        pred_unit_d * logspans_t)
+    if bool(linear_t.any()):                       # BBP linear rows (e_pas, cm): mid + u*halfwidth
+        pred_phys = torch.where(linear_t, centers_t + pred_unit_d * logspans_t, pred_phys)
     print(f"[eval] pred_phys[0] = {pred_phys[0].cpu().numpy()}")
 
     # ── Channel-recovery metrics ──────────────────────────────────────────
@@ -330,8 +364,10 @@ def main():
     import importlib
     cell_mod = importlib.import_module(f"toolbox.jaxley_cells.{cell_name}")
     param_names = list(cell_mod.PARAM_KEYS)
+    if param_subset:
+        param_names = [param_names[i] for i in param_subset]
     P = len(param_names)
-    pred_u = pred_unit_d.cpu().numpy()        # (N, P) post-tanh
+    pred_u = pred_unit_sub.cpu().numpy()      # (N, P) post-tanh (subset only if param_subset)
     true_u = unit_par_true.astype(np.float64) # (N, P) in [-1, 1]
     # Sanity guard — model output P should match cell PARAM_KEYS length.
     if pred_u.shape[1] != P or true_u.shape[1] != P:
@@ -380,10 +416,35 @@ def main():
     # runs (Exp 2) train with `probe_loss_indices` = the cell's .record() order
     # per data channel; everything else compares recording 0 (soma).
     _pli = vl.get("probe_loss_indices")
-    rec_idx = [int(_pli[j]) if (_pli and j < len(_pli)) else 0 for j in range(n_probe)]
     if _pli:
-        print(f"[eval] probe_loss_indices={_pli} -> recording per data channel: {rec_idx}")
+        rec_idx = [int(_pli[j]) if j < len(_pli) else 0 for j in range(n_probe)]
+        _rec_src = f"probe_loss_indices={_pli}"
+    elif stim_names_multi and len(stim_names_multi) > 1:
+        rec_idx = [0] * n_probe                      # probe axis = stims, soma under each
+        _rec_src = "multi-stim pack: soma (recording 0) under each stim"
+    else:
+        # Single-stim multi-probe pack trained WITHOUT probe_loss_indices (the ladder
+        # ball_and_stick runs, --probsSelect 0 1): match data probe -> cell recording BY
+        # NAME (pack meta probe_names vs the cell module's PROBE_NAMES).  Without names,
+        # legacy behaviour: recording 0 (soma) for every channel -- only right for the
+        # soma channel, so warn when there is more than one.
+        _pack_pn = _pm.get("probe_names"); _cell_pn = getattr(cell_mod, "PROBE_NAMES", None)
+        if (_pack_pn and _cell_pn
+                and all(p < len(_pack_pn) and _pack_pn[p] in _cell_pn for p in sel_probes)):
+            rec_idx = [int(_cell_pn.index(_pack_pn[p])) for p in sel_probes]
+            _rec_src = f"matched by name: pack probes {_pack_pn} -> cell recordings {_cell_pn}"
+        else:
+            rec_idx = [0] * n_probe
+            _rec_src = "soma (recording 0) for every data channel"
+            if n_probe > 1:
+                print(f"[eval] WARN: {n_probe} data channels but no probe_loss_indices and no "
+                      f"probe-name match (pack {_pack_pn}, cell {_cell_pn}); channels 1.. are "
+                      f"compared against the SOMA recording and their scores are meaningless")
+    print(f"[eval] recording per data channel: {rec_idx} ({_rec_src})")
     sim_solver = str(vl.get("solver", "bwd_euler"))
+    # Stim multiplier = what the data was generated with (pack meta) unless the design
+    # pins voltage_loss.stim_scale -- NOT the cell module's current default.
+    stim_scale = resolve_stim_scale(vl, _pm, cell_name, tag="eval")
     sim_cache = {}       # stim_name -> (N, n_rec, T_sim): one sim per distinct stim
     v_sim_pre_all = []   # per-probe (N, T) mV pre-z
     v_sim_z_all   = []   # per-probe (N, T) z-scored
@@ -391,6 +452,14 @@ def main():
     err_z_all     = []   # per-probe (N,)  voltage MSE_z
     spikes_sim_all = []; spikes_data_all = []
     T = None
+    # Coarse solver step (voltage_loss.sim_dt_override): the simulated trace has
+    # one sample per kdec data samples -> decimate the data ONCE to that grid.
+    _h0 = JaxleyBridge.get_handle(cell_name, sel_stims[0] if sel_stims else None,
+                                  solver=sim_solver, stim_scale=stim_scale)
+    kdec = time_decim_factor(_h0.out_dt, sim_dt_ms)   # raises on a finer/non-integer solver grid
+    if kdec > 1:
+        cnn_in = cnn_in[:, ::kdec]; T_data = cnn_in.shape[1]
+        print(f"[eval] solver output every {kdec} data samples -> data decimated to T={T_data}")
     for j, (p_idx, s_name) in enumerate(zip(sel_probes, sel_stims)):
         rec_k = rec_idx[j]
         t0 = time.time()
@@ -401,20 +470,25 @@ def main():
             print(f"[eval] running jaxley for {probe_labels[j]} on {N} preds, batch={sim_bs}"
                   f"{' (no-grad)' if args.noGrad else ''}...")
             if args.noGrad:
-                v_all = _simulate_nograd(pred_phys, cell_name, s_name, sim_bs, sim_solver)
+                v_all = _simulate_nograd(pred_phys, cell_name, s_name, sim_bs, sim_solver,
+                                         stim_scale=stim_scale)
             else:
                 sim_chunks = []
                 for i in range(0, N, sim_bs):
-                    v = JaxleyBridge.simulate_batch(pred_phys[i:i+sim_bs], cell_name, s_name)
+                    v = JaxleyBridge.simulate_batch(pred_phys[i:i+sim_bs], cell_name, s_name,
+                                                    solver=sim_solver, stim_scale=stim_scale)
                     sim_chunks.append(v.cpu())              # (B, n_rec, T_sim)
                 v_all = torch.cat(sim_chunks, dim=0).numpy()
             sim_cache[s_name] = v_all
+        if rec_k >= v_all.shape[1]:
+            sys.exit(f"[eval] FATAL: data channel {j} ({probe_labels[j]}) wants recording {rec_k} "
+                     f"but the {cell_name} simulation has only {v_all.shape[1]} recording(s)")
         v_sim = v_all[:, rec_k, :]                           # (N, T_sim)
         t1 = time.time()
         # Drop the pre-stim window so the sim time axis aligns with the (already
         # pre-trimmed) data H5.
         if sim_skip_bins > 0:
-            v_sim = v_sim[:, sim_skip_bins:]
+            v_sim = v_sim[:, sim_skip_bins // kdec:]
         if T is None:
             T = min(v_sim.shape[1], T_data)
         v_sim_pre = v_sim[:, :T]                              # (N, T) mV
@@ -578,7 +652,7 @@ def main():
     order = np.argsort(err_z)                                 # best -> worst
     sel = np.unique(np.linspace(0, N - 1, n_overlay).astype(int))
     pick = order[sel]
-    dt = 0.1
+    dt = sim_dt_ms * kdec                        # grid of the compared traces (ms)
     # x-axis starts at sim_t_skip_ms so plots show absolute simulation time
     # rather than relative-to-trim.  Easier to read against the stim CSV.
     t_axis = sim_t_skip_ms + np.arange(T) * dt   # ms

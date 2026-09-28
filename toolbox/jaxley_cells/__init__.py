@@ -56,6 +56,16 @@ class CellSpec:
         Stim to use when the bridge is called without an explicit stim.
     stim_dir
         Path to the CSV stim directory (the same one used by DL4neurons2).
+    stim_scale
+        Dimensionless multiplier applied to every stimulus waveform loaded for
+        this cell (default 1.0).  The stim CSVs are nA templates written for a
+        full BBP L5 pyramidal cell (~6.8 nA peaks); a 1-comp HH soma of
+        ~1.3e-5 cm^2 driven by the same current swings to -270 mV.  Scaling the
+        template to the cell's own rheobase keeps the waveform *shape* (what the
+        CNN sees) while making the response physiological.  Applied once in
+        `JaxleyBridge._build_handle`, so data generation, the in-loop training
+        loss and evaluation all use the identical scaled current.  Recorded in
+        every pack's meta (`simu_info.cell_spec._STIM_SCALE`).
     """
     build_fn:         Callable
     param_keys:       List[str]
@@ -67,6 +77,7 @@ class CellSpec:
     v_init:           float
     default_stim_name: str
     stim_dir:         Path
+    stim_scale:       float = 1.0
 
 
 _REGISTRY: dict = {}

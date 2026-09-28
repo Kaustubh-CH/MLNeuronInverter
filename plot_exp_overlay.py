@@ -27,7 +27,7 @@ from pathlib import Path
 from evaluate_voltage import load_trained_model
 from toolbox import JaxleyBridge
 from toolbox import jaxley_cells, jaxley_utils as _jutils
-from toolbox.jaxley_utils import phys_par_range_to_arrays
+from toolbox.jaxley_utils import phys_par_range_to_arrays, phys_par_range_linear_mask, unit_to_phys_torch
 
 # (tag, experimental dir, predictStim index, probe index) — the 4 datasets
 # whose trace length (4000) is compatible with the 4k model.
@@ -74,6 +74,7 @@ def main():
     centers, logspans = phys_par_range_to_arrays(phys_par_range)
     centers_t  = torch.tensor(centers,  dtype=torch.float64, device=device)
     logspans_t = torch.tensor(logspans, dtype=torch.float64, device=device)
+    linear_t   = torch.tensor(phys_par_range_linear_mask(phys_par_range), device=device)  # BBP "lin" rows
 
     # t_max (auto -> stim length * dt_stim), matching HybridLoss/evaluate_voltage.
     if t_max_over is not None:
@@ -111,8 +112,7 @@ def main():
         pu = pred_unit.double().to(device)
         if clamp_tanh:
             pu = torch.tanh(pu)
-        pred_phys = centers_t * torch.pow(torch.tensor(10.0, dtype=torch.float64, device=device),
-                                          pu * logspans_t)
+        pred_phys = unit_to_phys_torch(pu, centers_t, logspans_t, linear_t)
         unit_by_ds[tag] = pu.cpu().numpy()
         # dump predicted unit params (one row/sweep) for downstream unit->phys.
         np.savetxt(os.path.join(outDir, f"{tag}_unit_params.csv"),

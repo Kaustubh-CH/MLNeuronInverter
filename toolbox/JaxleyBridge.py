@@ -49,6 +49,8 @@ class _CellHandle:
     sim_len:          int                        # length at internal dt
     out_len:          int                        # length after downsampling
     v_init:           float
+    stim_scale:       float = 1.0                # multiplier applied to the stim CSV
+    out_dt:           float = 0.1                # ms between output samples (dt * downsample_step)
 
 
 _CELL_CACHE: dict = {}
@@ -56,8 +58,13 @@ _CELL_CACHE: dict = {}
 
 def _build_handle(cell_name: str, stim_name: Optional[str] = None,
                   checkpoint_lengths: Optional[Tuple[int, ...]] = None,
-                  solver: str = "bwd_euler") -> _CellHandle:
+                  solver: str = "bwd_euler",
+                  stim_scale: Optional[float] = None) -> _CellHandle:
     """Build + compile the cell once.  Expensive; called on first use.
+
+    `stim_scale`: multiplier on the stim waveform.  None -> the cell spec's
+    own `stim_scale` (the production value); an explicit float overrides it
+    (used by the stim-scale sweeps in scripts/stim_scale_scan.py).
 
     `checkpoint_lengths`: if given, passed to `jx.integrate` as
     `checkpoint_lengths=list(checkpoint_lengths)` to enable gradient
@@ -86,8 +93,13 @@ def _build_handle(cell_name: str, stim_name: Optional[str] = None,
     stim_name = stim_name or spec.default_stim_name
     stim_path = Path(spec.stim_dir) / f"{stim_name}.csv"
     stim_csv  = jaxley_utils.load_stim_csv(stim_path)
+    scale     = float(getattr(spec, "stim_scale", 1.0)) if stim_scale is None else float(stim_scale)
+    if scale != 1.0:
+        stim_csv = (stim_csv * scale).astype(np.float32)
     stim_up   = jaxley_utils.upsample_stim(stim_csv, spec.dt_stim, spec.dt, spec.t_max)
-    step      = jaxley_utils.downsample_step(spec.dt, spec.dt_stim)
+    # dt_sim <= dt_stim: decimate back to the stim grid; dt_sim > dt_stim (coarse
+    # solver step, e.g. 0.2 ms): keep every step -> output grid is dt_sim.
+    step      = max(1, jaxley_utils.downsample_step(spec.dt, spec.dt_stim))
 
     # `data_stimulate` expects (n_injectors, T_sim).
     stim_jnp  = jnp.asarray(stim_up[np.newaxis, :])
@@ -143,21 +155,30 @@ def _build_handle(cell_name: str, stim_name: Optional[str] = None,
         sim_len          = sim_len,
         out_len          = out_len,
         v_init           = spec.v_init,
+        stim_scale       = scale,
+        out_dt           = float(spec.dt) * step,
     )
 
 
 def get_handle(cell_name: str, stim_name: Optional[str] = None,
                checkpoint_lengths: Optional[Tuple[int, ...]] = None,
-               solver: str = "bwd_euler") -> _CellHandle:
+               solver: str = "bwd_euler",
+               stim_scale: Optional[float] = None) -> _CellHandle:
     """Return a cached (cell, compiled simulate) pair, building on first use.
 
-    `checkpoint_lengths` and `solver` are part of the cache key — distinct
-    values get distinct compiled handles.
+    `checkpoint_lengths`, `solver` and `stim_scale` are part of the cache key —
+    distinct values get distinct compiled handles.  `stim_scale=None` means
+    "the cell spec's production value".
     """
     ckpt_key = tuple(checkpoint_lengths) if checkpoint_lengths else None
-    key = (cell_name, stim_name or "__default__", ckpt_key, solver)
+    # Resolve None -> the spec's production scale BEFORE keying, so an explicit
+    # `stim_scale=<spec value>` and `None` share one compiled handle.
+    if stim_scale is None:
+        stim_scale = getattr(jaxley_cells.get(cell_name), "stim_scale", 1.0)
+    scale_key = float(stim_scale)
+    key = (cell_name, stim_name or "__default__", ckpt_key, solver, scale_key)
     if key not in _CELL_CACHE:
-        _CELL_CACHE[key] = _build_handle(cell_name, stim_name, ckpt_key, solver)
+        _CELL_CACHE[key] = _build_handle(cell_name, stim_name, ckpt_key, solver, scale_key)
     return _CELL_CACHE[key]
 
 
@@ -197,9 +218,10 @@ class _JaxleySimulate(torch.autograd.Function):
     def forward(ctx, params_phys: torch.Tensor, cell_name: str,
                 stim_name: Optional[str],
                 checkpoint_lengths: Optional[Tuple[int, ...]] = None,
-                solver: str = "bwd_euler") -> torch.Tensor:
+                solver: str = "bwd_euler",
+                stim_scale: Optional[float] = None) -> torch.Tensor:
         import jax
-        handle = get_handle(cell_name, stim_name, checkpoint_lengths, solver)
+        handle = get_handle(cell_name, stim_name, checkpoint_lengths, solver, stim_scale)
 
         # (B, P) torch → jax
         params_j = _torch_to_jax(params_phys)
@@ -228,14 +250,15 @@ class _JaxleySimulate(torch.autograd.Function):
         # killing the run.  Zero out non-finite per-parameter grads so those
         # samples simply contribute nothing to this step.
         dparams = torch.nan_to_num(dparams, nan=0.0, posinf=0.0, neginf=0.0)
-        return dparams, None, None, None, None
+        return dparams, None, None, None, None, None
 
 
 def simulate_batch(params_phys: torch.Tensor,
                    cell_name: str,
                    stim_name: Optional[str] = None,
                    checkpoint_lengths: Optional[Tuple[int, ...]] = None,
-                   solver: str = "bwd_euler") -> torch.Tensor:
+                   solver: str = "bwd_euler",
+                   stim_scale: Optional[float] = None) -> torch.Tensor:
     """Run a vmapped, differentiable jaxley forward on a batch of params.
 
     Parameters
@@ -247,6 +270,9 @@ def simulate_batch(params_phys: torch.Tensor,
         Key into the `toolbox.jaxley_cells` registry.
     stim_name : str, optional
         CSV stem under `spec.stim_dir`.  Defaults to `spec.default_stim_name`.
+    stim_scale : float, optional
+        Override the cell spec's stimulus multiplier (sweeps only; production
+        callers leave it None so the spec value is used everywhere).
 
     Returns
     -------
@@ -256,7 +282,7 @@ def simulate_batch(params_phys: torch.Tensor,
     if params_phys.ndim != 2:
         raise ValueError(f"params_phys must be 2D (B, P), got shape {tuple(params_phys.shape)}")
     ckpt = tuple(checkpoint_lengths) if checkpoint_lengths else None
-    return _JaxleySimulate.apply(params_phys, cell_name, stim_name, ckpt, solver)
+    return _JaxleySimulate.apply(params_phys, cell_name, stim_name, ckpt, solver, stim_scale)
 
 
 # ═════════════════════════════════════════════════════════════════════════

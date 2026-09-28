@@ -24,8 +24,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from evaluate_voltage import load_trained_model
 from toolbox import JaxleyBridge
-from toolbox.jaxley_utils import (phys_par_range_to_arrays,
-                                  VOLT_NORM_MEAN, VOLT_NORM_STD)
+from toolbox.jaxley_utils import (phys_par_range_to_arrays, phys_par_range_linear_mask,
+                                  unit_to_phys_torch, VOLT_NORM_MEAN, VOLT_NORM_STD)
 from toolbox.soft_dtw import soft_dtw_loss
 
 PACK_DEF = "/pscratch/sd/k/ktub1999/RoyExpPack_stimch/RoyExpStimCh.mlPack1.h5"
@@ -71,6 +71,7 @@ def main():
     par_names = ["g_leak", "gbar_na3", "gkdrbar_kdr", "gkabar_kap", "gbar_km", "gkdbar_kd"]
     centers_t = torch.tensor(centers, dtype=torch.float64, device=device)
     logspans_t = torch.tensor(logspans, dtype=torch.float64, device=device)
+    linear_t   = torch.tensor(phys_par_range_linear_mask(vl["phys_par_range"]))
     P = len(par_names)
 
     with h5py.File(args.packFile, "r") as f:
@@ -97,8 +98,7 @@ def main():
         with torch.no_grad():
             xt = torch.from_numpy(X[m][:, :, chans]).contiguous().to(device)
             pu = torch.tanh(model(xt).double()).cpu()
-        pred_phys = (centers_t.cpu() * torch.pow(
-            torch.tensor(10.0, dtype=torch.float64), pu * logspans_t.cpu())).numpy()
+        pred_phys = unit_to_phys_torch(pu, centers_t.cpu(), logspans_t.cpu(), linear_t).numpy()
         unit_by_amp[amp] = pu.numpy()
 
         handle = JaxleyBridge.get_handle(args.cellName, f"Roy{amp}_icaRec_5k")

@@ -31,8 +31,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 from evaluate_voltage import load_trained_model
 from toolbox import JaxleyBridge
 from toolbox import jaxley_cells
-from toolbox.jaxley_utils import (phys_par_range_to_arrays,
-                                  VOLT_NORM_MEAN, VOLT_NORM_STD)
+from toolbox.jaxley_utils import (phys_par_range_to_arrays, phys_par_range_linear_mask,
+                                  unit_to_phys_torch, VOLT_NORM_MEAN, VOLT_NORM_STD)
 from toolbox.soft_dtw import soft_dtw_loss
 
 PACK_DEF = "/pscratch/sd/k/ktub1999/RoyExpPack_ca3ft/RoyExpChaotic.mlPack1.h5"
@@ -103,6 +103,7 @@ def main():
     centers, logspans = phys_par_range_to_arrays(im["phys_par_range"])
     centers_t = torch.tensor(centers, dtype=torch.float64, device=device)
     logspans_t = torch.tensor(logspans, dtype=torch.float64, device=device)
+    linear_t   = torch.tensor(phys_par_range_linear_mask(im["phys_par_range"]), device=device)
     P = len(par_names)
 
     with h5py.File(args.packFile, "r") as f:
@@ -141,8 +142,7 @@ def main():
         pu = pred_unit.double().to(device)
         if args.clampTanh:
             pu = torch.tanh(pu)
-        pred_phys = centers_t * torch.pow(
-            torch.tensor(10.0, dtype=torch.float64, device=device), pu * logspans_t)
+        pred_phys = unit_to_phys_torch(pu, centers_t, logspans_t, linear_t)
         unit_by_amp[amp] = pu.cpu().numpy()
 
         stim_name = stim_stems[fam_order.index(fam)]

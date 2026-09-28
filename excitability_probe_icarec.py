@@ -31,7 +31,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from evaluate_voltage import load_trained_model
 from toolbox import JaxleyBridge
-from toolbox.jaxley_utils import phys_par_range_to_arrays
+from toolbox.jaxley_utils import phys_par_range_to_arrays, phys_par_range_linear_mask, unit_to_phys_np
 
 PACK_DEF = "/pscratch/sd/k/ktub1999/RoyExpPack_ca3ft/RoyExpChaotic.mlPack1.h5"
 MODEL_DEF = ("/pscratch/sd/k/ktub1999/tmp_neuInv/jaxley_ca3/ca3_royexp_ft_icarec/"
@@ -63,6 +63,7 @@ def main():
         famS = f["test_stim_family"][:].astype(str)
     par_names = meta["input_meta"]["parName"]
     centers, logspans = phys_par_range_to_arrays(meta["input_meta"]["phys_par_range"])
+    lin_mask = phys_par_range_linear_mask(meta["input_meta"]["phys_par_range"])
 
     mod = importlib.import_module(f"toolbox.jaxley_cells.{a.cellName}")
     mod._T_MAX = 500.0
@@ -87,7 +88,7 @@ def main():
             variants.append((f"na3={v}", u))
 
         U = np.stack([u for _, u in variants])                     # (V, 6)
-        phys = centers[None, :] * np.power(10.0, U * logspans[None, :])
+        phys = unit_to_phys_np(U, centers, logspans, linear=lin_mask)
         pp = jnp.asarray(phys)
         if pp.shape[0] < SIM_BATCH:
             pp = jnp.concatenate(

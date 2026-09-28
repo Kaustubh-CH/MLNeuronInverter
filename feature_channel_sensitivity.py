@@ -55,7 +55,8 @@ jax.config.update("jax_enable_x64", True)
 
 from toolbox.Util_IOfunc import read_yaml, write_yaml
 from toolbox import JaxleyBridge, jaxley_cells
-from toolbox.jaxley_utils import phys_par_range_to_arrays, load_stim_csv
+from toolbox.jaxley_utils import (phys_par_range_to_arrays, phys_par_range_linear_mask,
+                                  unit_to_phys_np, load_stim_csv)
 from toolbox.soft_efel import (
     soft_efel_features, FEATURE_SCALES, FEATURES, STRONG_FEATURES,
     ALL_FEATURES, DVDT_FEATURES, KCHAN_FEATURES,
@@ -106,7 +107,8 @@ def resolve_phys_range(args, cell_mod, P):
     if ppr is None:
         raise SystemExit("need --physRange <yaml> or --h5 <pack> to get phys_par_range")
     centers, logspans = phys_par_range_to_arrays(ppr)
-    return centers[:P].astype(np.float64), logspans[:P].astype(np.float64)
+    lin = phys_par_range_linear_mask(ppr)
+    return centers[:P].astype(np.float64), logspans[:P].astype(np.float64), lin[:P]
 
 
 def operating_points(args, P):
@@ -152,7 +154,7 @@ def main():
     cell_mod = importlib.import_module(f"toolbox.jaxley_cells.{args.cell}")
     param_names = list(cell_mod.PARAM_KEYS)
     P = len(param_names)
-    centers, logspans = resolve_phys_range(args, cell_mod, P)
+    centers, logspans, lin_mask = resolve_phys_range(args, cell_mod, P)
     feats = feature_list(args.features)
     F = len(feats)
     scales = np.array([FEATURE_SCALES[f] for f in feats], dtype=np.float64)
@@ -175,7 +177,7 @@ def main():
         U[:, 2 * p,     p] += eps
         U[:, 2 * p + 1, p] -= eps
     Uf = U.reshape(K * 2 * P, P)
-    phys = torch.tensor(centers * np.power(10.0, Uf * logspans),
+    phys = torch.tensor(unit_to_phys_np(Uf, centers, logspans, linear=lin_mask),
                         dtype=torch.float64, device=device)      # (K*2P, P)
 
     from pathlib import Path
