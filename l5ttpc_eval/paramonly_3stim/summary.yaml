@@ -1,0 +1,57 @@
+cell_name: l5ttpc
+channel_mse_overall: 0.2246999789191324
+channel_per_param:
+- {bias: -0.007185984367388301, mse: 0.22145369206952814, name: gNaTs2_tbar_NaTs2_t_apical,
+  r2: 0.33412470313788145}
+- {bias: -0.026981488148448987, mse: 0.3059190778928486, name: gSKv3_1bar_SKv3_1_apical,
+  r2: 0.08464854045459647}
+- {bias: -0.002755322949960828, mse: 0.31617977804697783, name: gImbar_Im_apical,
+  r2: 0.06878409880970682}
+- {bias: -0.0782619722187519, mse: 0.15470802147258517, name: gIhbar_Ih_dend, r2: 0.5128103198790344}
+- {bias: -0.008433685223571956, mse: 0.07792310731837164, name: gNaTa_tbar_NaTa_t_axonal,
+  r2: 0.7672055200502635}
+- {bias: -0.0753823910286883, mse: 0.33977570041710725, name: gK_Tstbar_K_Tst_axonal,
+  r2: -0.006745093786771461}
+- {bias: 0.039074130346998574, mse: 0.18174241319012535, name: gNap_Et2bar_Nap_Et2_axonal,
+  r2: 0.4696040969648577}
+- {bias: 0.09057342157466337, mse: 0.21399564790632275, name: gSK_E2bar_SK_E2_axonal,
+  r2: 0.3453546706533511}
+- {bias: 0.07055477871093899, mse: 0.33334422385262835, name: gCa_HVAbar_Ca_HVA_axonal,
+  r2: 0.05398417093216812}
+- {bias: -0.009484830815345048, mse: 0.15301179526046116, name: gK_Pstbar_K_Pst_axonal,
+  r2: 0.5715717031135976}
+- {bias: 0.11950331194791942, mse: 0.359607767707099, name: gCa_LVAstbar_Ca_LVAst_axonal,
+  r2: -0.028182955993587333}
+- {bias: 0.15433306615334005, mse: 0.3157401051550085, name: g_pas_axonal, r2: 0.12072492222839526}
+- {bias: 0.0011805163466488012, mse: 0.32985866070612907, name: cm_axonal, r2: 0.01831572864591602}
+- {bias: -0.00498764205025509, mse: 0.033829096073434484, name: gSKv3_1bar_SKv3_1_somatic,
+  r2: 0.8990478371866227}
+- {bias: 0.06116768934880383, mse: 0.023873391673119557, name: gNaTs2_tbar_NaTs2_t_somatic,
+  r2: 0.9283615426600753}
+- {bias: 0.07803484622621909, mse: 0.3178690084040314, name: gCa_LVAstbar_Ca_LVAst_somatic,
+  r2: -0.04776478687493402}
+- {bias: 0.15658630622550845, mse: 0.3178795559390247, name: g_pas_somatic, r2: 0.07782989967738829}
+- {bias: -0.02897194867487997, mse: 0.2086539318495159, name: cm_somatic, r2: 0.40124000946295635}
+- {bias: 0.017403264245949686, mse: 0.06393462452919643, name: e_pas_all, r2: 0.7911229886574428}
+channel_r2_overall: 0.33484410083468213
+channel_rmse_overall: 0.47402529354363826
+eval_pooled: false
+eval_stim_col: 0
+eval_stim_index: null
+eval_stim_name: 5k50kInterChaoticB
+model_path: /pscratch/sd/k/ktub1999/tmp_neuInv/jaxley_voltage_only/l5ttpc_multistim_paramonly/L5TTPC_multistim/debug_55374316/out
+n_samples: 200
+spike_count_diff_mean_abs: 3.365
+spikes_data_mean: 6.46
+spikes_sim_mean: 3.485
+voltage_mse_z_mean: 0.8297945237117321
+voltage_mse_z_median: 0.8672221968521905
+voltage_per_probe:
+- {mse_z_mean: 0.8297945237117321, mse_z_median: 0.8672221968521905, probe: 0, spikes_data_mean: 6.46,
+  spikes_sim_mean: 3.485, stim: 5k50kInterChaoticB}
+- {mse_z_mean: 0.6733156007981909, mse_z_median: 0.5914531858106475, probe: 1, spikes_data_mean: 2.16,
+  spikes_sim_mean: 1.57, stim: 5k0step_500}
+- {mse_z_mean: 0.8684656509284524, mse_z_median: 0.9174696938332999, probe: 2, spikes_data_mean: 2.525,
+  spikes_sim_mean: 1.67, stim: 5k0chirp}
+voltage_rmse_z_mean: 0.8720217217413858
+voltage_rmse_z_median: 0.9312475846687702

@@ -588,7 +588,7 @@ Only supervised recovers anything; every simulator-in-the-loop run (11-15 epochs
 the prior mean on every channel. The 3-stim battery at 80k is the best L5 model (0.428, 4 min on 1 GPU);
 apical SKv3/Im, somatic Ca-LVA and axonal K_Tst stay ~0 in every run (single-soma observability wall
 persists; multiprobe never trained long enough to test it). All models under-fire 2-3x. Train/val curves:
-`l5ttpc_train_val_curves.pdf`; composite overlays `l5ttpc_eval/l5ttpc_test_overlays_composite.pdf`.
+`l5ttpc_eval/l5ttpc_train_val_curves.pdf`; composite overlays `l5ttpc_eval/l5ttpc_test_overlays_composite.pdf`.
 
 **Cost tables.** `chaoticramp_runs_table.md` (every chaoticRamp run: knobs, samples, s/epoch, hours,
 nodes, per-channel R²) and `all_models_time_table.md` (114 run dirs, GPU-s per sample). Totals: the 19
