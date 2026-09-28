@@ -1,0 +1,87 @@
+# CA3 Pyramidal — VOLTAGE-ONLY, PLAIN MSE loss (single-stim, 5kChaoticRamp pack).
+#
+# Companion to ca3_voltonly_efel_chaoticramp.hpar.yaml: IDENTICAL cell / data /
+# model / optimizer, the ONLY difference is the loss — the soft-eFEL feature term
+# is turned OFF (efel_weight:0.0), leaving pure z-scored voltage-trace MSE:
+#   loss = voltage_weight * MSE( z(sim(pred_phys)), z(true_volts) )
+# This makes an apples-to-apples ablation of "does soft-eFEL smoothing help?" on
+# the same 5kChaoticRamp pack. LR kept at 1e-4 (same as the eFEL run) so the loss
+# function is the only variable that changes.
+#
+# 5kChaoticRamp is 5000 samples @0.1ms = 500 ms -> matches the CA3 default t_max
+# (no --t-max override at gen time; t_max_override:auto here).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_chaoticramp_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]     # kept at 1e-4 to match the eFEL run (loss-only ablation)
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+# ─────────────────────────────────────────────────────────────────────────
+# VOLTAGE-ONLY loss (no channel supervision), PLAIN MSE (soft-eFEL OFF)
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0          # OFF
+    voltage_weight:    1.0
+    mask_channels:     True         # voltage-only
+    mse_weight:        1.0          # z-scored trace MSE anchor
+    efel_weight:       0.0          # soft-eFEL OFF -> pure voltage MSE
+    stim_name:         5kChaoticRamp
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True         # requires JAX_ENABLE_X64=true in SLR env.
+
+model:
+    myId:    ca3_voltonly_mse_chaoticramp
+    comment: CA3 Pyramidal voltage-only plain-MSE single-stim (5kChaoticRamp)
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

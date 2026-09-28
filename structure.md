@@ -139,10 +139,18 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 
 ### Top-level scripts
 
+- `All_probes_allCells.py`
+    - defs: read_and_plot_etype_data
 - `RayTune.py`
     - defs: threadTrain, trainable, Raytune
+- `build_roy_expH5.py` - Pack the Roy* ABF sweeps into per-stim mlPack1 HDF5s for NeuronInverter.
+    - defs: main, iv_main
 - `build_roy_neuron5_pack.py` - Build the NEURON-level 5-sweep battery pack from RoyExpPack_ca3ft.
 - `build_roy_stimch_pack.py` - Build the STIM-AS-CHANNEL single-sweep pack from RoyExpPack_ca3ft.
+- `chaoticramp_variance_probe.py` - Look directly at the ChaoticRamp trace ensemble per channel and test which
+    - defs: smooth, spike_rate, main
+- `convertPred.py`
+    - defs: extract_efel_features_from_volts, normalize_volts, resample_by_interpolation
 - `evaluate_voltage.py` - Evaluate a HybridLoss/voltage-trained model.
     - defs: get_parser, load_trained_model, load_test_data, _simulate_nograd, main
 - `excitability_probe_icarec.py` - Can the CA3 model fire at experimental rates under the TRUE recorded drive?
@@ -160,6 +168,12 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser
 - `formatSimV8kHz.py` - formats packed Vyassa simu (aka production) for bbp153
     - defs: get_parser
+- `make_interpolated_stims.py` - Resample every stimulus CSV to a fixed number of time steps.
+    - defs: load_current, main
+- `ood_probe.py` - Out-of-range (extrapolation) probe for the best chaoticRamp CA3 model.
+    - defs: get_parser, main
+- `plot2Dtester.py`
+    - defs: args1
 - `plotConductDrift.py` - plot scores and waveforms w/ spikes
     - defs: get_parser, Plotter, process_one
 - `plotExpCSurvey.py` - inspect formated  experiment
@@ -178,32 +192,72 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser, Plotter, M_save_summary
 - `plotSurveyExpC.py` - inspect formated  experiment
     - defs: get_parser, print_exp_summary, Plotter
+- `plot_all_stims_paula.py` - Plot every recording in exp_data_paula: one page per ABF file.
+    - defs: style, n_spikes, minmax_decimate, new_page, finish_page, page_iv, page_roy, page_gapfree, main
+- `plot_ball_variation.py` - Characterize voltage-trace variation across the ball-and-stick synthetic dataset.
+- `plot_ca3_default_trace.py` - CA3 pyramidal default-parameter voltage trace vs the ca3_synth_v2 dataset.
+- `plot_ca3_multistim.py` - CA3 pyramidal multi-stim per-page PDF.
+- `plot_ca3_traces.py` - Plot 100 voltage traces (raw mV) from the ca3_synth_v2 dataset.
+- `plot_default_trace.py` - Ball-and-stick voltage trace at DEFAULT ion-channel values vs the dataset.
+- `plot_efel_vs_channel.py` - Distribution of soft-eFEL features vs ion-channel value for the ball-and-stick pack.
 - `plot_exp_overlay.py` - Plot predicted unit-params + voltage overlays for EXPERIMENTAL data.
     - defs: get_parser, zscore, main
 - `plot_exp_overlay_neuron5.py` - Evaluate the neuron-level joint 5-sweep model on held-out neurons.
     - defs: get_parser, zscore, zfix, spikes_pos, main
 - `plot_exp_overlay_roy.py` - Predict the Roy/Paula chaotic recordings (Apr-2026) with a DTW-era CA3 model.
     - defs: get_parser, zscore, spikes_pos, main
+- `plot_exp_overlay_royv2.py` - Voltage-error evaluation of a CA3 model on Paula's Roy v2 experimental pack.
+    - defs: get_parser, zscore, zfix, spikes_pos, sim_family, main
 - `plot_exp_overlay_royv2_l5.py` - Cross-cell-model probe: score the L5TTPC jaxley model on Roy v2 recordings.
     - defs: get_parser, zscore, zfix, spikes_pos, sim_family, main
 - `plot_exp_overlay_royv2_l5dt02.py` - Score a dt-0.2 L5 nc2 model (the fp32/dt0.2 voltage-only pilot, its 200k successor, or an
     - defs: get_parser, zscore, zfix, spikes_pos, sim_family, main
 - `plot_exp_overlay_stimch.py` - Evaluate a stim-as-channel single-sweep model on held-out Roy neurons.
     - defs: get_parser, zscore, zfix, spikes_pos, main
+- `plot_halved_vs_full_inh.py` - Compare ALL_CELLS_Inhibitory error (same-cell / intrapolation / extrapolation)
+    - defs: load
+- `plot_ion_channels_compare.py` - Side-by-side ion-channel comparison figure (truth-vs-pred 2D density per channel),
+    - defs: section_cmap, load_domain, panel, main
+- `plot_roy_input_vs_output.py` - Overlay the measured Roy traces (model input) against the NEURON traces
+    - defs: load_jobs, jobs_for, n_spikes, spike_label, load_sim, style, main
+- `plot_roy_predicted_params.py` - Plot the ion-channel / passive parameters the probescan_exc model predicted
+    - defs: load, style, main
+- `plot_roy_traces.py` - Visualize the "Roy*" voltage traces in exp_data_paula as a multi-page PDF.
+    - defs: load_roy_traces, n_spikes, style, main
+- `plot_stage_overlays.py` - Overlay experimental voltage traces with the sims from EVERY model stage.
+    - defs: get_parser, zfix, spikes_pos, sim_family, main
+- `plot_stims_pdf.py` - Plot every stimulus CSV in a directory into one multipage PDF (4 per page).
+    - defs: load_current, main
+- `plot_voltage_traces.py` - Plot 100 voltage traces (raw mV) from the ball-and-stick synthetic pack.
+- `plot_voltage_traces_pdf.py` - Multi-page PDF: one voltage trace per page (raw mV) for the ball-and-stick pack.
 - `predict.py` - read trained net : model+weights
     - defs: get_parser, load_model, model_infer, compute_residual
 - `predictExp.py` - PREDiction Kaustubh
     - defs: get_parser, load_model, model_infer, compute_dummy_residual
+- `predictExpIDX.py` - PREDiction Kaustubh
+    - defs: get_parser, load_model, model_infer
+- `predictTestPlot.py` - read trained net : model+weights
+    - defs: get_parser, load_model, model_infer, compute_residual
 - `predict_exp.py` - read trained net : model+weights
     - defs: get_parser, model_infer_exper, M_get_phys_packing
+- `predict_from_hf.py` - predict_from_hf.py
+    - defs: load_model_from_hf, load_traces_from_h5, predict, get_parser, main
+- `roy_unit_to_phys.py` - Convert the Roy* predicted unit parameters to physical parameters, in three
+    - defs: convert, main
 - `sensitivity_analysis.py` - Identifiability / sensitivity analysis of a jaxley-cell inverse problem under a stim battery.
     - defs: get_parser, resolve_phys_range, operating_points, feature_list, short_name, spike_counts, main
 - `sensitivity_variation.py` - One-at-a-time (OAT) voltage-variation sensitivity analysis for jaxley cells.
     - defs: get_parser, compute_efel_variation, compute_metric_variation, compute_variance_metrics, resolve_phys_range, discover_stims, build_unit_samples, simulate_stim, main, write_outputs, write_efel_outputs, write_scalar_metric_outputs, _plot_su...
+- `sensitivity_variation_compare.py` - Compare two sensitivity_variation runs (e.g. native vs interpolated stims),
+    - defs: read_matrix, spearman, align, parse_kv, main
 - `sensitivity_variation_merge.py` - Merge chunked sensitivity_variation.py outputs into one combined result.
     - defs: read_matrix, main
 - `train_dist.py` - Not running on CPUs !
     - defs: get_parser
+- `upload_best_per_cell_to_hf.py` - upload_best_per_cell_to_hf.py
+    - defs: load_summary, is_complete, find_best_per_cell, slim_checkpoint, build_config, write_cell_extras, root_readme, upload_all, get_parser, main
+- `upload_to_hf.py` - upload_to_hf.py
+    - defs: load_summary, make_repo_name, make_model_card, upload_model, get_parser, main
 - `yamlMaker.py`
     - defs: get_parser
 
@@ -242,7 +296,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `toolbox/aggregate_loss.py`
     - defs: get_parser
 - `toolbox/jaxley_utils.py` - Helpers shared across the jaxley voltage-loss path.
-    - defs: normalize_volts_fixed, phys_par_range_to_arrays, build_phys_par_range, unit_to_phys_torch, phys_par_range_linear_mask, unit_to_phys_np, unit_to_phys_jax, load_stim_csv, upsample_stim, downsample_step
+    - defs: normalize_volts_fixed, normalize_stim_fixed, phys_par_range_to_arrays, build_phys_par_range, unit_to_phys_torch, phys_par_range_linear_mask, unit_to_phys_np, unit_to_phys_jax, load_stim_csv, upsample_stim, downsample_step
 - `toolbox/physio_stats.py` - Physiological-plausibility measures for soma voltage traces (mV).
     - defs: spike_stats, scan_traces, verdict_default, verdict_box
 - `toolbox/recal_metrics.py` - Per-channel recovery metrics that CREDIT a good-but-offset diagonal, plus a
@@ -331,7 +385,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `scripts/gen_ball_and_stick_data.py` - Generate a synthetic mlPack1.h5 from a registered jaxley cell.
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages, normalize_volts_fixed_scale, write_h5, main
 - `scripts/gen_ca3_sharded.py` - Sharded multi-GPU generation of a CA3 mlPack1.h5 (single- or multi-stim).
-    - defs: _phys_range, _load_cell, _slice, _draw_unit_par, _vary_indices, worker, merge, main
+    - defs: _phys_range, _load_cell, _slice, _draw_unit_par, _fam_assign, _nominal_stim_on_grid, _vary_indices, worker, merge, main
 - `scripts/gen_multistim_data.py` - Generate a JOINT 3-stimulus mlPack1.h5 from a registered jaxley cell (EXP 3).
     - defs: _load_source_cell, _build_phys_par_range, generate_voltages_one_stim, normalize_volts_fixed_scale, write_h5, main
 - `scripts/l5_accuracy_dt_ncomp.py` - Accuracy of cheaper L5 solver settings: forward traces at (ncomp = env, dt in --dts) for
@@ -364,6 +418,7 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `scripts/voltage_loss_bias_probe.py` - Step-0 bias audit for the voltage-only training objective.
     - defs: get_parser, load_split_volts, loss_at, main
 - `scripts/eval_all_stims.sh`
+- `scripts/gen_best_stims_all.sh`
 - `scripts/install_hooks.sh`
 - `scripts/l5_speed_worker.sh`
 - `scripts/l5_speed_worker2.sh`
@@ -411,6 +466,9 @@ _Regenerate with `python toolbox/refresh_structure.py`._
 - `packBBP3/aggregate_Kaustubh2.py`
 - `packBBP3/aggregate_Kaustubh_feature.py` - re-pack samll hd5 NEURON output to one  6k-samples HD5 files
     - defs: get_parser, normalize_volts, get_h5_list, assemble_MD, import_stims_from_CVS, read_all_h5, clear_NaN_samples
+- `packBBP3/exclude_params_inplace.py` - In-place column drop on already-packed mlPack1 H5 files.
+    - defs: trim_h5, main
+- `packBBP3/filter_pack_family.py` - Filter an existing Roy exp ca3ft mlPack down to ONE stimulus family,
 - `packBBP3/format_bbp3_for_ML.py` - format samples for ML training
     - defs: get_parser, format_raw, read_meta_json
 - `packBBP3/format_bbp3_for_ML_paralelly.py` - format samples for ML training
@@ -419,8 +477,14 @@ _Regenerate with `python toolbox/refresh_structure.py`._
     - defs: get_parser, get_normal_stim, format_raw, write_meta_json_hdf5, append_data_hdf5_index, read_meta_json_hdf5, read3_only_data_hdf5
 - `packBBP3/format_bbp3_for_ML_paralelly_only_test.py` - format samples for ML training
     - defs: get_parser, get_normal_stim, format_raw, write_meta_json_hdf5, append_data_hdf5_index, read_meta_json_hdf5, read3_only_data_hdf5
+- `packBBP3/format_royexp_for_ML.py` - Pack Paula's Roy inter-chaotic-stim recordings (roy_stims.h5) into an
+    - defs: get_parser, main
 - `packBBP3/format_vyassa_for_ML.py` - format samples for ML training
     - defs: get_parser, rebuildMD, addStim, format_raw
+- `packBBP3/halve_inh_dataset.py` - Halve each cell's contribution in (already-shuffled) ONTRA Inhibitory datasets.
+    - defs: get_parser, keep_index, stream_copy, is_sample_dataset, halve_file, main
+- `packBBP3/ontraInhAllSubmit.py`
+    - defs: get_parser
 - `packBBP3/plotBaseVolts.py` - plot BBP3 simulation data
     - defs: get_parser, Plotter, import_stims_from_CVS
 - `packBBP3/vet_volts.py` - plot BBP3 simulation: soma volts

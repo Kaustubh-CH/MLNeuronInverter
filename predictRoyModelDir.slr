@@ -1,0 +1,42 @@
+#!/bin/bash -l
+#SBATCH -N1 --time=00:25:00 -J ni_predRoy -q debug
+#SBATCH --image=nersc/pytorch:ngc-21.08-v2
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=1 --gpus-per-task=1 --cpus-per-task=32 -C gpu -A m2043_g
+# - - - E N D    O F    SLURM    C O M M A N D S
+#
+# Inference of ANY trained model on Paula's Roy* experimental traces --
+# the parameterised twin of the model-dir predictRoyBlank350.slr copies.
+# One pass per stimulus amplitude; each writes unitParam*.csv into
+# <wrkDir>/predict_royPaula<dset>/Roy<amp>/.
+#
+# <wrkDir> must contain out/ (the trained model) and predictExpRoy.py
+# (copy it from e.g. bbp3/ALL_CELLS/probescan_exc_p0_k128_56588087/).
+#
+# usage: sbatch predictRoyModelDir.slr <wrkDir> [dset]
+#   dset  Blank350 (default) or "" for the un-blanked pack
+
+set -u
+wrkDir=$1
+dset=${2-Blank350}    # pass "" explicitly for the un-blanked RoyPaula pack
+expDir=/global/homes/k/ktub1999/ExperimentalData/PyForEphys/RoyPaula${dset}
+outRoot=$wrkDir/predict_royPaula${dset}
+
+[ -f $wrkDir/predictExpRoy.py ] || { echo "ABORT: no $wrkDir/predictExpRoy.py"; exit 1; }
+cd $wrkDir
+mkdir -p $outRoot
+export HDF5_USE_FILE_LOCKING=FALSE
+
+for amp in 100 500 1000 1500 2000; do
+    saveDir=$outRoot/Roy${amp}
+    mkdir -p $saveDir
+    echo "=== Roy${amp} ==="
+    srun -n1 shifter python -u ./predictExpRoy.py \
+        --modelPath out -X \
+        --cellName Roy${amp} \
+        --expFile ${expDir}/ \
+        --saveFile ${saveDir} \
+        --predictStim 0 \
+        --outPath ${saveDir}
+done
+echo "S:done all Roy predictions  wrkDir=$wrkDir dset=$dset"

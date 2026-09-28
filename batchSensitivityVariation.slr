@@ -1,0 +1,75 @@
+#!/bin/bash -l
+#SBATCH -N1 --time=00:30:00 -J sensVar -q debug
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# - - - E N D    O F    SLURM    C O M M A N D S
+#
+# OAT voltage-variation sensitivity sweep (sensitivity_variation.py).
+# Splits the stim list across the node's 4 GPUs (one chunk per task), each
+# task writes its own part_<localid>/, then a merge step combines them into
+# combined/ (summary_heatmap.png, ranking_per_channel.png, per_stim PDF,
+# summary.yaml).  Fits the 30-min debug limit: each GPU handles ~1/4 of the
+# stims and writes independently, so a timeout never loses everything.
+#
+# Usage:
+#   sbatch batchSensitivityVariation.slr [cell] [stimDir] [nSamples]
+
+set -e
+
+cell=${1:-ca3_pyramidal}
+stimDir=${2:-/global/homes/k/ktub1999/mainDL4/DL4neurons2/stims}
+nSamples=${3:-500}
+efelFlag=${4:-efel}      # "efel" to enable soft-eFEL variation, anything else to skip
+tag=${5:-native}         # label for the run dir (e.g. native | interp4000)
+
+EFEL_ARG=""
+[[ "$efelFlag" == "efel" ]] && EFEL_ARG="--efel"
+
+REPO=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter
+runDir=$SCRATCH/tmp_neuInv/sensitivity_variation/${cell}/${tag}_$SLURM_JOBID
+partsDir=$runDir/parts
+combined=$runDir/combined
+mkdir -p $partsDir $combined
+
+# ─── Conda env (jaxley + jax + torch) ───────────────────────────────────
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+export JAX_ENABLE_X64=true
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.6
+
+cd $REPO
+
+# Total stim count (drives the per-task slice; the python side re-derives the
+# same sorted list and slices it by --stimStart/--stimCount).
+NSTIM=$(ls $stimDir/*.csv 2>/dev/null | wc -l)
+NTASK=${SLURM_NTASKS}
+CHUNK=$(( (NSTIM + NTASK - 1) / NTASK ))
+echo "S: job=$SLURM_JOBID cell=$cell stims=$NSTIM tasks=$NTASK chunk=$CHUNK nSamples=$nSamples"
+echo "S: runDir=$runDir"
+
+date
+time srun -n $NTASK bash -c '
+  export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID
+  export JAX_PLATFORMS=cuda
+  export JAX_COMPILATION_CACHE_DIR='"$SCRATCH"'/jax_cc/sensvar_gpu_$SLURM_LOCALID
+  mkdir -p $JAX_COMPILATION_CACHE_DIR
+  START=$(( SLURM_LOCALID * '"$CHUNK"' ))
+  python -u sensitivity_variation.py \
+      --cell '"$cell"' --stimDir '"$stimDir"' --nSamples '"$nSamples"' \
+      --stimStart $START --stimCount '"$CHUNK"' '"$EFEL_ARG"' \
+      --outDir '"$partsDir"'/part_$SLURM_LOCALID \
+      > '"$partsDir"'/log_part_$SLURM_LOCALID.txt 2>&1
+'
+echo "S: done sweeps"; date
+
+# ─── Merge chunks -> combined/ ──────────────────────────────────────────
+export JAX_PLATFORMS=cpu
+python -u sensitivity_variation_merge.py \
+    --partsDir $partsDir --outDir $combined \
+    --cell $cell --stimDir $stimDir --nSamples $nSamples >& $runDir/log_merge.txt || echo "S: merge FAILED"
+
+echo "S: combined outputs:"; ls -la $combined
+echo "S: best stim per channel:"; grep -A1 "best:" $combined/summary.yaml 2>/dev/null | head -40
+echo "S: DONE runDir=$runDir"

@@ -17,6 +17,10 @@ Layout matches scripts/gen_ball_and_stick_data.py (1 stim -> num_probs=1) and
 scripts/gen_multistim_data.py (K stims -> num_probs=K on the PROBE axis,
 num_stims=1) so the existing dataloader/HybridLoss paths work unchanged.
 
+--per-sample-stims instead gives each sample ONE stim from --stims (round-robin
+over stims[--fam-offset:]); the pack then has 2 probes (soma volts, fixed-scale
+stim waveform) and the family index in label column 0 (voltage_loss.stim_from_label).
+
 Determinism: the full unit_par array is drawn once from default_rng(seed) and is
 reproduced identically in both worker and merge, so shard boundaries and the
 final shuffle match a single-process run.
@@ -66,6 +70,35 @@ def _draw_unit_par(seed, n, P):
     return np.random.default_rng(seed).uniform(-1.0, 1.0, size=(n, P)).astype(np.float32)
 
 
+def _fam_assign(n, K, offset):
+    """--per-sample-stims: deterministic family index per sample.
+
+    offset + i % (K-offset): round-robin over stims[offset:], exact n/(K-offset)
+    per family.  `offset` lets the stem list carry unused leading entries (e.g.
+    Roy100 at index 0) so the label indices match the exp ca3ft packs, whose
+    family order is Roy100,Roy500,...,Roy2000.  Same call in worker and merge.
+    """
+    return (offset + np.arange(n) % (K - offset)).astype(np.int64)
+
+
+def _nominal_stim_on_grid(cell, sname, trim, T):
+    """--per-sample-stims probe 1: the stim CSV (nA, UNscaled -- the same units the
+    exp packs' --stimChannel carries) on the pack's output grid, built exactly as
+    JaxleyBridge._build_handle builds the delivered stim (upsample to _DT, decimate
+    by downsample_step), then trimmed like the volts."""
+    from toolbox.jaxley_utils import load_stim_csv, upsample_stim, downsample_step
+    w = load_stim_csv(Path(cell._STIM_DIR) / f"{sname}.csv")
+    w = upsample_stim(w, cell._DT_STIM, cell._DT, cell._T_MAX)
+    w = w[::max(1, downsample_step(cell._DT, cell._DT_STIM))]
+    # jaxley records t=0..t_max inclusive -> one more bin than the stim grid
+    # (e.g. 5000 -> 5001): hold the last value, never more than one bin.
+    short = trim + T - len(w)
+    assert short <= 1, (sname, len(w), trim, T)
+    if short > 0:
+        w = np.concatenate([w, np.repeat(w[-1:], short)])
+    return w[trim:trim + T].astype(np.float32)
+
+
 def _vary_indices(cell, vary):
     """--vary keys -> (varied_idx, pinned_idx). None -> all varied."""
     P = len(cell.PARAM_KEYS)
@@ -94,6 +127,9 @@ def worker(args):
     if args.dt is not None:
         cell._DT = float(args.dt)         # coarser solver step (must match training's sim_dt_override)
     JaxleyBridge.clear_cache()
+    if args.per_sample_stims and len(getattr(cell, "PROBE_NAMES", None) or ["soma"]) > 1:
+        raise RuntimeError(f"--per-sample-stims needs a soma-only cell; {args.source_cell} "
+                           f"records {len(cell.PROBE_NAMES)} probes {list(cell.PROBE_NAMES)}")
     P = len(cell.PARAM_KEYS)
     ppr = _phys_range(cell)
     centers, logspans = phys_par_range_to_arrays(ppr); linear = phys_par_range_linear_mask(ppr)
@@ -110,34 +146,63 @@ def worker(args):
           f"slice [{lo}:{hi}] ({hi-lo} samples) stims={args.stims}", flush=True)
 
     import jax.numpy as jnp
-    chans = []
-    for sname in args.stims:
-        handle = JaxleyBridge.get_handle(args.source_cell, sname)
+
+    def _sim_chunk(handle, pnp):
+        # Forward-only on the cached jitted vmap (no jax.vjp graph): the
+        # training bridge's VJP OOMs for the ~1000-2000-comp L5 cells at
+        # batch 32-64.  Pad the chunk to --batch so XLA compiles one shape.
+        pg = jnp.asarray(pnp); ng = pg.shape[0]
+        if ng < args.batch:
+            pg = jnp.concatenate([pg, jnp.broadcast_to(pg[:1], (args.batch - ng,) + pg.shape[1:])], axis=0)
+        v = np.asarray(handle.simulate_batch(pg))[:ng]          # (ng, n_rec, T)
+        return v[..., args.trim_bins:] if args.trim_bins else v
+
+    if args.per_sample_stims:
+        # Each sample is simulated under ITS OWN family's stim (round-robin
+        # assignment); the shard holds a single volts channel (the merge adds the
+        # stim waveform as probe 1).  One compiled handle/shape per family.
+        fam = _fam_assign(args.n, len(args.stims), args.fam_offset)[lo:hi]
         out = None
-        nb = int(np.ceil((hi - lo) / args.batch))
-        t0 = time.time()
-        for b in range(nb):
-            i0 = b * args.batch
-            i1 = min(hi - lo, i0 + args.batch)
-            # Forward-only on the cached jitted vmap (no jax.vjp graph): the
-            # training bridge's VJP OOMs for the ~1000-2000-comp L5 cells at
-            # batch 32-64.  Pad the last chunk so XLA compiles one shape.
-            pg = jnp.asarray(phys[i0:i1]); ng = pg.shape[0]
-            if ng < args.batch:
-                pg = jnp.concatenate([pg, jnp.broadcast_to(pg[:1], (args.batch - ng,) + pg.shape[1:])], axis=0)
-            v = np.asarray(handle.simulate_batch(pg))[:ng]      # (b, n_rec, T)
-            if v.shape[1] != 1 and len(args.stims) > 1:
-                raise RuntimeError(f"multi-stim packs need a soma-only cell, got n_rec={v.shape[1]}")
-            if out is None:
-                out = np.zeros((hi - lo, v.shape[-1], v.shape[1]), dtype=np.float32)
-            out[i0:i1] = np.moveaxis(v, 1, 2)     # (b, T, n_rec)
-        chans.append(out)
-        print(f"[rank {rank}] stim {sname}: {out.shape} in {(time.time()-t0)/60:.1f} min",
-              flush=True)
-    # Channel axis: K stims of a soma-only cell -> (n, T, K); one stim of a
-    # P-probe cell -> (n, T, P).  Either way the dataloader sees it as the
-    # PROBE axis with num_stims=1.
-    volts = np.concatenate(chans, axis=2)         # (n_slice, T, S*n_rec)
+        for fi in sorted(set(fam.tolist())):
+            sname = args.stims[fi]
+            handle = JaxleyBridge.get_handle(args.source_cell, sname)
+            idx = np.flatnonzero(fam == fi)
+            t0 = time.time()
+            for b0 in range(0, len(idx), args.batch):
+                sel = idx[b0:b0 + args.batch]
+                v = _sim_chunk(handle, phys[sel])
+                if v.shape[1] != 1:
+                    raise RuntimeError(f"--per-sample-stims needs a soma-only cell, "
+                                       f"{args.source_cell} records n_rec={v.shape[1]}")
+                if out is None:
+                    out = np.zeros((hi - lo, v.shape[-1], 1), dtype=np.float32)
+                out[sel] = np.moveaxis(v, 1, 2)   # (b, T, 1)
+            print(f"[rank {rank}] fam {fi} ({sname}): {len(idx)} samples in "
+                  f"{(time.time()-t0)/60:.1f} min", flush=True)
+        volts = out                               # (n_slice, T, 1)
+    else:
+        chans = []
+        for sname in args.stims:
+            handle = JaxleyBridge.get_handle(args.source_cell, sname)
+            out = None
+            nb = int(np.ceil((hi - lo) / args.batch))
+            t0 = time.time()
+            for b in range(nb):
+                i0 = b * args.batch
+                i1 = min(hi - lo, i0 + args.batch)
+                v = _sim_chunk(handle, phys[i0:i1])             # (b, n_rec, T)
+                if v.shape[1] != 1 and len(args.stims) > 1:
+                    raise RuntimeError(f"multi-stim packs need a soma-only cell, got n_rec={v.shape[1]}")
+                if out is None:
+                    out = np.zeros((hi - lo, v.shape[-1], v.shape[1]), dtype=np.float32)
+                out[i0:i1] = np.moveaxis(v, 1, 2)     # (b, T, n_rec)
+            chans.append(out)
+            print(f"[rank {rank}] stim {sname}: {out.shape} in {(time.time()-t0)/60:.1f} min",
+                  flush=True)
+        # Channel axis: K stims of a soma-only cell -> (n, T, K); one stim of a
+        # P-probe cell -> (n, T, P).  Either way the dataloader sees it as the
+        # PROBE axis with num_stims=1.
+        volts = np.concatenate(chans, axis=2)     # (n_slice, T, S*n_rec)
     if not np.isfinite(volts).all():
         raise RuntimeError(f"[rank {rank}] non-finite volts")
     shard = Path(args.shard_dir) / f"shard_{rank:03d}.npy"
@@ -194,25 +259,49 @@ def merge(args):
     centers, logspans = phys_par_range_to_arrays(ppr)
     phys_par = unit_to_phys_np(unit_par.astype(np.float64), centers, logspans,
                                phys_par_range_linear_mask(ppr)).astype(np.float32)
-    volts4 = volts_norm[..., np.newaxis]          # (N, T, S, 1)
     # With --vary the pack's label/param space covers ONLY the varied params; the
     # full 19-row range + subset indices go to simu_info so HybridLoss / evaluate_voltage
     # can expand the CNN's subset prediction back to the full cell vector.
-    par_names_out = [cell.PARAM_KEYS[i] for i in vidx]
+    varied_names = [cell.PARAM_KEYS[i] for i in vidx]
+    par_names_out = list(varied_names)
     ppr_out = [ppr[i] for i in vidx]
     unit_par = unit_par[:, vidx]
     phys_par = phys_par[:, vidx]
 
-    if len(args.stims) > 1:
-        probe_names = list(args.stims)            # K stims as channels
+    if args.per_sample_stims:
+        # Probe 1 = the stimulus (nominal per-family CSV in nA, fixed scale) on the
+        # SAME trimmed output grid as the volts; label col 0 = the family index
+        # (consumed by voltage_loss.stim_from_label, exp-pack convention).  Norm
+        # constant shared with format_royexp_for_ML --stimChannel fixed via
+        # toolbox.jaxley_utils.STIM_NORM_SCALE_NA.
+        from toolbox.jaxley_utils import normalize_stim_fixed
+        if S != 1:
+            raise RuntimeError(f"--per-sample-stims expects 1 volts channel per shard, got S={S}")
+        fam_perm = _fam_assign(args.n, len(args.stims), args.fam_offset)[perm]
+        waves = np.zeros((len(args.stims), T), dtype=np.float32)
+        for fi in sorted(set(fam_perm.tolist())):
+            waves[fi] = _nominal_stim_on_grid(cell, args.stims[fi], args.trim_bins, T)
+        stim_chan = normalize_stim_fixed(waves)[fam_perm]           # (N, T)
+        volts4 = np.concatenate(
+            [volts_norm, stim_chan[..., np.newaxis]], axis=2)[..., np.newaxis]
+        S = 2                                     # (N, T, 2, 1)
+        unit_par = np.concatenate([fam_perm[:, None].astype(np.float32), unit_par], axis=1)
+        phys_par = np.concatenate([fam_perm[:, None].astype(np.float32), phys_par], axis=1)
+        par_names_out = ["stim_family_idx"] + par_names_out
+        ppr_out = [[1.0, 0.0, "idx"]] + ppr_out
+        probe_names = ["soma", "stimulus"]
     else:
-        probe_names = list(getattr(cell, "PROBE_NAMES", None) or (["soma"] if S == 1 else [f"probe{i}" for i in range(S)]))
+        volts4 = volts_norm[..., np.newaxis]      # (N, T, S, 1)
+        if len(args.stims) > 1:
+            probe_names = list(args.stims)        # K stims as channels
+        else:
+            probe_names = list(getattr(cell, "PROBE_NAMES", None) or (["soma"] if S == 1 else [f"probe{i}" for i in range(S)]))
     assert len(probe_names) == S, f"probe_names {probe_names} vs S={S}"
     out_path = Path(args.out) / f"{args.cell_name}.mlPack1.h5"
     Path(args.out).mkdir(parents=True, exist_ok=True)
     meta = {
         "cell_name": args.cell_name, "source_cell": args.source_cell,
-        "num_phys_par": len(vidx), "num_varied_phys_par": len(vidx),
+        "num_phys_par": len(par_names_out), "num_varied_phys_par": len(par_names_out),
         "num_probs": int(S), "num_stims": 1, "num_time_bins": int(T),
         "parName": par_names_out, "probe_names": probe_names,
         "stim_names": list(args.stims),
@@ -232,15 +321,30 @@ def merge(args):
                           "_NCOMP": getattr(cell, "_NCOMP", None)},
             "probe_names": probe_names, "stim_names_multi": list(args.stims),
             "world_shards": world,
-            "varied_params": par_names_out,
+            "varied_params": varied_names,
             "pinned_params": [cell.PARAM_KEYS[i] for i in pin],
             "full_param_keys": list(cell.PARAM_KEYS),
             "full_phys_par_range": ppr,
             "param_subset_indices": vidx,
+            # bins dropped from the start of every trace, on the OUTPUT grid
+            # (timeAxis.step); training's voltage_loss.sim_t_skip_ms must match
+            "trim_bins": int(args.trim_bins),
         },
         "pack_info": {"n_total": n, "n_train": n_train, "n_valid": n_valid,
                       "n_test": n_test, "batch": args.batch},
     }
+    if args.per_sample_stims:
+        from toolbox.jaxley_utils import STIM_NORM_SCALE_NA
+        meta["stim_from_label"] = {
+            "label_col": 0, "stim_names": list(args.stims),
+            "stim_family_order": [s.split("_")[0] for s in args.stims],
+            "fam_offset": args.fam_offset,
+            "stim_channel": {"probe": 1, "scale_nA": STIM_NORM_SCALE_NA,
+                             "stim_scale_in_sim": float(getattr(cell, "_STIM_SCALE", 1.0)),
+                             "source": "nominal (unscaled) per-family CSV on the trimmed output grid"}}
+        meta["simu_info"]["per_sample_stims"] = True
+        meta["simu_info"]["joint_per_sample_channels"] = False   # probe1 is the stim, not another sim
+        meta["simu_info"]["fam_offset"] = args.fam_offset
     sl = {"train": slice(0, n_train), "valid": slice(n_train, n_train + n_valid),
           "test": slice(n_train + n_valid, n)}
     print(f"[merge] writing {out_path}  split train/valid/test="
@@ -284,12 +388,31 @@ def main():
                     help="comma-separated PARAM_KEYS to vary; the rest are pinned at unit 0 "
                          "(= cell default). unit_par/parName/phys_par_range in the pack then "
                          "cover ONLY the varied params (full range kept in simu_info).")
+    ap.add_argument("--per-sample-stims", action="store_true",
+                    help="each sample gets ONE stim from --stims (round-robin "
+                         "over stims[fam-offset:]); pack = 2 probes (volts, "
+                         "fixed-scale stim waveform) + family idx in label col 0. "
+                         "Soma-only cells only.")
+    ap.add_argument("--fam-offset", type=int, default=0,
+                    help="(--per-sample-stims) first stim index actually used; "
+                         "leading stems are indexed but never assigned, so label "
+                         "indices can match the exp packs' Roy100..Roy2000 order")
+    ap.add_argument("--trim-bins", type=int, default=0,
+                    help="drop the first N OUTPUT-grid time bins of each simulated "
+                         "trace before packing (e.g. 1000 = a 100 ms holding preamble "
+                         "at 0.1 ms), so the pack window matches a recording that "
+                         "starts at stim onset")
     ap.add_argument("--merge", action="store_true", help="run the merge phase")
     ap.add_argument("--world", type=int, default=None,
                     help="(merge) number of shards to expect; default SLURM_NTASKS")
     args = ap.parse_args()
     args.stims = [s for s in args.stims.split(",") if s]
     args.vary = [s for s in args.vary.split(",") if s] if args.vary else None
+    if args.per_sample_stims and not 0 <= args.fam_offset < len(args.stims):
+        ap.error(f"--fam-offset {args.fam_offset} must be in [0, {len(args.stims)}) "
+                 f"for {len(args.stims)} --stims")
+    if args.trim_bins < 0:
+        ap.error("--trim-bins must be >= 0")
     if args.world is None:
         args.world = int(os.environ.get("SLURM_NTASKS", 1))
     if args.merge:

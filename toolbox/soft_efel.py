@@ -84,12 +84,13 @@ FEATURE_SCALES = {
     "kdr_repol_slope":      55.0,   # mV/ms  (Kdr band-limited fall rate)
     "isi_adaptation_slope": 0.04,   # frac/pair (Km late-ISI lengthening slope)
     "slow_ahp_deepening":    4.0,   # mV      (Km early->late slow-AHP deepening; CALIBRATE)
-    # sub-threshold / whole-trace (provisional scales ~ across-dataset mV spread)
-    "voltage_base":                   6.0,   # mV, resting membrane potential
-    "steady_state_voltage_stimend":  12.0,   # mV
+    # sub-threshold / whole-trace, CALIBRATED to true-trace std (2026-07-13, CA3
+    # interchaoticB+chaoticRamp packs); AUC provisional 20 was ~4x too high.
+    "voltage_base":                   5.5,   # mV, resting membrane potential
+    "steady_state_voltage_stimend":  17.0,   # mV
     "voltage_deflection":            12.0,   # mV, steady-state minus baseline
-    "minimum_voltage":               12.0,   # mV, deepest sag / AHP
-    "AUC":                           20.0,   # mV, mean |V - baseline| over trace
+    "minimum_voltage":               14.0,   # mV, deepest sag / AHP
+    "AUC":                            5.5,   # mV, mean |V - baseline| over trace
 }
 
 # ── L3: differentiable dV/dt phase-plane features (opt-in, NOT part of eFEL) ──

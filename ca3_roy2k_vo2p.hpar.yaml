@@ -1,0 +1,98 @@
+# CA3 — VOLTAGE-ONLY training on 80k synthetic traces under the EXACT rig
+# Roy2000 stimulus (Roy2000_icav2_5k = v2 holding -0.0496 nA + 0.4971x
+# 5k50kInterChaoticB), varying ONLY the two channels the OAT sensitivity sweep
+# says this stimulus exposes: CA3_g_leak (idx 0) and CA3_gkdbar_kd (idx 5).
+#
+# Pack: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_roy2k_vo2p/
+#       ca3_roy2k_vo2p.mlPack1.h5   (gen_ca3_sharded.py --vary ... --trim-bins 1000:
+#       traces are the LAST 4001 bins = the window a recording sees, matching the
+#       exp ca3ft packs; unit_par is (N,2) -> outputSize 2)
+# Launch with --cellName ca3_roy2k_vo2p.
+#
+# voltage_loss.param_subset [0,5]: the CNN emits 2 unit params that land at cell
+# indices 0 and 5; the other 4 are pinned at unit 0 (= default) before the sim —
+# consistent with how the data was generated.  phys_par_range lists ALL 6.
+# sim_t_skip_ms 100.0 (1000 bins) == the pack's trim -> exact window alignment.
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_roy2k_vo2p/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: True    # 100-ep run crosses interactive-allocation walls;
+                           # a relaunch resumes from checkpoints/last.pth
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0001]
+    LRsched:   { plateau_patience: 4, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0
+    voltage_weight:    1.0
+    mask_channels:     True         # voltage-only (labels never used)
+    mse_weight:        1.0
+    efel_weight:       1.0
+    stim_name:         Roy2000_icav2_5k
+    param_subset:      [0, 5]       # CA3_g_leak, CA3_gkdbar_kd
+    soma_probe_index:  0
+    sim_t_skip_ms:     100.0        # 1000 bins == pack trim_bins
+    clamp_unit_tanh:   True
+    t_max_override:    auto          # 5000-pt CSV -> 500 ms
+    solver:            bwd_euler
+    fp64:              True
+    # ALL 6 cell params (subset expansion needs the full map); centers = defaults.
+    phys_par_range:
+        - [3.9417e-05, 0.5, "S/cm^2"]   # CA3_g_leak       <- predicted
+        - [0.04,       0.5, "S/cm^2"]   # CA3_gbar_na3        (pinned)
+        - [0.01,       0.5, "S/cm^2"]   # CA3_gkdrbar_kdr     (pinned)
+        - [0.04,       0.5, "S/cm^2"]   # CA3_gkabar_kap      (pinned)
+        - [0.00052,    0.5, "S/cm^2"]   # CA3_gbar_km         (pinned)
+        - [0.00025,    0.5, "S/cm^2"]   # CA3_gkdbar_kd    <- predicted
+
+model:
+    myId:    ca3_roy2k_vo2p
+    comment: voltage-only 2-param (leak,kd) CA3 under exact rig Roy2000 stim, 80k
+    outputSize_override: 2
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [128, 128, 128]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

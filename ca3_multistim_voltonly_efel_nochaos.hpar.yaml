@@ -1,0 +1,94 @@
+# CA3 Pyramidal — VOLTAGE-ONLY + soft-eFEL loss, multi-stim SKIPPING chaotic.
+#
+# Experiment #1 of the multi-stim eFEL sweep: use only the 3 SMOOTH/well-conditioned
+# stims (step, chirp, ramp) and DROP the chaotic stim (5k50kInterChaoticB), which
+# sensitivity_analysis.py flagged as worst on every axis (lowest sensitivity,
+# highest condition number, most cliffy). The 4-stim (all) variant is the fallback
+# if this isn't good enough: ca3_multistim_voltonly_efel.hpar.yaml.
+#
+# Data pack ca3_multistim_v1 has probe axis [0=chaotic, 1=step, 2=chirp, 3=ramp].
+# Launch with NEUINV_PROBS="1 2 3" so the dataloader feeds ONLY step/chirp/ramp as
+# CNN channels; stim_names_multi below is [step, chirp, ramp] to MATCH that order
+# (HybridLoss sims pred_phys under stim i and compares to selected data channel i).
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ca3_data/ca3_multistim_v1/
+
+data_conf:
+    serialize_stims:  True          # collapse the 3 selected probe channels -> CNN channels
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 100
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    # 3-stim eFEL is a harder/noisier surface than single-stim: at LR 1e-4 the
+    # val loss oscillated 1.1<->2.0 and the plateau scheduler collapsed the LR on
+    # the noise (run 55482737). Halve LR and give the scheduler more patience so
+    # transient spikes don't trigger premature LR cuts.
+    optimizer: [adam, 0.00005]    # 5e-5 (single-stim eFEL was stable at 1e-4)
+    LRsched:   { plateau_patience: 15, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+# ─────────────────────────────────────────────────────────────────────────
+# VOLTAGE-ONLY + soft-eFEL, 3 smooth stims (chaotic dropped)
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ca3_pyramidal
+    channel_weight:    0.0          # OFF
+    voltage_weight:    1.0
+    mask_channels:     True         # voltage-only
+    mse_weight:        1.0
+    efel_weight:       1.0
+    # stim_name drives t_max_override:auto (all stims are 500 ms).
+    stim_name:         5k0step_500
+    # ORDER MUST MATCH the selected data channels (NEUINV_PROBS="1 2 3").
+    stim_names_multi:  [5k0step_500, 5k0chirp, 5k0ramp]
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    fp64:              True
+
+model:
+    myId:    ca3_multistim_voltonly_efel_nochaos
+    comment: CA3 voltage-only + soft-eFEL, step/chirp/ramp (no chaotic)
+    outputSize_override: 6
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04

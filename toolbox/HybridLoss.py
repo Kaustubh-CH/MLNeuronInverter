@@ -614,6 +614,7 @@ class HybridLoss(nn.Module):
             return v[:cur_bs] if do_pad else v
 
         # Build (sim_channel, data_channel) pairs depending on the mode.
+        #   * stim_from_label   -> per-SAMPLE stimulus: group batch by family idx
         #   * stim_names_multi -> Exp 3: one sim per stim, soma each, vs data ch i
         #   * probe_loss_indices -> Exp 2: one sim, probe k each, vs data ch i
         #   * else              -> default soma-only (unchanged behavior)

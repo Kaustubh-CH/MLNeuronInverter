@@ -1,0 +1,98 @@
+#!/bin/bash -l
+#SBATCH -N8 --time=0:29:00 -J jaxleyBall2p -q debug
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH --ntasks-per-node=4 --gpus-per-node=4 --gpu-bind=none --cpus-per-task=32 -C gpu -A m2043_g
+# - - - E N D    O F    SLURM    C O M M A N D S
+#
+# Phase 4 — ball_and_stick (non-BBP HH) with TWO recordings (soma + dendrite),
+# hybrid loss, 10-epoch debug-queue run on 8 nodes x 4 GPUs.
+#
+# Identical to batchShifterJaxleyBall.slr EXCEPT:
+#   - data_temp -> ball_synth_2probe_v1 (generated with the 2-probe cell)
+#   - probsSelect "0 1" (soma + dendrite) -> CNN gets 2 input channels
+#   - wrkDir0 -> jaxley_ball_2probe (keep separate from the soma-only run)
+#
+# This tests whether adding the dendrite recording improves Leak_gLeak
+# recovery.  The sensitivity sweep (toolbox/tests/sens_sweep_ball.py)
+# predicts ~no improvement: the 2-compartment cell is so tightly coupled
+# that the dendrite trace is nearly identical to the soma trace.
+#
+# Usage:
+#   sbatch batchShifterJaxleyBall2probe.slr [data_path] [design]
+
+set -e
+
+cellName=ball_and_stick_synth
+design=ball_matched
+epochs=10
+data_temp=${1:-/pscratch/sd/k/ktub1999/synthetic_ball_data/ball_synth_2probe_v1/}
+if [[ $# -ge 2 ]]; then design=$2; fi
+
+probsSelect="0 1"
+stimsSelect="0"
+validStimsSelect="0"
+
+# ─── Conda env (jaxley + jax + torch) ───────────────────────────────────
+module load python
+source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
+export PYTHONNOUSERSITE=1
+
+# ─── JAX persistent compile cache (per-rank) ────────────────────────────
+export JAX_COMPILATION_CACHE_DIR=$SCRATCH/jax_cc/rank_${SLURM_PROCID:-0}
+mkdir -p $JAX_COMPILATION_CACHE_DIR
+export JAX_PLATFORMS=cuda
+export JAX_ENABLE_X64=true
+
+# ─── NCCL (Perlmutter, no shifter) ──────────────────────────────────────
+export NCCL_DEBUG=WARN
+export NCCL_NET_GDR_LEVEL=PHB
+export FI_PROVIDER=cxi
+export FI_CXI_DEFAULT_CQ_SIZE=131072
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.5
+
+# ─── DDP env ────────────────────────────────────────────────────────────
+nprocspn=${SLURM_NTASKS_PER_NODE}
+N=${SLURM_NNODES}
+G=$[ $N * $nprocspn ]
+export MASTER_ADDR=`hostname`
+export MASTER_PORT=8881
+echo "S: job=${SLURM_JOBID} MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT G=$G N=$N"
+
+facility=perlmutter
+[[ -z "${NEUINV_WRK_SUFIX}" ]] && wrkSufix=$SLURM_JOBID || wrkSufix="${NEUINV_WRK_SUFIX}"
+[[ -z "${NEUINV_JOBID}"    ]] && jobId=j$SLURM_JOBID    || jobId="${design}_${NEUINV_JOBID}"
+
+wrkDir0=$SCRATCH/tmp_neuInv/jaxley_ball_2probe/${design}/${cellName}/
+wrkDir=$wrkDir0/$wrkSufix
+outPath=$wrkDir/out
+mkdir -p $outPath
+
+# Frozen code snapshot.
+codeList="train_dist.py predict.py predictExp.py RayTune.py toolbox/ \
+batchShifterJaxleyBall2probe.slr evaluate_voltage.py plotJaxleyValidation.py \
+scripts/ ${design}.hpar.yaml"
+cp -rp $codeList $wrkDir
+cd $wrkDir
+echo "S:lsfPWD=`pwd` outPath=$outPath"
+
+# ─── Train ──────────────────────────────────────────────────────────────
+# Synth pack at N=50000, train split = 80% = 40000 samples, 2 probes.
+PY_CMD="python -u train_dist.py \
+    --cellName $cellName --facility $facility \
+    --outPath ./out --design $design --jobId $jobId \
+    --probsSelect $probsSelect --stimsSelect $stimsSelect \
+    --validStimsSelect $validStimsSelect \
+    --epochs $epochs --data_path_temp $data_temp \
+    --numGlobSamp 40000"
+echo "S:PY_CMD=$PY_CMD"
+
+date
+time srun -n $G bash -c "
+export JAX_COMPILATION_CACHE_DIR=\$SCRATCH/jax_cc/rank_\$SLURM_PROCID
+mkdir -p \$JAX_COMPILATION_CACHE_DIR
+$PY_CMD" >& log.train
+echo "S:done train"
+date
+
+tail -50 log.train

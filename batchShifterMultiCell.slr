@@ -1,0 +1,107 @@
+#!/bin/bash -l
+#SBATCH  -N4 --time=1:30:00  -J ni_h5   -q regular
+#-SBATCH -q regular
+#SBATCH --image=nersc/pytorch:ngc-21.08-v2
+#-SBATCH --image=nersc/pytorch:ngc-22.09-v0  # runs 1/4 x slower
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/slurm_logs/slurm-%j.out
+#SBATCH  --ntasks-per-node=4 --gpus-per-task=1 --cpus-per-task=32 --exclusive  -C gpu -A  m2043_g   # Kris ML:m2043_g, simu:m3513_g
+#-SBATCH  -x  nid001016,nid002685,nid002688,nid002689 # block sick nodes
+# - - - E N D    O F    SLURM    C O M M A N D S
+nprocspn=${SLURM_NTASKS_PER_NODE}
+#nprocspn=2  # special case for partial use of a full node
+
+#cellName=L23_PCcADpyr2
+cellName=L5_BTCcAC0 #ALL_CELLS  # most complex aka bbp153-vyassa
+#cellName=L4_SPcADpyr0     # the simplest
+
+#design=m8lay_vs2
+# design=MultuStim
+# design=m8lay_vs3
+design=m8lay_vs3
+# design=MultuStimTrans
+epochs=100
+data_temp=$1
+echo "No of params"
+echo $#
+if [[ $# -ge 2 ]];then 
+    design=$2 
+    echo "Using Param Design"
+fi
+if [[ $# -ge 3 ]];then 
+    cellName=$3 
+    echo "Using Cell from param"
+fi
+
+# can use mutiple stims serially, as independent samples
+probsSelect=" 0 1 2 3"  # index from  list: ['soma', 'axon', apic,'dend']
+# probsSelect=" 0"
+# stimsSelect=" 0"  #  index from  list: ['5k0chaotic5A', '5k0step_200', '5k0ramp', '5k0chirp', '5k0step_500','5k0chaotic5B']
+stimsSelect="0"  # chaosA+B+chirp [5k0chaotic5A, 5k0step_200, 5k0ramp, 5k0chirp, 5k0step_500, 5k50kInterChaoticB,5k0chaotic5B]
+validStimsSelect="0"
+
+# stimsSelect="  0 "  # chaosB
+#stimsSelect="  0 "  # chaosA
+
+N=${SLURM_NNODES}
+G=$[ $N * $nprocspn ]
+export MASTER_ADDR=`hostname`
+export MASTER_PORT=8881
+echo S: job=${SLURM_JOBID} MASTER_ADDR=$MASTER_ADDR  MASTER_PORT=$MASTER_PORT  G=$G  N=$N 
+nodeList=$(scontrol show hostname $SLURM_NODELIST)
+echo S:node-list $nodeList
+
+# grab some variables from environment - if defined
+[[ -z "${NEUINV_INIT_LR}" ]] && initLRstr="  " || initLRstr=" --initLR ${NEUINV_INIT_LR} "
+[[ -z "${NEUINV_WRK_SUFIX}" ]] && wrkSufix=$SLURM_JOBID || wrkSufix="${NEUINV_WRK_SUFIX}"
+[[ -z "${NEUINV_JOBID}" ]] && jobId=j$SLURM_JOBID || jobId="${design}_${NEUINV_JOBID}"
+env |grep NEUINV
+
+#wrkSufix=lrScan/$jobId
+
+if [[  $NERSC_HOST == perlmutter ]]   ; then
+    echo "S:on Perlmutter"
+    facility=perlmutter
+elif [[  $NERSC_HOST == cori ]]   ; then
+    echo "S:on CoriGpu"
+    facility=corigpu  
+fi
+
+wrkDir0=$SCRATCH/tmp_neuInv/bbp3//${cellName}/
+wrkDir=$wrkDir0/$wrkSufix
+
+echo "S:cellName=$cellName  initLRstr=$initLRstr jobId=$jobId  wrkSufix=$wrkSufix wrkDir=$wrkDir" 
+date
+
+export CMD="python -u train_dist.py --cellName $cellName --facility $facility  --outPath ./out --design $design --jobId $jobId  $initLRstr --probsSelect $probsSelect  --stimsSelect $stimsSelect --validStimsSelect $validStimsSelect --epochs $epochs --data_path_temp $data_temp "
+# spare  --numGlobSamp 101000 
+
+echo CMD=$CMD
+
+codeList="  train_dist.py  predict.py predictExp.py RayTune.py toolbox/ batchShifter.slr  $design.hpar.yaml  "
+
+outPath=$wrkDir/out
+mkdir -p $outPath
+cp -rp $codeList  $wrkDir
+cd  $wrkDir
+echo lsfPWD=`pwd`
+
+echo "starting  jobId=$jobId neurInv  " `date` " outPath= $outPath"
+time srun -n $G  shifter  bash  toolbox/driveOneTrain.sh  >& log.train
+
+sleep 2
+
+echo S:done train
+time srun -n1 shifter  python -u ./predict.py  --modelPath out -X  >& log.predictAll #--idx 1 2 3 4 5 6 7 8 9 10 11 13 15 16 17 18
+echo S:done predict all, 2 more for stim 0 and 5
+# time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --showPlots a -X  >& log.predictS5
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 5 --testStimsSelect 5 --showPlots a -X  >& log.predictS5  
+time srun -n1 shifter  python -u ./predict.py  --modelPath out --stimsSelect 1 --testStimsSelect 1 --showPlots a -X  >& log.predictS1  
+date
+
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 5 --saveFile ./unitParamsExact --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data_Exact_TotalNorm/ --modelPath out  -X  >& log.ExpExact  
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 5 --saveFile ./unitParamsReduce --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Data_Reduce_TotalNorm/  --modelPath out  -X  >& log.ExpReduced 
+
+time srun -n1 shifter  python -u ./predictExp.py --predictStim 0 --saveFile ./unitParamsSimulated --expFile /global/homes/k/ktub1999/ExperimentalData/PyForEphys/Sim_NNrow_TotalNorm/  --modelPath out  -X  >& log.ExpSim 
+#--idx 0 1 2 3 4 5 6 7 8 9 10 13 14 15 18
+# spare: --numSamples 500000  --cellName $cellName
+# manual: ~/neuronInverter/predict.py --modelPath out --numSamples 5000 --stimsSelect 5 --showPlots a  --venue poster

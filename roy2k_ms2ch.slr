@@ -1,0 +1,14 @@
+#!/bin/bash
+#SBATCH -J roy2k-ms2ch
+#SBATCH -C gpu
+#SBATCH -q regular
+#SBATCH -A m2043_g
+#SBATCH -t 12:00:00
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=4
+#SBATCH --gpus-per-node=4
+#SBATCH --gpu-bind=none
+#SBATCH -o /pscratch/sd/k/ktub1999/tmp_neuInv/jaxley_ca3/roy2k_ms2ch_%j.log
+# Multi-stim 2-channel ladder (gen -> base -> evals -> ft2000 -> ftall).
+# Fully resumable: resubmit (or chain with --dependency=afterany) to continue.
+bash /global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/roy2k_ms2ch_driver.sh

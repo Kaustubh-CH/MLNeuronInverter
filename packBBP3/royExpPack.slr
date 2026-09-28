@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH -C cpu
+#SBATCH -q shared
+#SBATCH -A m2043
+#SBATCH -t 00:30:00
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH -c 8
+#SBATCH -J royExpPack
+#SBATCH -o /global/homes/k/ktub1999/Neuron/neuron4/neuroninverter/packBBP3/logs/royExpPack-%j.out
+
+set -u
+PY=/pscratch/sd/k/ktub1999/.conda/envs/jaxley_env/bin/python
+cd /global/homes/k/ktub1999/Neuron/neuron4/neuroninverter/packBBP3
+
+$PY format_royexp_for_ML.py \
+    --royH5 "/global/homes/k/ktub1999/Neuron/neuron4/neuroninverter/exp_data_paula_v2/roy_analysis/roy_stims.h5" \
+    --outPath /pscratch/sd/k/ktub1999/RoyExpPack \
+    --outName RoyExpChaotic
+echo "pack done, rc=$?"

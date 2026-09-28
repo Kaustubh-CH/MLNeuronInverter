@@ -79,8 +79,14 @@ class MyModel(nn.Module):
 
 #...!...!..................
     def forwardCnnOnly(self, x):
-        # flatten 2D image  .contiguous() for Some issue memor 
-        x=x.contiguous().view((-1,)+self.inp_shape )
+        # Loader emits (B, timeBins, C).  For C==1 the legacy flat view is
+        # equivalent, but for C>1 (e.g. a stim input channel) a raw view would
+        # interleave time and channel — permute to (B, C, timeBins) instead.
+        inp_chan, timeBins = self.inp_shape
+        if x.dim() == 3 and x.shape[1] == timeBins and x.shape[2] == inp_chan:
+            x = x.permute(0, 2, 1).contiguous()
+        else:   # flattened or already channel-first input: legacy path
+            x = x.contiguous().view((-1,)+self.inp_shape)
 
         if self.verb>2: print('J: inp2cnn',x.shape,x.dtype)
         for i,lyr in enumerate(self.cnn_block):

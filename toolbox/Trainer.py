@@ -275,11 +275,13 @@ class Trainer():
       # note, using DDP assures the same as average_gradients(self.model), no need to do it manually 
     self.iters = 0
     self.startEpoch = 0
-    if params['resuming']  and   self.verb:
+    if params['resuming']:
+      # EVERY rank must restore (startEpoch/optimizer state); restoring only on
+      # rank 0 desyncs the epoch loop across DDP ranks and deadlocks the run.
       # prefer 'last' (advances startEpoch); fall back to best-val ckpt.pth
       resume_path = params['last_checkpoint_path'] if os.path.isfile(params['last_checkpoint_path']) \
                     else params['checkpoint_path']
-      logging.info("Loading checkpoint %s"%resume_path)
+      if self.verb: logging.info("Loading checkpoint %s"%resume_path)
       self.restore_checkpoint(resume_path)
     self.epoch = self.startEpoch
 
@@ -331,7 +333,7 @@ class Trainer():
     if self.verb:
       logging.info("Starting Training Loop..., myRank=%d resume epoch=%d"%(self.params['world_rank'],self.startEpoch + 1))
     
-    bestLoss=1e20  
+    bestLoss = self.bestLoss = getattr(self, 'bestLoss', 1e20)  # survives resume
     startTrain = time.time()
     TperEpoch=[]
     warmup_epochs=self.params['train_conf']['warmup_epochs']
@@ -373,8 +375,8 @@ class Trainer():
       if self.params['save_checkpoint'] or epoch+1==self.params['max_epochs']:
         if self.isRank0 and bestLoss> valid_logs['loss']:
           #checkpoint at the end of every epoch  if loss improved
+          bestLoss = self.bestLoss = float(valid_logs['loss'])
           self.save_checkpoint(self.params['checkpoint_path'])
-          bestLoss= valid_logs['loss']
           logging.info('save_checkpoint for epoch %d , val-loss=%.3g'%(epoch , bestLoss) )
         if self.isRank0:
           # ALWAYS persist 'last' so preempt-resume advances startEpoch past a plateau
@@ -581,16 +583,32 @@ class Trainer():
       model = self.model
 
     torch.save({'iters': self.iters, 'epoch': self.epoch, 'model_state': model.state_dict(),
-                'optimizer_state_dict': self.optimizer.state_dict()}, checkpoint_path)
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                # full-fidelity resume: LR-scheduler bookkeeping + best-val marker
+                'scheduler_state_dict': (self.scheduler.state_dict()
+                                         if hasattr(self, 'scheduler') else None),
+                'best_loss': getattr(self, 'bestLoss', None)}, checkpoint_path)
 
 #...!...!..................
   def restore_checkpoint(self, checkpoint_path):
     """ We intentionally require a checkpoint_dir to be passed
         in order to allow Ray Tune to use this function """
-    local_rank=0
-    checkpoint = torch.load(checkpoint_path, map_location='cuda:{}'.format(local_rank), weights_only=False)
+    # Map to THIS rank's GPU: the checkpoint was saved from rank 0 (cuda:0);
+    # loading it as cuda:0 on other ranks puts Adam state on the wrong device
+    # ("Tensors of the same index must be on the same device...").
+    local_rank = self.device if torch.cuda.is_available() else 'cpu'
+    checkpoint = torch.load(checkpoint_path, map_location='cuda:{}'.format(local_rank)
+                            if torch.cuda.is_available() else 'cpu', weights_only=False)
     self.model.load_state_dict(checkpoint['model_state'])
     self.iters = checkpoint['iters']
     self.startEpoch = checkpoint['epoch'] + 1
     self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    # Restore LR-scheduler bookkeeping (ReduceLROnPlateau best/num_bad_epochs)
+    # and the best-val marker so a resumed run neither re-decays LR early nor
+    # overwrites ckpt.pth with a worse epoch. Old checkpoints lack these keys.
+    sch = checkpoint.get('scheduler_state_dict')
+    if sch is not None and hasattr(self, 'scheduler'):
+      self.scheduler.load_state_dict(sch)
+    if checkpoint.get('best_loss') is not None:
+      self.bestLoss = float(checkpoint['best_loss'])
 

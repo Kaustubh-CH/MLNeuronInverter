@@ -1,0 +1,94 @@
+# Phase 4: matched ball_and_stick (non-BBP HH) data + sim, hybrid loss.
+#
+# This is the plain Hodgkin-Huxley ball-and-stick cell (toolbox/jaxley_cells/
+# ball_and_stick.py) — NOT the 12-param BBP variant (ball_and_stick_bbp).
+# It is the simplest, best-conditioned inverse problem in the repo: a soma
+# HH (gNa, gK, gLeak) + a single passive dendrite leak.
+#
+#   - 1 probe (soma)
+#   - 1 stim (5k50kInterChaoticB)
+#   - 4 unit_par columns (HH_gNa, HH_gK, HH_gLeak, Leak_gLeak)
+#   - phys_par_range read from H5 meta.JSON.input_meta.phys_par_range
+#
+# Differences vs ca3_matched.hpar.yaml:
+#   - cell_name_for_sim: ca3_pyramidal -> ball_and_stick
+#   - outputSize_override: 6 -> 4
+#   - data_path -> ball synth dir
+
+data_path:
+  perlmutter: /pscratch/sd/k/ktub1999/synthetic_ball_data/ball_synth_v1/
+
+data_conf:
+    serialize_stims:  True
+    append_stim:      False
+    parallel_stim:    False
+    num_data_workers: 4
+
+max_epochs: 10
+batch_size: 128
+
+use_manual_features: False
+
+const_local_batch: True
+validation_period: [1, 1]
+
+log_freq_per_epoch: 8
+tb_show_graph: False
+
+save_checkpoint: True
+resume_checkpoint: False
+
+do_ray: False
+model_type: CNN
+
+opt_pytorch:
+    amp:       False
+    apex:      False
+    autotune:  False
+    zerograd:  False
+
+train_conf:
+    warmup_epochs: 0
+    optimizer: [adam, 0.0003]
+    # Same LR schedule + gradient clipping as ca3_matched — see that file
+    # for the full rationale (LR-collapse trap, extreme-draw gradient spikes).
+    LRsched:   { plateau_patience: 10, reduceFactor: 0.3 }
+    clip_grad_norm: 1.0
+
+# ─────────────────────────────────────────────────────────────────────────
+# Hybrid (channel + voltage) loss
+# ─────────────────────────────────────────────────────────────────────────
+use_voltage_loss: True
+voltage_loss:
+    cell_name_for_sim: ball_and_stick
+    channel_weight:    1.0
+    voltage_weight:    1.0
+    mask_channels:     False
+    stim_name:         5k50kInterChaoticB
+    soma_probe_index:  0
+    clamp_unit_tanh:   True
+    t_max_override:    auto
+    solver:            bwd_euler
+    # fp64 kept True for DDP stability (same NCCL-NaN argument as CA3); HH is
+    # also stiff under extreme CNN-predicted gNa/gK draws.
+    fp64:              True
+    # phys_par_range omitted -> read from H5 meta.JSON.input_meta.phys_par_range.
+
+model:
+    myId:    ball_matched
+    comment: Phase 4 matched ball_and_stick (non-BBP HH) synth data + sim
+    outputSize_override: 4
+    num_cnn_blocks: 2
+    conv_block:
+        filter: [30, 90, 180]
+        kernel: [4,  4,  4]
+        pool:   [4,  4,  4]
+
+    instance_norm_slot:  -9
+    layer_norm:          False
+    batch_norm_cnn_slot: 3
+    batch_norm_flat:     True
+
+    fc_block:
+       dims:    [512, 512, 512, 256, 128]
+       dropFrac: 0.04
