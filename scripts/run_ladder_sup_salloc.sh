@@ -4,7 +4,7 @@
 #   salloc -N1 -C gpu -q interactive -t 2:30:00 -A m2043_g --ntasks-per-node=4 --gpus-per-node=4 --cpus-per-task=32 \
 #          bash scripts/run_ladder_sup_salloc.sh
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 ROOT=${LADDER_DATA_ROOT:-/global/homes/k/ktub1999/model_ladder_data}
 export NEUINV_ROOT=model_ladder NEUINV_TMP_ROOT=/global/homes/k/ktub1999/tmp_neuInv NEUINV_JAXCC_ROOT=/tmp/jaxcc

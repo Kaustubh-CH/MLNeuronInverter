@@ -5,7 +5,7 @@
 #   salloc -N1 -C gpu -q interactive -t 4:00:00 -A m2043_g --ntasks-per-node=4 --gpus-per-node=4 --cpus-per-task=32 \
 #          bash scripts/run_l5_royexp_ft_salloc.sh
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 PILOT=${PILOT_OUT:-$SCRATCH/tmp_neuInv/model_ladder/ladder_l5ttpc_nc2_icb4k_vo_fp32dt02/l5ttpc_nc2_bbp_synth/vo_fp32dt02_100ep/out}
 design=l5nc2_royexp_ft_dt02_efel5_ema; suffix=${FT_SUFIX:-ft_efel5ema}

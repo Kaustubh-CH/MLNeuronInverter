@@ -7,7 +7,7 @@
 # stimulus 5k50kInterChaoticB at the pack's x1.5, solver dt 0.2 ms, fp64, N=500 draws per channel.
 # NB: salloc runs this script on the LOGIN node; only the srun lines land on the compute node.
 set -e -o pipefail
-REPO=${REPO:-/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur}
+REPO=${REPO:-/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp}
 PYENV=/pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
 CELL=${CELL:-l5ttpc}
 export L5TTPC_NCOMP=${L5TTPC_NCOMP:-2}

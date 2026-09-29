@@ -2,7 +2,7 @@
 # Submit the L5 nc2 voltage-only pilot: fp32, dt 0.2, 400 ms InterChaoticB, 100 epochs,
 # 2 x 80 GB A100 nodes (B=256/GPU -> global batch 2048).  ~9.5 h estimated; 12 h wall.
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 PACK=/pscratch/sd/k/ktub1999/model_ladder_data/l5ttpc_nc2_icb4k_bbp_dt02/
 design=ladder_l5ttpc_nc2_icb4k_vo_fp32dt02

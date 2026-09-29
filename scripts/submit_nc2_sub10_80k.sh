@@ -5,7 +5,7 @@
 # B=128/GPU.  80k train on 4 x 80 GB nodes (16 GPUs -> global 2048).  Est 80k x 0.108 GPU-s x 50 /16
 # = ~7.5 h (+eval); 11 h wall.
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 PACK=/pscratch/sd/k/ktub1999/model_ladder_data/l5ttpc_nc2_icb4k_bbp_dt02_sub10_100k/
 design=ladder_l5ttpc_nc2_icb4k_vo_fp32dt02_sub10_80k

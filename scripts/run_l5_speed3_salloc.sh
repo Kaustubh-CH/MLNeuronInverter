@@ -4,7 +4,7 @@
 set -u
 module load python; source activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
 export PYTHONNOUSERSITE=1 JAX_PLATFORMS=cuda XLA_PYTHON_CLIENT_PREALLOCATE=false XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
-cd /global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur || exit 2
+cd /global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp || exit 2
 echo "L5-SPEED3 start $(date) job=${SLURM_JOB_ID:-?}"
 srun -n4 --gpus-per-node=4 --gpu-bind=none bash scripts/l5_speed_worker3.sh
 echo "L5-SPEED3 done $(date)"

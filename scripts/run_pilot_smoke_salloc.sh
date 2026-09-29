@@ -3,7 +3,7 @@
 #   salloc -N1 -C gpu -q interactive -t 0:40:00 -A m2043_g --ntasks-per-node=4 --gpus-per-node=4 --cpus-per-task=32 \
 #          bash scripts/run_pilot_smoke_salloc.sh
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 PACK=/pscratch/sd/k/ktub1999/model_ladder_data/l5ttpc_nc2_icb4k_bbp_dt02/
 design=ladder_l5ttpc_nc2_icb4k_vo_fp32dt02

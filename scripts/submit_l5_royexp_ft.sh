@@ -4,7 +4,7 @@
 # variant (the plain 16-ep run drifted the resting level to -40 mV); FT_DESIGN overrides.  Overlay it afterwards with
 #   python plot_exp_overlay_royv2_l5dt02.py -m <run>/out --tag "exp fine-tune 40ep"
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 PILOT=$SCRATCH/tmp_neuInv/model_ladder/ladder_l5ttpc_nc2_icb4k_vo_fp32dt02/l5ttpc_nc2_bbp_synth/vo_fp32dt02_100ep/out
 PACK=/pscratch/sd/k/ktub1999/RoyExpPack_l5dt02/; design=${FT_DESIGN:-l5nc2_royexp_ft_dt02_efel5_vb}

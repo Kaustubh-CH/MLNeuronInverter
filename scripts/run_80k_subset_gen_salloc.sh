@@ -7,7 +7,7 @@
 #   salloc -N1 -C gpu -q interactive -t 1:00:00 -A m2043_g --ntasks-per-node=4 --gpus-per-node=4 --cpus-per-task=32 \
 #          bash scripts/run_80k_subset_gen_salloc.sh
 set -u
-cd /global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur || exit 2
+cd /global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp || exit 2
 export SLURM_NTASKS_PER_NODE=${SLURM_NTASKS_PER_NODE:-4}
 export L5TTPC_NCOMP=2 NEUINV_LOG_HALFSPAN=1.0 SOURCE_CELL=l5ttpc GEN_BATCH=64 GEN_DT=0.2
 export GEN_VARY=gNaTs2_tbar_NaTs2_t_somatic,gSKv3_1bar_SKv3_1_somatic,e_pas_all,cm_somatic,gIhbar_Ih_dend,gNaTa_tbar_NaTa_t_axonal,gK_Pstbar_K_Pst_axonal,cm_axonal,gNaTs2_tbar_NaTs2_t_apical,gSK_E2bar_SK_E2_axonal

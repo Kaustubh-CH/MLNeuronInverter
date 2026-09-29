@@ -8,7 +8,7 @@
 # generator on 16 GPUs pack after pack.  Set LADDER_ONLY="single_comp l5ttpc_nc2"
 # to restrict rungs; LADDER_N to change the sample count.
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 # pscratch is over quota (2026-09-03) -> packs + shards live in HOME for now.
 ROOT=${LADDER_DATA_ROOT:-/global/homes/k/ktub1999/model_ladder_data}

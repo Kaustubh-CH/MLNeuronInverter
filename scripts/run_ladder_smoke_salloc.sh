@@ -4,7 +4,7 @@
 #   salloc -N1 -C gpu -q interactive -t 0:40:00 -A m2043_g --ntasks-per-node=4 --gpus-per-node=4 --cpus-per-task=32 \
 #          bash scripts/run_ladder_smoke_salloc.sh
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 PACK=/global/homes/k/ktub1999/model_ladder_data/single_comp_5k50kInterChaoticB/
 export NEUINV_ROOT=model_ladder NEUINV_TMP_ROOT=/global/homes/k/ktub1999/tmp_neuInv NEUINV_JAXCC_ROOT=/tmp/jaxcc NEUINV_CELL=single_comp_synth NEUINV_PROBS="0" NEUINV_EPOCHS=2 NEUINV_NUMGLOBSAMP=8192

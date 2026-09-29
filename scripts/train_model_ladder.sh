@@ -7,7 +7,7 @@
 set -u
 MODE=${1:?sup|vo}; shift
 RUNGS=${*:-"single_comp ball_and_stick ball_and_stick_bbp l5ttpc_nc2 l5ttpc_nc4"}
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 ROOT=${LADDER_DATA_ROOT:-/global/homes/k/ktub1999/model_ladder_data}
 RUNROOT=${NEUINV_TMP_ROOT:-/global/homes/k/ktub1999/tmp_neuInv}     # pscratch over quota -> HOME

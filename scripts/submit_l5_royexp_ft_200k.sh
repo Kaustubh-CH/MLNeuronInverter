@@ -6,7 +6,7 @@
 #   l5nc2_royexp_ft_dt02_efel5_vb     (x1 control -- set FT_SUFIX so it does not land in ft_efel5vb_40ep)
 # Overlay afterwards with plot_exp_overlay_royv2_l5dt02.py -m <run>/out --stimScale <c> --tag ...
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 PILOT=${FT_PILOT:-$SCRATCH/tmp_neuInv/model_ladder/ladder_l5ttpc_nc2_icb4k_vo_fp32dt02_200k/l5ttpc_nc2_bbp_synth/vo_fp32dt02_200k_50ep/out}
 PACK=/pscratch/sd/k/ktub1999/RoyExpPack_l5dt02/; design=${FT_DESIGN:-l5nc2_royexp_ft_dt02_efel5_vb_c3}

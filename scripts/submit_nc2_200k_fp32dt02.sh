@@ -3,7 +3,7 @@
 # 8 x 80 GB A100 nodes (B=128/GPU -> global batch 4096).  ~9.5 h estimated; 12 h wall.
 #   DEP=<gen jobid> bash scripts/submit_nc2_200k_fp32dt02.sh   # hold until the pack generation exits 0
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 PACK=/pscratch/sd/k/ktub1999/model_ladder_data/l5ttpc_nc2_icb4k_bbp_dt02_250k/
 design=ladder_l5ttpc_nc2_icb4k_vo_fp32dt02_200k

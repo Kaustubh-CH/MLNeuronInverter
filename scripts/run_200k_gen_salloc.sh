@@ -5,7 +5,7 @@
 #   salloc -N1 -C gpu -q interactive -t 1:30:00 -A m2043_g --ntasks-per-node=4 --gpus-per-node=4 --cpus-per-task=32 \
 #          bash scripts/run_200k_gen_salloc.sh
 set -u
-cd /global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur || exit 2
+cd /global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp || exit 2
 export SLURM_NTASKS_PER_NODE=${SLURM_NTASKS_PER_NODE:-4}
 export L5TTPC_NCOMP=2 NEUINV_LOG_HALFSPAN=1.0 SOURCE_CELL=l5ttpc GEN_BATCH=64 GEN_DT=0.2
 export SHARD_ROOT=/pscratch/sd/k/ktub1999/ca3_gen_shards

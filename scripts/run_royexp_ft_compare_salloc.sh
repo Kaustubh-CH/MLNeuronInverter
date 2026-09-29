@@ -6,7 +6,7 @@
 # the LOGIN node).
 #   salloc -N1 -C gpu -q interactive -t 1:00:00 -A m2043_g --gpus-per-node=1 bash scripts/run_royexp_ft_compare_salloc.sh
 set -u
-WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/ca3-vo-dtwblur
+WT=/global/u1/k/ktub1999/Neuron/neuron4/neuroninverter/.claude/worktrees/roy-exp
 cd "$WT" || exit 2
 module load conda; conda activate /pscratch/sd/k/ktub1999/conda_envs/neuroninverter_jaxley
 export L5TTPC_NCOMP=2 JAX_ENABLE_X64=true
